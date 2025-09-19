@@ -23,22 +23,44 @@ Partial Class Form1
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
         btnPrint = New Button()
+        btnNextTurn = New Button()
+        lstResources = New ListBox()
         SuspendLayout()
         ' 
         ' btnPrint
         ' 
-        btnPrint.Location = New Point(381, 294)
+        btnPrint.Location = New Point(713, 415)
         btnPrint.Name = "btnPrint"
         btnPrint.Size = New Size(75, 23)
         btnPrint.TabIndex = 0
-        btnPrint.Text = "Button1"
+        btnPrint.Text = "Print"
         btnPrint.UseVisualStyleBackColor = True
+        ' 
+        ' btnNextTurn
+        ' 
+        btnNextTurn.Location = New Point(632, 415)
+        btnNextTurn.Name = "btnNextTurn"
+        btnNextTurn.Size = New Size(75, 23)
+        btnNextTurn.TabIndex = 1
+        btnNextTurn.Text = "Next Turn"
+        btnNextTurn.UseVisualStyleBackColor = True
+        ' 
+        ' lstResources
+        ' 
+        lstResources.FormattingEnabled = True
+        lstResources.ItemHeight = 15
+        lstResources.Location = New Point(21, 23)
+        lstResources.Name = "lstResources"
+        lstResources.Size = New Size(1219, 289)
+        lstResources.TabIndex = 2
         ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(800, 450)
+        ClientSize = New Size(1252, 450)
+        Controls.Add(lstResources)
+        Controls.Add(btnNextTurn)
         Controls.Add(btnPrint)
         Name = "Form1"
         Text = "Form1"
@@ -46,5 +68,7 @@ Partial Class Form1
     End Sub
 
     Friend WithEvents btnPrint As Button
+    Friend WithEvents btnNextTurn As Button
+    Friend WithEvents lstResources As ListBox
 
 End Class
