@@ -22,53 +22,63 @@ Partial Class Form1
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
-        btnPrint = New Button()
+        btn_Print = New Button()
         btnNextTurn = New Button()
-        lstResources = New ListBox()
+        pnlMap = New Panel()
+        btn_Show = New Button()
         SuspendLayout()
         ' 
-        ' btnPrint
+        ' btn_Print
         ' 
-        btnPrint.Location = New Point(713, 415)
-        btnPrint.Name = "btnPrint"
-        btnPrint.Size = New Size(75, 23)
-        btnPrint.TabIndex = 0
-        btnPrint.Text = "Print"
-        btnPrint.UseVisualStyleBackColor = True
+        btn_Print.Location = New Point(1240, 768)
+        btn_Print.Name = "btn_Print"
+        btn_Print.Size = New Size(75, 23)
+        btn_Print.TabIndex = 0
+        btn_Print.Text = "Print"
+        btn_Print.UseVisualStyleBackColor = True
         ' 
         ' btnNextTurn
         ' 
-        btnNextTurn.Location = New Point(632, 415)
+        btnNextTurn.Location = New Point(1240, 797)
         btnNextTurn.Name = "btnNextTurn"
         btnNextTurn.Size = New Size(75, 23)
         btnNextTurn.TabIndex = 1
         btnNextTurn.Text = "Next Turn"
         btnNextTurn.UseVisualStyleBackColor = True
         ' 
-        ' lstResources
+        ' pnlMap
         ' 
-        lstResources.FormattingEnabled = True
-        lstResources.ItemHeight = 15
-        lstResources.Location = New Point(21, 23)
-        lstResources.Name = "lstResources"
-        lstResources.Size = New Size(1219, 289)
-        lstResources.TabIndex = 2
+        pnlMap.Location = New Point(15, 13)
+        pnlMap.Name = "pnlMap"
+        pnlMap.Size = New Size(600, 600)
+        pnlMap.TabIndex = 2
+        ' 
+        ' btn_Show
+        ' 
+        btn_Show.Location = New Point(1240, 739)
+        btn_Show.Name = "btn_Show"
+        btn_Show.Size = New Size(75, 23)
+        btn_Show.TabIndex = 3
+        btn_Show.Text = "Show"
+        btn_Show.UseVisualStyleBackColor = True
         ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(1252, 450)
-        Controls.Add(lstResources)
+        ClientSize = New Size(1327, 832)
+        Controls.Add(btn_Show)
+        Controls.Add(pnlMap)
         Controls.Add(btnNextTurn)
-        Controls.Add(btnPrint)
+        Controls.Add(btn_Print)
         Name = "Form1"
         Text = "Form1"
         ResumeLayout(False)
     End Sub
 
-    Friend WithEvents btnPrint As Button
+    Friend WithEvents btn_Print As Button
     Friend WithEvents btnNextTurn As Button
-    Friend WithEvents lstResources As ListBox
+    Friend WithEvents pnlMap As Panel
+    Friend WithEvents btn_Show As Button
 
 End Class

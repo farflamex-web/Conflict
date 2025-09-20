@@ -1,9 +1,11 @@
 ﻿Option Strict On
 Option Explicit On
 
+
 Imports System.Drawing.Printing
-Imports System.Reflection
+Imports System.IO
 Imports System.Linq
+Imports System.Reflection
 
 Public Class Form1
 
@@ -11,82 +13,39 @@ Public Class Form1
 
     Private Const Rows As Integer = 25
     Private Const Cols As Integer = 25
-    Private Const InitialSquaresPerPlayer As Integer = 50
     Private Const LegendSpriteSize As Single = 32
     Private Const LegendLabelSpacing As Single = 10
     Private Const GridFontSize As Single = 6
 
-    Private Enum TerrainType
-        Plains
-        Forest
-        Hills
-        Mountains
-    End Enum
+    Private Map(Rows - 1, Cols - 1, 2) As Integer
 
-    Public Enum ResourceType
-        Food
-        Iron
-        Timber
-    End Enum
+    Private Races() As String = {"Elf", "Dwarf", "Orc", "Human"}
+
+    Private terrainCache As New Dictionary(Of String, Image)
+
 
 #End Region
 
 #Region "=== Nested Classes ==="
 
     Public Class Army
-        Public Property Position As Point
+        Public Property X As Integer
+        Public Property Y As Integer
         Public Property Soldiers As Integer
         Public Property Weapons As Integer
-
-        Public ReadOnly Property Strength As Integer
-            Get
-                Return Soldiers + (Weapons * 2)
-            End Get
-        End Property
-
-        Public Sub New(startPos As Point)
-            Position = startPos
-            Soldiers = 0
-            Weapons = 0
-        End Sub
     End Class
 
-    Public Class PlayerResources
-        ' --- Use fields for dictionaries ---
-        Public Current As Dictionary(Of ResourceType, Integer)
-        Public CollectedThisTurn As Dictionary(Of ResourceType, Integer)
-
-        ' --- Population ---
+    Public Class Player
+        Public Property PlayerNumber As Integer
+        Public Property Race As String ' Could be created on-the-fly whenever by using 'Races(PlayerNumber)' but storing it in advance for simplicity later.
         Public Property Population As Integer
-
-        ' --- Reporting fields for food upkeep ---
-        Public LastPopulationUpkeep As Integer
-        Public LastArmyUpkeep As Integer
-        Public LastFoodAfterUpkeep As Integer
-
-        ' --- Constructor ---
-        Public Sub New()
-            ' Initialize dictionaries
-            Current = New Dictionary(Of ResourceType, Integer) From {
-            {ResourceType.Food, 0},
-            {ResourceType.Iron, 0},
-            {ResourceType.Timber, 0}
-        }
-
-            CollectedThisTurn = New Dictionary(Of ResourceType, Integer) From {
-            {ResourceType.Food, 0},
-            {ResourceType.Iron, 0},
-            {ResourceType.Timber, 0}
-        }
-
-            ' Set starting population
-            Population = 1000
-
-            ' Initialize reporting fields
-            LastPopulationUpkeep = 0
-            LastArmyUpkeep = 0
-            LastFoodAfterUpkeep = 0
-        End Sub
+        Public Property Armies As List(Of Army)
+        Public Property Food As Integer
+        Public Property FoodCollectedThisTurn As Integer
+        Public Property Iron As Integer
+        Public Property IronCollectedThisTurn As Integer
+        Public Property Wood As Integer
+        Public Property WoodCollectedThisTurn As Integer
     End Class
 
 
@@ -94,21 +53,7 @@ Public Class Form1
 
 #Region "=== Fields ==="
 
-    Private resourceTable As Dictionary(Of Integer, Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)))
-    Private playerRaces As String() = {"Elf", "Dwarf", "Orc", "Human"}
-
-    Private playerArmies(3) As Army
-    Private playersResources(3) As PlayerResources
-
-    Private terrainMap(Rows - 1, Cols - 1) As TerrainType
-    Private playerMap(Rows - 1, Cols - 1) As Integer
-
-    Private playerSquares As List(Of Point)() = {
-        New List(Of Point)(), New List(Of Point)(),
-        New List(Of Point)(), New List(Of Point)()
-    }
-
-    Private terrainSprites As Dictionary(Of TerrainType, Image)
+    Public Players As List(Of Player)
 
     Private playerColors As Color() = {
         Color.LightGreen,   ' Elf
@@ -119,509 +64,284 @@ Public Class Form1
 
     Private WithEvents printDoc As New PrintDocument
 
-    Private currentPlayerToPrint As Integer = 0 ' default = Elf (player 0)
-
-    Private lastTurnFoodUpkeep(3) As (PopulationUpkeep As Integer, ArmyUpkeep As Integer, Collected As Integer, Remaining As Integer)
-
-    Private lastTurnPopulationGrowth(3) As Integer
-
-
 #End Region
 
 #Region "=== Form Lifecycle ==="
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-        terrainSprites = LoadAllTerrainSprites()
-        GenerateTerrainMap()
-        InitializePlayerMap()
 
-        For i As Integer = 0 To 3
-            playersResources(i) = New PlayerResources()
-        Next
+        CreateTerrainCache()
 
-        InitializeResourceTable()
-        InitializeArmies()
+
+        InitializePlayers()
+
+        GenerateMap()
+
+
     End Sub
 
 #End Region
 
+
+
 #Region "=== Initialization ==="
 
-    Private Sub InitializeResourceTable()
-        resourceTable = New Dictionary(Of Integer, Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)))()
+    Private Sub CreateTerrainCache()
+        ' Clear existing cache (in case called multiple times)
+        terrainCache.Clear()
 
-        ' --- Elf ---
-        resourceTable(0) = New Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)) From {
-            {TerrainType.Plains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 0}, {ResourceType.Timber, 0}}},
-            {TerrainType.Hills, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 1}, {ResourceType.Timber, 1}}},
-            {TerrainType.Mountains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 2}, {ResourceType.Timber, 1}}},
-            {TerrainType.Forest, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 5}, {ResourceType.Iron, 0}, {ResourceType.Timber, 3}}}
-        }
-
-        ' --- Dwarf ---
-        resourceTable(1) = New Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)) From {
-            {TerrainType.Plains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 1}, {ResourceType.Timber, 0}}},
-            {TerrainType.Hills, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 1}, {ResourceType.Timber, 1}}},
-            {TerrainType.Mountains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 5}, {ResourceType.Iron, 3}, {ResourceType.Timber, 0}}},
-            {TerrainType.Forest, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 0}, {ResourceType.Timber, 1}}}
-        }
-
-        ' --- Orc ---
-        resourceTable(2) = New Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)) From {
-            {TerrainType.Plains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 0}, {ResourceType.Timber, 0}}},
-            {TerrainType.Hills, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 5}, {ResourceType.Iron, 2}, {ResourceType.Timber, 1}}},
-            {TerrainType.Mountains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 2}, {ResourceType.Timber, 0}}},
-            {TerrainType.Forest, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 0}, {ResourceType.Timber, 2}}}
-        }
-
-        ' --- Human ---
-        resourceTable(3) = New Dictionary(Of TerrainType, Dictionary(Of ResourceType, Integer)) From {
-            {TerrainType.Plains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 5}, {ResourceType.Iron, 0}, {ResourceType.Timber, 0}}},
-            {TerrainType.Hills, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 2}, {ResourceType.Timber, 1}}},
-            {TerrainType.Mountains, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 2}, {ResourceType.Timber, 0}}},
-            {TerrainType.Forest, New Dictionary(Of ResourceType, Integer) From {{ResourceType.Food, 2}, {ResourceType.Iron, 0}, {ResourceType.Timber, 2}}}
-        }
+        Dim terrainNames As String() = {"plains.png", "forest.png", "hills.png", "mountain.png"}
+        For Each terrainName In terrainNames
+            Dim img As Image = GetEmbeddedImage(terrainName)
+            If img IsNot Nothing Then
+                terrainCache.Add(terrainName, img)
+            End If
+        Next
     End Sub
 
-    Private Sub InitializeArmies()
-        ' Place each army in the corner start position and assign 1000 soldiers
-        playerArmies(0) = New Army(New Point(0, 0))                ' Elf
-        playerArmies(0).Soldiers = 1000
 
-        playerArmies(1) = New Army(New Point(Cols - 1, 0))         ' Dwarf
-        playerArmies(1).Soldiers = 1000
 
-        playerArmies(2) = New Army(New Point(0, Rows - 1))         ' Orc
-        playerArmies(2).Soldiers = 1000
+    Public Sub InitializePlayers()
+        Players = New List(Of Player)
 
-        playerArmies(3) = New Army(New Point(Cols - 1, Rows - 1))  ' Human
-        playerArmies(3).Soldiers = 1000
+        ' Add 4 Player objects
+        For i As Integer = 0 To 3
+            Dim p As New Player()
+            p.PlayerNumber = i
+            p.Race = Races(i)
+            p.Population = 5000
+            Players.Add(p)
+        Next
+
     End Sub
-
 
 #End Region
 
 #Region "=== Gameplay Logic ==="
 
-    Private Sub CollectResources()
-        ' --- Reset "collected this turn" and growth for all players ---
-        For i As Integer = 0 To 3
-            For Each res As ResourceType In [Enum].GetValues(GetType(ResourceType))
-                playersResources(i).CollectedThisTurn(res) = 0
-            Next
-            lastTurnFoodUpkeep(i) = (PopulationUpkeep:=0, ArmyUpkeep:=0, Collected:=0, Remaining:=0)
-            lastTurnPopulationGrowth(i) = 0
-        Next
+    Private Sub NextTurn()
+        CollectResources()
+        GrowPopulationAndFeedEverybody()
+    End Sub
 
-        ' --- Loop through all map cells to collect resources ---
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                Dim playerId As Integer = playerMap(r, c)
-                If playerId >= 0 Then
-                    Dim terrain As TerrainType = terrainMap(r, c)
+    Public Sub CollectResources()
+        ' Loop through each player
+        For Each p In Players
+            ' Reset food for this turn
+            p.Food = 0
+            p.FoodCollectedThisTurn = 0
+            p.IronCollectedThisTurn = 0
+            p.WoodCollectedThisTurn = 0
 
-                    ' Calculate number of collectors per square: total pop / number of squares
-                    Dim numSquares As Integer = playerSquares(playerId).Count
-                    If numSquares = 0 Then Continue For
-                    Dim collectorsPerSquare As Double = playersResources(playerId).Population / numSquares
+            Dim foodThisTurn As Integer = 0
+            Dim ironThisTurn As Integer = 0
+            Dim woodThisTurn As Integer = 0
 
-                    ' Lookup resources in the table
-                    If resourceTable.ContainsKey(playerId) AndAlso resourceTable(playerId).ContainsKey(terrain) Then
-                        For Each kvp As KeyValuePair(Of ResourceType, Integer) In resourceTable(playerId)(terrain)
-                            ' Multiply collection rate by number of collectors
-                            Dim totalCollected As Integer = CInt(kvp.Value * collectorsPerSquare)
-                            AddResource(playerId, kvp.Key, totalCollected)
-                        Next
+            ' Total squares
+            Dim rows As Integer = 25
+            Dim cols As Integer = 25
+            Dim totalSquares As Integer = rows * cols
+
+            ' Population per square
+            Dim popPerSquare As Integer = p.Population \ totalSquares
+
+            ' Determine player's preferred terrain (integer encoding)
+            Dim preferredTerrain As Integer
+            Select Case p.Race.ToLower()
+                Case "elf"
+                    preferredTerrain = 1  ' Forest
+                Case "dwarf"
+                    preferredTerrain = 3  ' Mountain
+                Case "orc"
+                    preferredTerrain = 2  ' Hills
+                Case "human"
+                    preferredTerrain = 0  ' Plains
+                Case Else
+                    preferredTerrain = -1 ' No bonus
+            End Select
+
+            ' Loop through map squares
+            For x As Integer = 0 To rows - 1
+                For y As Integer = 0 To cols - 1
+                    Dim terrain As Integer = Map(x, y, 0)
+
+                    ' Base resources per square
+                    Dim foodPerSquare As Integer = 1
+                    Dim ironPerSquare As Integer = 1
+                    Dim woodPerSquare As Integer = 1
+
+                    ' Apply racial bonus
+                    If terrain = preferredTerrain Then
+                        foodPerSquare += 1
                     End If
-                End If
+
+                    ' Multiply by population per square
+                    foodThisTurn += foodPerSquare * popPerSquare
+                    ironThisTurn += ironPerSquare * popPerSquare
+                    woodThisTurn += woodPerSquare * popPerSquare
+                Next
             Next
-        Next
 
-        ' --- Calculate food upkeep for population and army, and leftover for growth ---
-        For i As Integer = 0 To 3
-            Dim popUpkeep As Integer = playersResources(i).Population
-            Dim armyUpkeep As Integer = playerArmies(i).Soldiers
-            Dim totalFoodRequired As Integer = popUpkeep + armyUpkeep
+            ' Update player resources
+            p.Food = foodThisTurn
+            p.FoodCollectedThisTurn = foodThisTurn
+            p.IronCollectedThisTurn = ironThisTurn
+            p.WoodCollectedThisTurn = woodThisTurn
 
-            Dim collectedFood As Integer = playersResources(i).CollectedThisTurn(ResourceType.Food)
-            Dim remainingFood As Integer = collectedFood - totalFoodRequired
-            If remainingFood < 0 Then remainingFood = 0
-
-            ' Deduct upkeep from current food
-            playersResources(i).Current(ResourceType.Food) -= totalFoodRequired
-            If playersResources(i).Current(ResourceType.Food) < 0 Then playersResources(i).Current(ResourceType.Food) = 0
-
-            ' Store values for reporting
-            lastTurnFoodUpkeep(i) = (PopulationUpkeep:=popUpkeep, ArmyUpkeep:=armyUpkeep, Collected:=collectedFood, Remaining:=remainingFood)
-
-            ' Convert leftover food into new population: 1 new pop per 10 food
-            Dim newPop As Integer = remainingFood \ 10
-            playersResources(i).Population += newPop
-            lastTurnPopulationGrowth(i) = newPop
+            ' Add to cumulative totals
+            p.Iron += ironThisTurn
+            p.Wood += woodThisTurn
         Next
     End Sub
 
+    Public Sub GrowPopulationAndFeedEverybody()
+        ' Loop through all players
+        For Each p In Players
+            ' Calculate total food required for armies
+            Dim armyFoodRequirement As Integer = 0
+            If p.Armies IsNot Nothing Then
+                For Each a In p.Armies
+                    armyFoodRequirement += a.Soldiers ' 1-to-1 food per soldier
+                Next
+            End If
 
-    Private Sub ApplyFoodUpkeepAndGrowth()
-        For playerId As Integer = 0 To 3
-            Dim pr As PlayerResources = playersResources(playerId)
-            Dim army As Army = playerArmies(playerId)
+            ' Total population to feed = civilian population + army food requirement
+            Dim totalToFeed As Integer = p.Population + armyFoodRequirement
 
-            Dim totalUpkeep As Integer = pr.Population + army.Soldiers
-            Dim foodCollected As Integer = pr.CollectedThisTurn(ResourceType.Food)
+            ' Remaining food after feeding population + armies
+            Dim remainingFood As Integer = p.FoodCollectedThisTurn - totalToFeed
 
-            ' --- Subtract upkeep ---
-            Dim remainingFood As Integer = foodCollected - totalUpkeep
-            If remainingFood < 0 Then remainingFood = 0  ' cannot go negative
+            ' Population growth is remaining food ÷ 20
+            Dim growth As Integer = 0
+            If remainingFood > 0 Then
+                growth = remainingFood \ 20
+            End If
 
-            ' --- Update Current food total after upkeep ---
-            pr.Current(ResourceType.Food) = remainingFood
-
-            ' --- Record upkeep for reporting ---
-            pr.LastPopulationUpkeep = pr.Population
-            pr.LastArmyUpkeep = army.Soldiers
-            pr.LastFoodAfterUpkeep = remainingFood
-
-            ' --- Convert leftover food into new population ---
-            Dim newPopulation As Integer = remainingFood \ 10   ' integer division
-            pr.Population += newPopulation
+            ' Increase civilian population
+            p.Population += growth
         Next
     End Sub
 
-
-
-    Private Sub AddResource(playerId As Integer, resType As ResourceType, amount As Integer)
-        playersResources(playerId).Current(resType) += amount
-        playersResources(playerId).CollectedThisTurn(resType) += amount
-    End Sub
-
-    Private Sub UpdatePlayerSquares()
-        For playerId As Integer = 0 To 3
-            playerSquares(playerId).Clear()
-        Next
-
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                Dim playerId As Integer = playerMap(r, c)
-                If playerId >= 0 Then
-                    playerSquares(playerId).Add(New Point(c, r))
-                End If
-            Next
-        Next
-    End Sub
 
 #End Region
 
 #Region "=== Map Generation ==="
 
-    Private Sub GenerateTerrainMap()
-        Dim rnd As New Random()
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                terrainMap(r, c) = CType(rnd.Next(0, 4), TerrainType)
+    ' Main terrain generation method
+    Public Sub GenerateMap()
+        Dim rnd As New Random() ' Local random generator
+        Dim width As Integer = Map.GetLength(0)
+        Dim height As Integer = Map.GetLength(1)
+
+        ' Step 1: Random initial terrain
+        For x As Integer = 0 To width - 1
+            For y As Integer = 0 To height - 1
+                Map(x, y, 0) = rnd.Next(0, 4) ' 0 = Plains, 1 = Forest, 2 = Hills, 3 = Mountain
+                Map(x, y, 1) = -1 ' Initialize ownership as unowned
+            Next
+        Next
+
+        ' Step 2: Smooth the terrain to create clumps
+        Dim iterations As Integer = 3
+        For i As Integer = 1 To iterations
+            Dim newMap(width - 1, height - 1) As Integer
+            For x As Integer = 0 To width - 1
+                For y As Integer = 0 To height - 1
+                    newMap(x, y) = GetDominantNeighbour(x, y)
+                Next
+            Next
+
+            ' Copy back the smoothed map
+            For x As Integer = 0 To width - 1
+                For y As Integer = 0 To height - 1
+                    Map(x, y, 0) = newMap(x, y)
+                Next
+            Next
+        Next
+
+        ' Step 3: Assign starting blocks for each player
+        Dim blockSize As Integer = 5
+        ' Player 0: Elf (Forest = 1) - top-left
+        FillStartingBlock(0, 0, 0, 1)
+        ' Player 1: Dwarf (Mountain = 3) - top-right
+        FillStartingBlock(width - blockSize, 0, 1, 3)
+        ' Player 2: Orc (Hills = 2) - bottom-left
+        FillStartingBlock(0, height - blockSize, 2, 2)
+        ' Player 3: Human (Plains = 0) - bottom-right
+        FillStartingBlock(width - blockSize, height - blockSize, 3, 0)
+    End Sub
+
+    ' Private helper to fill a 5x5 block with exact terrain distribution for a player
+    Private Sub FillStartingBlock(startX As Integer, startY As Integer, playerID As Integer, favTerrain As Integer)
+        Dim rnd As New Random() ' Local random generator for shuffling
+        Dim terrainList As New List(Of Integer)
+
+        ' 19 favored terrain
+        For i As Integer = 1 To 19
+            terrainList.Add(favTerrain)
+        Next
+        ' 2 of each remaining terrain
+        For t As Integer = 0 To 3
+            If t <> favTerrain Then
+                For i As Integer = 1 To 2
+                    terrainList.Add(t)
+                Next
+            End If
+        Next
+
+        ' Shuffle the list
+        For i As Integer = terrainList.Count - 1 To 1 Step -1
+            Dim j As Integer = rnd.Next(0, i + 1)
+            Dim temp As Integer = terrainList(i)
+            terrainList(i) = terrainList(j)
+            terrainList(j) = temp
+        Next
+
+        ' Fill the block
+        Dim index As Integer = 0
+        For x As Integer = startX To startX + 4
+            For y As Integer = startY To startY + 4
+                Map(x, y, 0) = terrainList(index)
+                Map(x, y, 1) = playerID
+                index += 1
             Next
         Next
     End Sub
 
-    Private Sub InitializePlayerMap()
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                playerMap(r, c) = -1
+    ' Returns the most common terrain type among neighbours (including itself)
+    Private Function GetDominantNeighbour(x As Integer, y As Integer) As Integer
+        Dim counts(3) As Integer ' 0 = Plains, 1 = Forest, 2 = Hills, 3 = Mountain
+        Dim width As Integer = Map.GetLength(0)
+        Dim height As Integer = Map.GetLength(1)
+
+        ' Check all neighbours in a 3x3 area
+        For dx As Integer = -1 To 1
+            For dy As Integer = -1 To 1
+                Dim nx As Integer = x + dx
+                Dim ny As Integer = y + dy
+                If nx >= 0 AndAlso nx < width AndAlso ny >= 0 AndAlso ny < height Then
+                    counts(Map(nx, ny, 0)) += 1
+                End If
             Next
         Next
 
-        Dim rnd As New Random()
-        Dim ClaimOrganic = Sub(startRow As Integer, startCol As Integer, playerId As Integer, count As Integer)
-                               Dim frontier As New List(Of Point) From {New Point(startCol, startRow)}
-                               Dim claimed As Integer = 0
+        ' Find terrain type with max count
+        Dim maxCount As Integer = -1
+        Dim dominantType As Integer = 0
+        For t As Integer = 0 To 3
+            If counts(t) > maxCount Then
+                maxCount = counts(t)
+                dominantType = t
+            End If
+        Next
 
-                               While claimed < count AndAlso frontier.Count > 0
-                                   Dim idx As Integer = rnd.Next(frontier.Count)
-                                   Dim cell As Point = frontier(idx)
-                                   frontier.RemoveAt(idx)
+        Return dominantType
+    End Function
 
-                                   If playerMap(cell.Y, cell.X) = -1 Then
-                                       playerMap(cell.Y, cell.X) = playerId
-                                       claimed += 1
-
-                                       Dim directions As Point() = {
-                                           New Point(0, -1), New Point(1, 0),
-                                           New Point(0, 1), New Point(-1, 0)
-                                       }
-
-                                       For Each d As Point In directions
-                                           Dim nr As Integer = cell.Y + d.Y
-                                           Dim nc As Integer = cell.X + d.X
-                                           If nr >= 0 AndAlso nr < Rows AndAlso nc >= 0 AndAlso nc < Cols Then
-                                               Dim neighbor As New Point(nc, nr)
-                                               If playerMap(nr, nc) = -1 AndAlso Not frontier.Contains(neighbor) Then
-                                                   frontier.Add(neighbor)
-                                               End If
-                                           End If
-                                       Next
-                                   End If
-                               End While
-                           End Sub
-
-        ClaimOrganic(0, 0, 0, InitialSquaresPerPlayer)
-        ClaimOrganic(0, Cols - 1, 1, InitialSquaresPerPlayer)
-        ClaimOrganic(Rows - 1, 0, 2, InitialSquaresPerPlayer)
-        ClaimOrganic(Rows - 1, Cols - 1, 3, InitialSquaresPerPlayer)
-
-        UpdatePlayerSquares()
-    End Sub
 
 #End Region
 
 #Region "=== Drawing and Printing ==="
-
-    Private Function LoadAllTerrainSprites() As Dictionary(Of TerrainType, Image)
-        Return New Dictionary(Of TerrainType, Image) From {
-            {TerrainType.Plains, LoadEmbeddedImageByName("plains.png")},
-            {TerrainType.Forest, LoadEmbeddedImageByName("forest.png")},
-            {TerrainType.Hills, LoadEmbeddedImageByName("hills.png")},
-            {TerrainType.Mountains, LoadEmbeddedImageByName("mountain.png")}
-        }
-    End Function
-
-    Private Function LoadEmbeddedImageByName(fileName As String) As Image
-        Dim asm As Reflection.Assembly = Reflection.Assembly.GetExecutingAssembly()
-        Dim fullName As String = asm.GetManifestResourceNames().
-            FirstOrDefault(Function(n) n.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
-
-        If fullName IsNot Nothing Then
-            Using stream = asm.GetManifestResourceStream(fullName)
-                Return Image.FromStream(stream)
-            End Using
-        Else
-            Throw New Exception("Embedded resource not found: " & fileName)
-        End If
-    End Function
-
-    Private Sub btnPrint_Click(sender As Object, e As EventArgs) Handles btnPrint.Click
-        Using dlg As New PrintDialog()
-            dlg.Document = printDoc
-            If dlg.ShowDialog() = DialogResult.OK Then
-                printDoc.Print()
-            End If
-        End Using
-    End Sub
-
-
-    Private Sub DrawGridNumbers(g As Graphics, startX As Single, startY As Single, cellSize As Single)
-        Using font As New Font("Arial", GridFontSize)
-            ' Columns
-            For c As Integer = 0 To Cols - 1
-                Dim numX As Single = startX + c * cellSize + cellSize / 2
-                Dim numY As Single = startY - 12
-                g.DrawString((c + 1).ToString(), font, Brushes.Black, numX, numY,
-                             New StringFormat() With {.Alignment = StringAlignment.Center})
-            Next
-
-            ' Rows
-            For r As Integer = 0 To Rows - 1
-                Dim numX As Single = startX - 12
-                Dim numY As Single = startY + r * cellSize + cellSize / 2 - 4
-                g.DrawString((r + 1).ToString(), font, Brushes.Black, numX, numY,
-                             New StringFormat() With {.Alignment = StringAlignment.Far})
-            Next
-        End Using
-    End Sub
-
-    Private Sub DrawPlayerTerrains(g As Graphics, startX As Single, startY As Single, cellSize As Single)
-        ' Render quality
-        g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
-        g.InterpolationMode = Drawing2D.InterpolationMode.HighQualityBicubic
-        g.PixelOffsetMode = Drawing2D.PixelOffsetMode.Half
-
-        Dim gridPen As New Pen(Color.LightGray, 1.5F)
-        Dim borderPen As New Pen(Color.Black, 3) With {.Alignment = Drawing2D.PenAlignment.Inset}
-
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                Dim cellX As Single = startX + c * cellSize
-                Dim cellY As Single = startY + r * cellSize
-                Dim playerId As Integer = playerMap(r, c)
-
-                ' Player-colored background (semi-transparent)
-                If playerId >= 0 Then
-                    Using brush As New SolidBrush(Color.FromArgb(160, playerColors(playerId)))
-                        g.FillRectangle(brush, cellX, cellY, cellSize, cellSize)
-                    End Using
-                End If
-
-                ' Thin grid
-                g.DrawRectangle(gridPen, cellX, cellY, cellSize, cellSize)
-
-                ' Terrain sprite (with small padding)
-                Dim terrain As TerrainType = terrainMap(r, c)
-                Dim sprite As Image = terrainSprites(terrain)
-                Dim padding As Single = 2
-                Dim drawWidth As Single = Math.Max(0.0F, cellSize - 2 * padding)
-                Dim drawHeight As Single = Math.Max(0.0F, cellSize - 2 * padding)
-                g.DrawImage(sprite, cellX + padding, cellY + padding, drawWidth, drawHeight)
-
-                ' Empire borders (only where adjacent cell not same owner)
-                If playerId >= 0 Then
-                    Dim halfPen As Single = borderPen.Width / 2
-                    Dim drawTop As Boolean = (r = 0 OrElse playerMap(r - 1, c) <> playerId)
-                    Dim drawLeft As Boolean = (c = 0 OrElse playerMap(r, c - 1) <> playerId)
-                    Dim drawRight As Boolean = (c = Cols - 1 OrElse playerMap(r, c + 1) <> playerId)
-                    Dim drawBottom As Boolean = (r = Rows - 1 OrElse playerMap(r + 1, c) <> playerId)
-
-                    If drawTop Then g.DrawLine(borderPen, cellX + halfPen, cellY + halfPen, cellX + cellSize - halfPen, cellY + halfPen)
-                    If drawLeft Then g.DrawLine(borderPen, cellX + halfPen, cellY + halfPen, cellX + halfPen, cellY + cellSize - halfPen)
-                    If drawRight Then g.DrawLine(borderPen, cellX + cellSize - halfPen, cellY + halfPen, cellX + cellSize - halfPen, cellY + cellSize - halfPen)
-                    If drawBottom Then g.DrawLine(borderPen, cellX + halfPen, cellY + cellSize - halfPen, cellX + cellSize - halfPen, cellY + cellSize - halfPen)
-                End If
-            Next
-        Next
-    End Sub
-
-    Private Sub DrawLegend(g As Graphics, startX As Single, startY As Single, gridWidth As Single, gridHeight As Single)
-        Using font As New Font("Arial", GridFontSize)
-            Dim legendItems As New List(Of Tuple(Of Image, String))
-            For Each kvp As KeyValuePair(Of TerrainType, Image) In terrainSprites
-                legendItems.Add(Tuple.Create(kvp.Value, kvp.Key.ToString()))
-            Next
-
-            Dim totalLegendWidth As Single = legendItems.Count * LegendSpriteSize + (legendItems.Count - 1) * LegendLabelSpacing
-            Dim legendStartX As Single = startX + (gridWidth - totalLegendWidth) / 2
-            Dim legendStartY As Single = startY + gridHeight + 20
-
-            For i As Integer = 0 To legendItems.Count - 1
-                Dim img As Image = legendItems(i).Item1
-                Dim text As String = legendItems(i).Item2
-                Dim x As Single = legendStartX + i * (LegendSpriteSize + LegendLabelSpacing)
-                g.DrawImage(img, x, legendStartY, LegendSpriteSize, LegendSpriteSize)
-                g.DrawString(text, font, Brushes.Black, x + LegendSpriteSize / 2, legendStartY + LegendSpriteSize + 2, New StringFormat() With {.Alignment = StringAlignment.Center})
-            Next
-        End Using
-    End Sub
-
-    Private Sub DrawEmpireSummary(g As Graphics, playerId As Integer, startX As Single, startY As Single, gridWidth As Single, gridHeight As Single)
-        Dim raceName As String = playerRaces(playerId).ToString()
-        Dim playerName As String = $"Player {playerId + 1} ({raceName})"
-
-        ' --- calculate empire size and terrain counts ---
-        Dim terrainCounts As New Dictionary(Of TerrainType, Integer) From {
-        {TerrainType.Plains, 0},
-        {TerrainType.Hills, 0},
-        {TerrainType.Mountains, 0},
-        {TerrainType.Forest, 0}
-    }
-
-        Dim empireSize As Integer = 0
-        For r As Integer = 0 To Rows - 1
-            For c As Integer = 0 To Cols - 1
-                If playerMap(r, c) = playerId Then
-                    empireSize += 1
-                    terrainCounts(terrainMap(r, c)) += 1
-                End If
-            Next
-        Next
-
-        ' --- resources ---
-        Dim resources = playersResources(playerId)
-
-        ' --- layout ---
-        Dim font As New Font("Arial", 10)
-        Dim lineHeight As Integer = 18
-        Dim textY As Single = startY + gridHeight + 80
-        Dim textX As Single = startX
-
-        ' --- header ---
-        g.DrawString(playerName & " Empire Report", New Font("Arial", 12, FontStyle.Bold), Brushes.Black, textX, textY)
-        textY += lineHeight * 2
-
-        ' --- empire size ---
-        g.DrawString($"Empire size: {empireSize} squares", font, Brushes.Black, textX, textY)
-        textY += lineHeight
-
-        ' --- terrain breakdown ---
-        g.DrawString("Terrains:", font, Brushes.Black, textX, textY)
-        textY += lineHeight
-        For Each kvp In terrainCounts
-            g.DrawString($"{kvp.Key}: {kvp.Value}", font, Brushes.Black, textX + 20, textY)
-            textY += lineHeight
-        Next
-
-        ' --- resources ---
-        g.DrawString("Resources:", font, Brushes.Black, textX, textY)
-        textY += lineHeight
-        For Each resType As ResourceType In [Enum].GetValues(GetType(ResourceType))
-            g.DrawString($"{resType}: {resources.Current(resType)} (collected this turn: {resources.CollectedThisTurn(resType)})",
-                     font, Brushes.Black, textX + 20, textY)
-            textY += lineHeight
-        Next
-
-        ' --- population ---
-        g.DrawString($"Population: {resources.Population}", font, Brushes.Black, textX, textY)
-    End Sub
-
-    Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs) Handles printDoc.PrintPage
-        Dim g As Graphics = e.Graphics
-        Dim bounds As RectangleF = e.MarginBounds
-        Dim cellSize As Single = bounds.Width / Cols
-        Dim gridWidth As Single = cellSize * Cols
-        Dim gridHeight As Single = cellSize * Rows
-        Dim startX As Single = bounds.Left
-        Dim startY As Single = bounds.Top + 10
-
-        ' Draw the map
-        DrawGridNumbers(g, startX, startY, cellSize)
-        DrawPlayerTerrains(g, startX, startY, cellSize)
-        DrawLegend(g, startX, startY, gridWidth, gridHeight)
-
-        ' Draw empire report for player 0
-        Dim reportStartY As Single = startY + gridHeight + LegendSpriteSize + 40
-        PrintPlayerEmpire(g, 0, startX, reportStartY)
-    End Sub
-
-
-    Private Sub PrintPlayerEmpire(g As Graphics, playerId As Integer, startX As Single, startY As Single)
-        Dim pr As PlayerResources = playersResources(playerId)
-        Dim army As Army = playerArmies(playerId)
-        Dim font As New Font("Arial", 10)
-        Dim brush As Brush = Brushes.Black
-        Dim lineHeight As Single = font.GetHeight(g) + 2
-
-        ' Empire size
-        g.DrawString($"Empire Size: {playerSquares(playerId).Count} squares", font, brush, startX, startY)
-        startY += lineHeight
-
-        ' Terrain counts
-        For Each t As TerrainType In [Enum].GetValues(GetType(TerrainType))
-            Dim count As Integer = playerSquares(playerId).Where(Function(p) terrainMap(p.Y, p.X) = t).Count()
-            g.DrawString($"{t}: {count}", font, brush, startX, startY)
-            startY += lineHeight
-        Next
-
-        ' Resources collected and used
-        Dim lastFood = lastTurnFoodUpkeep(playerId)
-        g.DrawString($"Food Collected: {lastFood.Collected}", font, brush, startX, startY)
-        startY += lineHeight
-        g.DrawString($"Population Upkeep: {lastFood.PopulationUpkeep}", font, brush, startX, startY)
-        startY += lineHeight
-        g.DrawString($"Soldiers Upkeep: {lastFood.ArmyUpkeep}", font, brush, startX, startY)
-        startY += lineHeight
-        g.DrawString($"Remaining Food: {lastFood.Remaining}", font, brush, startX, startY)
-        startY += lineHeight
-
-        ' Population growth from remaining food
-        g.DrawString($"Population Growth: {lastTurnPopulationGrowth(playerId)}", font, brush, startX, startY)
-        startY += lineHeight
-
-        ' Current population
-        g.DrawString($"Current Population: {pr.Population}", font, brush, startX, startY)
-        startY += lineHeight
-
-        ' Army
-        g.DrawString($"Army: Soldiers {army.Soldiers}, Weapons {army.Weapons}, Strength {army.Strength}", font, brush, startX, startY)
-    End Sub
-
-
-
 
 
 
@@ -631,41 +351,155 @@ Public Class Form1
 #Region "=== UI Events ==="
 
     Private Sub btnNextTurn_Click(sender As Object, e As EventArgs) Handles btnNextTurn.Click
-        CollectResources()
-        ApplyFoodUpkeepAndGrowth()
-        DisplayPlayerResources()
+        NextTurn()
+        'DisplayPlayerResources()
     End Sub
 
-    Private Sub DisplayPlayerResources()
-        lstResources.Items.Clear()
+    Private Sub pnlMap_Paint(sender As Object, e As PaintEventArgs) Handles pnlMap.Paint
+        DrawMap(e.Graphics, pnlMap.ClientSize.Width, pnlMap.ClientSize.Height)
+    End Sub
 
-        For i As Integer = 0 To 3
-            Dim pr As PlayerResources = playersResources(i)
-            Dim raceName As String = playerRaces(i)
-            Dim army As Army = playerArmies(i)
+    Private Sub btn_Show_Click(sender As Object, e As EventArgs) Handles btn_Show.Click
+        pnlMap.Invalidate()
+    End Sub
 
-            ' Header line: Player, Race, Population
-            lstResources.Items.Add($"Player {i + 1} ({raceName}) - Population: {pr.Population}")
 
-            ' Resources line
-            Dim lastFood = lastTurnFoodUpkeep(i)
-            lstResources.Items.Add($"  Food Collected: {lastFood.Collected}, Population Upkeep: {lastFood.PopulationUpkeep}, Soldiers Upkeep: {lastFood.ArmyUpkeep}, Remaining: {lastFood.Remaining}")
-            ' Population growth
-            lstResources.Items.Add($"  Population Growth: {lastTurnPopulationGrowth(i)}")
+    Private Sub btn_Print_Click(sender As Object, e As EventArgs) Handles btn_Print.Click
+        printDoc.Print()
+    End Sub
 
-            ' Army line
-            lstResources.Items.Add($"  Army at ({army.Position.X + 1},{army.Position.Y + 1}): Soldiers {army.Soldiers}, Weapons {army.Weapons}, Strength {army.Strength}")
+    Private Sub printDoc_PrintPage(sender As Object, e As Printing.PrintPageEventArgs) Handles printDoc.PrintPage
+        DrawMap(e.Graphics, e.MarginBounds.Width, e.MarginBounds.Height, False, e)
+    End Sub
 
-            ' Terrain counts
-            lstResources.Items.Add("  Terrain:")
-            For Each t As TerrainType In [Enum].GetValues(GetType(TerrainType))
-                Dim count As Integer = playerSquares(i).Where(Function(p) terrainMap(p.Y, p.X) = t).Count()
-                lstResources.Items.Add($"    {t}: {count} squares")
+
+    Private Sub DrawMap(g As Graphics, Optional width As Single = -1, Optional height As Single = -1, Optional isPanel As Boolean = True, Optional e As Printing.PrintPageEventArgs = Nothing)
+        Dim mapSize As Integer = 25
+        Dim numberMargin As Single = 20 ' space for row/column numbers
+
+        ' Determine drawing area
+        If width <= 0 Then width = pnlMap.ClientSize.Width
+        If height <= 0 Then height = pnlMap.ClientSize.Height
+
+        ' Determine tile size
+        Dim tileSize As Single
+        If isPanel Then
+            tileSize = Math.Min((width - 2 * numberMargin) / mapSize, (height - 2 * numberMargin) / mapSize)
+        Else
+            tileSize = Math.Min((width - 2 * numberMargin) / mapSize, (height - 12) / mapSize) ' top margin for printing
+        End If
+
+        ' Total map size
+        Dim totalMapWidth As Single = tileSize * mapSize
+        Dim totalMapHeight As Single = tileSize * mapSize
+
+        ' Offsets
+        Dim xOffset As Single
+        Dim yOffset As Single
+        If isPanel Then
+            ' Panel: centered within margins
+            xOffset = numberMargin + (width - 2 * numberMargin - totalMapWidth) / 2
+            yOffset = numberMargin + (height - 2 * numberMargin - totalMapHeight) / 2
+        Else
+            ' Printer: horizontally centered on page with small left adjustment, top margin
+            Dim leftAdjustment As Single = -3
+            Dim adjustedTopMargin As Single = 12
+            xOffset = e.PageBounds.Left + (e.PageBounds.Width - totalMapWidth) / 2 + leftAdjustment
+            yOffset = e.PageBounds.Top + adjustedTopMargin
+        End If
+
+        g.Clear(Color.White)
+
+        ' Draw tiles and ownership colors
+        For x As Integer = 0 To mapSize - 1
+            For y As Integer = 0 To mapSize - 1
+                Dim terrainValue As Integer = Map(x, y, 0)
+                Dim terrainImage As Image = Nothing
+                Select Case terrainValue
+                    Case 0 : terrainImage = terrainCache("plains.png")
+                    Case 1 : terrainImage = terrainCache("forest.png")
+                    Case 2 : terrainImage = terrainCache("hills.png")
+                    Case 3 : terrainImage = terrainCache("mountain.png")
+                End Select
+
+                Dim ownerIndex As Integer = Map(x, y, 1)
+                Dim ownerColor As Color = Color.White
+                If ownerIndex >= 0 And ownerIndex < playerColors.Length Then ownerColor = playerColors(ownerIndex)
+
+                Dim xPos As Single = xOffset + x * tileSize
+                Dim yPos As Single = yOffset + y * tileSize
+                Dim w As Single = tileSize
+                Dim h As Single = tileSize
+
+                ' Panel only: adjust last pixel to prevent clipping
+                If isPanel AndAlso x = mapSize - 1 Then w = Math.Min(w, pnlMap.ClientSize.Width - (xOffset + x * tileSize))
+                If isPanel AndAlso y = mapSize - 1 Then h = Math.Min(h, pnlMap.ClientSize.Height - (yOffset + y * tileSize))
+
+                ' Draw background
+                Using brush As New SolidBrush(ownerColor)
+                    g.FillRectangle(brush, xPos, yPos, w, h)
+                End Using
+
+                ' Draw terrain
+                If terrainImage IsNot Nothing Then g.DrawImage(terrainImage, xPos, yPos, w, h)
             Next
-
-            lstResources.Items.Add("") ' blank line between players
         Next
+
+        ' Draw row and column numbers
+        Using font As New Font("Arial", 8)
+            Using brush As New SolidBrush(Color.Black)
+                Dim leftOffset As Single = xOffset - 18
+                Dim rightOffset As Single = xOffset + totalMapWidth + 4
+
+                ' Columns: top and bottom
+                For x As Integer = 0 To mapSize - 1
+                    Dim xNumPos As Single = xOffset + x * tileSize + tileSize / 2
+                    g.DrawString((x + 1).ToString(), font, brush, xNumPos, yOffset - 12, New StringFormat() With {.Alignment = StringAlignment.Center})
+                    g.DrawString((x + 1).ToString(), font, brush, xNumPos, yOffset + totalMapHeight + 2, New StringFormat() With {.Alignment = StringAlignment.Center})
+                Next
+
+                ' Rows: left and right
+                For y As Integer = 0 To mapSize - 1
+                    Dim yNumPos As Single = yOffset + y * tileSize + tileSize / 2
+                    g.DrawString((y + 1).ToString(), font, brush, leftOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
+                    g.DrawString((y + 1).ToString(), font, brush, rightOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
+                Next
+            End Using
+        End Using
+
+        ' Draw grid lines
+        Using pen As New Pen(Color.Gray)
+            For i As Integer = 0 To mapSize
+                Dim yLine As Single = yOffset + i * tileSize
+                Dim xLine As Single = xOffset + i * tileSize
+
+                ' Panel: adjust last line to avoid clipping
+                If isPanel AndAlso i = mapSize Then
+                    yLine = Math.Min(yLine, pnlMap.ClientSize.Height - 1)
+                    xLine = Math.Min(xLine, pnlMap.ClientSize.Width - 1)
+                End If
+
+                g.DrawLine(pen, xOffset, yLine, xOffset + totalMapWidth, yLine)
+                g.DrawLine(pen, xLine, yOffset, xLine, yOffset + totalMapHeight)
+            Next
+        End Using
     End Sub
+
+
+    Private Function GetEmbeddedImage(terrainName As String) As Image
+        ' terrainName: e.g., "forest.png", "plains.png"
+        Dim asm As Reflection.Assembly = Reflection.Assembly.GetExecutingAssembly()
+        Dim resourceName As String = "Conflict." & terrainName ' must match your embedded resource name
+
+        Using stream As IO.Stream = asm.GetManifestResourceStream(resourceName)
+            If stream IsNot Nothing Then
+                Return Image.FromStream(stream)
+            Else
+                Return Nothing
+            End If
+        End Using
+    End Function
+
 
 
 #End Region
