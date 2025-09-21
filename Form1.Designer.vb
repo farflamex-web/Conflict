@@ -22,29 +22,20 @@ Partial Class Form1
     'Do not modify it using the code editor.
     <System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
-        btn_Print = New Button()
-        btnNextTurn = New Button()
+        btnPrint = New Button()
         pnlMap = New Panel()
         btn_Show = New Button()
+        btnProcessTurn = New Button()
         SuspendLayout()
         ' 
-        ' btn_Print
+        ' btnPrint
         ' 
-        btn_Print.Location = New Point(1240, 768)
-        btn_Print.Name = "btn_Print"
-        btn_Print.Size = New Size(75, 23)
-        btn_Print.TabIndex = 0
-        btn_Print.Text = "Print"
-        btn_Print.UseVisualStyleBackColor = True
-        ' 
-        ' btnNextTurn
-        ' 
-        btnNextTurn.Location = New Point(1240, 797)
-        btnNextTurn.Name = "btnNextTurn"
-        btnNextTurn.Size = New Size(75, 23)
-        btnNextTurn.TabIndex = 1
-        btnNextTurn.Text = "Next Turn"
-        btnNextTurn.UseVisualStyleBackColor = True
+        btnPrint.Location = New Point(1191, 768)
+        btnPrint.Name = "btnPrint"
+        btnPrint.Size = New Size(124, 23)
+        btnPrint.TabIndex = 0
+        btnPrint.Text = "Print"
+        btnPrint.UseVisualStyleBackColor = True
         ' 
         ' pnlMap
         ' 
@@ -62,23 +53,32 @@ Partial Class Form1
         btn_Show.Text = "Show"
         btn_Show.UseVisualStyleBackColor = True
         ' 
+        ' btnProcessTurn
+        ' 
+        btnProcessTurn.Location = New Point(1191, 797)
+        btnProcessTurn.Name = "btnProcessTurn"
+        btnProcessTurn.Size = New Size(124, 23)
+        btnProcessTurn.TabIndex = 4
+        btnProcessTurn.Text = "Process Turn"
+        btnProcessTurn.UseVisualStyleBackColor = True
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1327, 832)
+        Controls.Add(btnProcessTurn)
         Controls.Add(btn_Show)
         Controls.Add(pnlMap)
-        Controls.Add(btnNextTurn)
-        Controls.Add(btn_Print)
+        Controls.Add(btnPrint)
         Name = "Form1"
         Text = "Form1"
         ResumeLayout(False)
     End Sub
 
-    Friend WithEvents btn_Print As Button
-    Friend WithEvents btnNextTurn As Button
+    Friend WithEvents btnPrint As Button
     Friend WithEvents pnlMap As Panel
     Friend WithEvents btn_Show As Button
+    Friend WithEvents btnProcessTurn As Button
 
 End Class

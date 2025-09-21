@@ -16,7 +16,7 @@ Imports System.Reflection
 <Assembly: System.Reflection.AssemblyCompanyAttribute("Conflict"),  _
  Assembly: System.Reflection.AssemblyConfigurationAttribute("Debug"),  _
  Assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0"),  _
- Assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7fb88ed7a863f18526b023f8739a390ce9183ebd"),  _
+ Assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9ef49562ffc8eca2f8d27089e0408647a7204186"),  _
  Assembly: System.Reflection.AssemblyProductAttribute("Conflict"),  _
  Assembly: System.Reflection.AssemblyTitleAttribute("Conflict"),  _
  Assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0"),  _
