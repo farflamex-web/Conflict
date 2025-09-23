@@ -26,6 +26,8 @@ Partial Class Form1
         pnlMap = New Panel()
         btn_Show = New Button()
         btnProcessTurn = New Button()
+        rtbInfo = New RichTextBox()
+        rtbResourceInfo = New RichTextBox()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -62,11 +64,31 @@ Partial Class Form1
         btnProcessTurn.Text = "Process Turn"
         btnProcessTurn.UseVisualStyleBackColor = True
         ' 
+        ' rtbInfo
+        ' 
+        rtbInfo.Location = New Point(631, 13)
+        rtbInfo.Name = "rtbInfo"
+        rtbInfo.ReadOnly = True
+        rtbInfo.ScrollBars = RichTextBoxScrollBars.Vertical
+        rtbInfo.Size = New Size(262, 600)
+        rtbInfo.TabIndex = 5
+        rtbInfo.Text = ""
+        ' 
+        ' rtbResourceInfo
+        ' 
+        rtbResourceInfo.Location = New Point(899, 13)
+        rtbResourceInfo.Name = "rtbResourceInfo"
+        rtbResourceInfo.Size = New Size(416, 600)
+        rtbResourceInfo.TabIndex = 6
+        rtbResourceInfo.Text = ""
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1327, 832)
+        Controls.Add(rtbResourceInfo)
+        Controls.Add(rtbInfo)
         Controls.Add(btnProcessTurn)
         Controls.Add(btn_Show)
         Controls.Add(pnlMap)
@@ -80,5 +102,7 @@ Partial Class Form1
     Friend WithEvents pnlMap As Panel
     Friend WithEvents btn_Show As Button
     Friend WithEvents btnProcessTurn As Button
+    Friend WithEvents rtbInfo As RichTextBox
+    Friend WithEvents rtbResourceInfo As RichTextBox
 
 End Class

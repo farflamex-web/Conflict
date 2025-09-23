@@ -23,6 +23,13 @@ Public Class Form1
 
     Private terrainCache As New Dictionary(Of String, Image)
 
+    Public Enum UnitType
+        Archer = 0
+        LightInfantry = 1
+        HeavyInfantry = 2
+        LightCavalry = 3
+        HeavyCavalry = 4
+    End Enum
 
 #End Region
 
@@ -31,17 +38,66 @@ Public Class Form1
     Public Class Army
         Public Property X As Integer                 ' Current X coordinate
         Public Property Y As Integer                 ' Current Y coordinate
-        Public Property Soldiers As Integer          ' Number of soldiers
-        Public Property Weapons As Integer           ' Number of weapons (future use)
+        Public Property Units As New List(Of Unit)
+        Public ReadOnly Property TotalSoldiers As Integer
+            Get
+                Return Units.Sum(Function(u) u.Size)
+            End Get
+        End Property
 
         ' Queue of planned directions for the turn, max 5 moves
         ' Each entry is either a string ("N", "NW", etc.) or a special action ("Recruit", "Train", etc.)
-        Public Property MoveQueue As New List(Of String)
+        Public Property MoveQueue As New List(Of ArmyCommand)
+
 
         ' Optional flag to track if the special move has been used
         Public Property HasUsedSpecial As Boolean = False
     End Class
 
+    Public Class Unit
+        Public Property Name As String
+        Public Property HP As Integer
+        Public Property Melee As Integer
+        Public Property Ranged As Integer
+        Public Property Special As String
+        Public Property HasUsedCharge As Boolean = False
+        Public Property Size As Integer
+        Public Property Armour As String
+        Public Property Shield As String
+    End Class
+
+    Public Class UnitStats
+        Public Property Name As String
+        Public Property Race As String
+        Public Property Type As UnitType
+        Public Property HP As Integer
+        Public Property Melee As Integer
+        Public Property Ranged As Integer
+        Public Property Special As String
+        Public Property Armour As String
+        Public Property Shield As String
+        Public Property Cost As String
+        Public Property ShortName As String       ' <<< THIS IS REQUIRED
+    End Class
+
+    Public Class ArmyCommand
+        Public Property Command As String       ' e.g., "MOVE", "RECRUIT", "DISBAND"
+        Public Property Parameter As String     ' e.g., "Ironfoot", "li", "HeavyInfantry"
+    End Class
+
+
+    Public Class RaceUnits
+        Public Property RaceName As String
+        Public Property Units As List(Of UnitStats)
+
+        Public Function GetUnitByType(uType As UnitType) As UnitStats
+            Return Units(CInt(uType))
+        End Function
+
+        Public Function GetUnitByIndex(idx As Integer) As UnitStats
+            Return Units(idx)
+        End Function
+    End Class
 
     Public Class Player
         Public Property PlayerNumber As Integer
@@ -54,9 +110,41 @@ Public Class Form1
         Public Property IronCollectedThisTurn As Integer
         Public Property Wood As Integer
         Public Property WoodCollectedThisTurn As Integer
-
         Public Property AIControlled As Boolean
     End Class
+
+    Public Class CombatReport
+        Public Property TurnNumber As Integer               ' Which turn this occurred
+        Public Property BattleLocation As Point            ' Tile where combat occurred (or center of clash)
+        Public Property InvolvedArmies As New List(Of CombatArmyInfo)
+        Public Property Notes As String = ""               ' Optional extra info
+
+        ' Summary helper
+        Public Function GetSummary() As String
+            Dim sb As New Text.StringBuilder
+
+            ' Top line: use Notes (coordinates + fantasy name)
+            sb.AppendLine($"Turn {TurnNumber} - {Notes}")
+
+            ' List all armies involved
+            For Each info In InvolvedArmies
+                sb.AppendLine($"{info.PlayerRace} army: {info.InitialSoldiers} soldiers -> {info.RemainingSoldiers} remaining")
+            Next
+
+            Return sb.ToString()
+        End Function
+
+    End Class
+
+    ' Helper to store info about each army involved
+    Public Class CombatArmyInfo
+        Public Property PlayerNumber As Integer
+        Public Property PlayerRace As String
+        Public Property InitialSoldiers As Integer
+        Public Property RemainingSoldiers As Integer
+        Public Property ArmyReference As Army               ' Optional reference back to the army
+    End Class
+
 
 
 #End Region
@@ -74,6 +162,14 @@ Public Class Form1
 
     Private WithEvents printDoc As New PrintDocument
 
+    Private combatReports As New List(Of CombatReport)
+    Private currentTurnNumber As Integer = 1  ' Update this as part of your turn logic
+
+    Public AllRaces As New List(Of RaceUnits)
+
+    Private Shared rnd As New Random()
+
+
 #End Region
 
 #Region "=== Form Lifecycle ==="
@@ -82,6 +178,7 @@ Public Class Form1
 
         CreateTerrainCache()
 
+        InitializeRaceUnits()
 
         InitializePlayers()
 
@@ -109,50 +206,114 @@ Public Class Form1
         Next
     End Sub
 
+    Public Sub InitializeRaceUnits()
+        AllRaces = New List(Of RaceUnits)
+
+        ' ----------------- Dwarves -----------------
+        Dim dwarfUnits As New RaceUnits With {
+        .RaceName = "Dwarf",
+        .Units = New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Ironbolters", .Type = UnitType.Archer, .HP = 5, .Melee = 1, .Ranged = 1, .Special = "Round 1", .Armour = "Chainmail", .Shield = Nothing, .Cost = "1 iron(axe),1 iron(chainmail),1 wood(shield)", .ShortName = "a"},
+            New UnitStats With {.Name = "Ironshield", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 1, .Ranged = 0, .Special = "Shielded melee infantry", .Armour = "Chainmail", .Shield = "Iron", .Cost = "1 iron(axe),1 iron(chainmail),1 iron(shield)", .ShortName = "li"},
+            New UnitStats With {.Name = "Ironfoot", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 first round (charge)", .Armour = "Plate", .Shield = Nothing, .Cost = "1 iron(2H axe),2 iron(plate)", .ShortName = "hi"},
+            New UnitStats With {.Name = "Ironhorn Riders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 1, .Ranged = 0, .Special = "+1 when chasing", .Armour = "Chainmail", .Shield = "Iron", .Cost = "1 iron(axe),1 iron(chainmail),1 iron(shield)", .ShortName = "lc"},
+            New UnitStats With {.Name = "Ironhorn Maulers", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 charge first round", .Armour = "Plate", .Shield = Nothing, .Cost = "1 iron(forgehammer),2 iron(plate)", .ShortName = "hc"}
+        }
+    }
+        AllRaces.Add(dwarfUnits)
+
+        ' ----------------- Orcs -----------------
+        Dim orcUnits As New RaceUnits With {
+        .RaceName = "Orc",
+        .Units = New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Orc Shortbows", .Type = UnitType.Archer, .HP = 5, .Melee = 1, .Ranged = 1, .Special = "Round 1", .Armour = "None", .Shield = Nothing, .Cost = "1 iron(axe),1 wood(shortbow)", .ShortName = "a"},
+            New UnitStats With {.Name = "Orc Grunts", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 2, .Ranged = 0, .Special = "Aggressive light melee", .Armour = "None", .Shield = "Wooden", .Cost = "1 iron(axe),1 wood(shield)", .ShortName = "li"},
+            New UnitStats With {.Name = "Orc Berserkers", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .Special = "+1 first round (charge)", .Armour = "Chainmail", .Shield = Nothing, .Cost = "1 iron(2H axe),1 chainmail", .ShortName = "hi"},
+            New UnitStats With {.Name = "Fangriders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 0, .Special = "+1 when chasing", .Armour = "None", .Shield = "Wooden", .Cost = "1 iron(axe),1 wood(shield),1 wolf", .ShortName = "lc"},
+            New UnitStats With {.Name = "Bloodwolf Riders", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 3, .Ranged = 0, .Special = "+1 charge first round", .Armour = "Chainmail", .Shield = Nothing, .Cost = "1 iron(2H axe),1 chainmail,1 wolf", .ShortName = "hc"}
+        }
+    }
+        AllRaces.Add(orcUnits)
+
+        ' ----------------- Humans -----------------
+        Dim humanUnits As New RaceUnits With {
+        .RaceName = "Human",
+        .Units = New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Archer", .Type = UnitType.Archer, .HP = 5, .Melee = 1, .Ranged = 1, .Special = "Round 1", .Armour = "None", .Shield = Nothing, .Cost = "1 iron(sword),1 wood(bow)", .ShortName = "a"},
+            New UnitStats With {.Name = "Spearman", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 1, .Ranged = 0, .Special = "+1 vs cavalry", .Armour = "Chainmail", .Shield = "Wooden", .Cost = "1 iron(spear),1 chainmail,1 wood(shield)", .ShortName = "li"},
+            New UnitStats With {.Name = "Heavy Infantry", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 first round (charge)", .Armour = "Plate", .Shield = Nothing, .Cost = "1 iron(2H sword),2 iron(plate)", .ShortName = "hi"},
+            New UnitStats With {.Name = "Light Cavalry", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 1, .Ranged = 0, .Special = "+1 when chasing", .Armour = "Chainmail", .Shield = "Wooden", .Cost = "1 iron(sword),1 chainmail,1 wood(shield),1 horse", .ShortName = "lc"},
+            New UnitStats With {.Name = "Heavy Cavalry", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 charge first round", .Armour = "Plate", .Shield = Nothing, .Cost = "1 iron(lance),2 iron(plate),1 horse", .ShortName = "hc"}
+        }
+    }
+        AllRaces.Add(humanUnits)
+
+        ' ----------------- Elves -----------------
+        Dim elfUnits As New RaceUnits With {
+        .RaceName = "Elf",
+        .Units = New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Archer", .Type = UnitType.Archer, .HP = 5, .Melee = 1, .Ranged = 2, .Special = "Round 1", .Armour = "None", .Shield = Nothing, .Cost = "1 iron(sword),1 wood(bow)", .ShortName = "a"},
+            New UnitStats With {.Name = "Forest Sentinel", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 1, .Ranged = 0, .Special = Nothing, .Armour = "Chainmail", .Shield = "Wooden", .Cost = "1 iron(sword),1 chainmail,1 wood(shield)", .ShortName = "li"},
+            New UnitStats With {.Name = "Ranger", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 first round (charge)", .Armour = "Plate", .Shield = Nothing, .Cost = "1 iron(moonblade),2 iron(plate)", .ShortName = "hi"},
+            New UnitStats With {.Name = "Forest Knight", .Type = UnitType.LightCavalry, .HP = 10, .Melee = 2, .Ranged = 0, .Special = "+1 charge first round", .Armour = "Plate", .Shield = "Iron", .Cost = "1 iron(moonlance),2 iron(plate),1 iron(shield),1 elk", .ShortName = "lc"},
+            New UnitStats With {.Name = "Forest Archer", .Type = UnitType.HeavyCavalry, .HP = 5, .Melee = 1, .Ranged = 2, .Special = "Round 1", .Armour = "Chainmail", .Shield = "Wooden", .Cost = "1 iron(sword),1 chainmail,1 wood(shield),1 elk", .ShortName = "hc"}
+        }
+    }
+        AllRaces.Add(elfUnits)
+    End Sub
+
     Public Sub InitializePlayers()
-        Players = New List(Of Player)
+        Players = New List(Of Player)()
 
-        Dim mapWidth As Integer = Map.GetLength(0)
-        Dim mapHeight As Integer = Map.GetLength(1)
-        Dim cornerRange As Integer = 10 ' spread armies within 10x10 area
-
-        Dim rnd As New Random()
-
-        ' Create players
+        ' Loop over 4 players
         For i As Integer = 0 To 3
-            Dim p As New Player()
-            p.PlayerNumber = i
-            p.Race = Races(i)
-            p.Population = 5000
-            p.Armies = New List(Of Army)()
-            p.AIControlled = True
+            Dim p As New Player With {
+            .PlayerNumber = i,
+            .Race = Races(i),
+            .Population = 5000,
+            .Armies = New List(Of Army)(),
+            .AIControlled = True
+        }
 
-            ' Determine top-left corner for the player's area
-            Dim cornerX As Integer = 0
-            Dim cornerY As Integer = 0
-            Select Case i
-                Case 0 ' Elf, top-left
-                    cornerX = 0
-                    cornerY = 0
-                Case 1 ' Dwarf, top-right
-                    cornerX = mapWidth - cornerRange
-                    cornerY = 0
-                Case 2 ' Orc, bottom-left
-                    cornerX = 0
-                    cornerY = mapHeight - cornerRange
-                Case 3 ' Human, bottom-right
-                    cornerX = mapWidth - cornerRange
-                    cornerY = mapHeight - cornerRange
-            End Select
+            ' Determine starting corner center for this player
+            Dim startPos As Point = GetStartingCornerCenter(i)
 
-            ' Create 3 armies per player, randomly within their corner area
+            ' Find the race units in consolidated AllRaces
+            Dim raceUnits As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName = p.Race)
+            If raceUnits Is Nothing Then
+                System.Diagnostics.Debug.WriteLine($"Warning: Race '{p.Race}' not found in AllRaces. Armies will start empty.")
+                Players.Add(p)
+                Continue For
+            End If
+
+            ' Create 3 armies at starting corner
             For a As Integer = 1 To 3
-                Dim army As New Army()
-                army.X = cornerX + rnd.Next(0, cornerRange)
-                army.Y = cornerY + rnd.Next(0, cornerRange)
-                army.Soldiers = 500
-                army.Weapons = 0
+                Dim army As New Army With {
+                .X = startPos.X,
+                .Y = startPos.Y
+            }
+
+                ' Start with Light Infantry (type = LightInfantry)
+                Dim lightInfTemplate As UnitStats = raceUnits.GetUnitByType(UnitType.LightInfantry)
+                Dim unit As New Unit With {
+                .Name = lightInfTemplate.Name,
+                .HP = lightInfTemplate.HP,
+                .Melee = lightInfTemplate.Melee,
+                .Ranged = lightInfTemplate.Ranged,
+                .Special = lightInfTemplate.Special,
+                .Size = 500,
+                .Armour = lightInfTemplate.Armour,
+                .Shield = lightInfTemplate.Shield
+            }
+                army.Units.Add(unit)
+
+                ' Add army to player
                 p.Armies.Add(army)
+
+                ' Optional: Debug log
+                Dim logLine As String = $"{p.Race} Army {a} at ({army.X},{army.Y}): {unit.Name}({unit.Size}) | TotalSoldiers = {army.TotalSoldiers}"
+                System.Diagnostics.Debug.WriteLine(logLine)
+                rtbInfo.AppendText(logLine & Environment.NewLine)
             Next
 
             Players.Add(p)
@@ -160,68 +321,148 @@ Public Class Form1
     End Sub
 
 
+
 #End Region
 
 #Region "=== Process Turn ==="
+
+
     Public Sub ProcessTurn()
         Dim maxSteps As Integer = 5
         Dim mapSize As Integer = Map.GetLength(0)
 
-        ' Loop over each move step (1 to 5)
+        ' Loop over each step
         For stepIndex As Integer = 0 To maxSteps - 1
-
-            ' Loop through all players
             For Each p In Players
                 If p.Armies IsNot Nothing Then
                     For Each a In p.Armies
 
                         ' --- Fill MoveQueue if AI-controlled ---
                         If p.AIControlled AndAlso a.MoveQueue.Count = 0 Then
-                            ' Generate up to 5 moves automatically
-                            a.MoveQueue = GenerateAIMoves(a, p)
+                            a.MoveQueue = GenerateAIMoves(a, p, maxSteps)
                         End If
 
                         ' --- Execute move for this step if exists ---
                         If stepIndex < a.MoveQueue.Count Then
-                            Dim moveCommand As String = a.MoveQueue(stepIndex).ToUpper().Trim()
+                            Dim moveCommand As String = a.MoveQueue(stepIndex).Command.ToUpper().Trim()
                             Dim dx As Integer = 0
                             Dim dy As Integer = 0
                             Dim isSpecial As Boolean = False
 
-                            ' Determine if this is a special action (5th move)
+                            ' Determine if 5th move / special action
                             If stepIndex = maxSteps - 1 Then
-                                ' Treat any non-direction string as special action
                                 Dim validDirs As String() = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-                                If Not validDirs.Contains(moveCommand) Then
-                                    isSpecial = True
-                                End If
+                                If Not validDirs.Contains(moveCommand) Then isSpecial = True
                             End If
 
                             If isSpecial Then
                                 a.HasUsedSpecial = True
-                                ' Handle special action here (Recruit, Train, Patrol, etc.)
-                                ' Example: just log for now
-                                Console.WriteLine($"{p.Race}'s army at ({a.X},{a.Y}) performs special action: {moveCommand}")
+                                Dim owner = Players.First(Function(pl) pl.Armies.Contains(a))
+
+                                Select Case moveCommand
+
+                                    Case "RECRUIT"
+                                        ' Ensure the army has population to recruit
+                                        If owner.Population <= 0 Then
+                                            Console.WriteLine(owner.Race & "'s army at (" & a.X & "," & a.Y & ") cannot recruit: no population left.")
+                                            Exit Select
+                                        End If
+
+                                        ' --- Get the parameter for the unit to recruit ---
+                                        Dim unitName As String = ""
+                                        Dim currentCmd As ArmyCommand = a.MoveQueue(stepIndex)
+                                        If currentCmd IsNot Nothing Then
+                                            unitName = currentCmd.Parameter
+                                        End If
+
+                                        ' Default to Light Infantry if no parameter given
+                                        If String.IsNullOrWhiteSpace(unitName) Then unitName = "LightInfantry"
+
+                                        ' --- Get the race units ---
+                                        Dim raceUnits As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName = owner.Race)
+                                        If raceUnits Is Nothing Then
+                                            Console.WriteLine("Recruitment failed: Race not found for " & owner.Race)
+                                            Exit Select
+                                        End If
+
+                                        ' --- Try to find the unit ---
+                                        Dim unitType As UnitType
+                                        Dim templateUnit As UnitStats = Nothing
+
+                                        ' 1) Try enum parse
+                                        If [Enum].TryParse(unitName, True, unitType) Then
+                                            RecruitArmyUnits(a, owner, unitType)
+                                            Exit Select
+                                        End If
+
+                                        ' 2) Try full unit name
+                                        templateUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Name.Equals(unitName, StringComparison.OrdinalIgnoreCase))
+                                        If templateUnit IsNot Nothing Then
+                                            RecruitArmyUnits(a, owner, templateUnit.Type)
+                                            Exit Select
+                                        End If
+
+                                        ' 3) Try short name
+                                        templateUnit = raceUnits.Units.FirstOrDefault(Function(u) u.ShortName.Equals(unitName, StringComparison.OrdinalIgnoreCase))
+                                        If templateUnit IsNot Nothing Then
+                                            RecruitArmyUnits(a, owner, templateUnit.Type)
+                                            Exit Select
+                                        End If
+
+                                        ' 4) Unknown input
+                                        Console.WriteLine("Unknown unit type to recruit: " & unitName)
+
+
+                                    Case "DISBAND"
+                                        ' --- Total soldiers in the army ---
+                                        Dim totalArmySize As Integer = a.Units.Sum(Function(u) u.Size)
+                                        If totalArmySize = 0 Then Exit Select
+
+                                        ' --- Determine 5% of total army to disband ---
+                                        Dim disbandAmount As Integer = Math.Max(1, CInt(totalArmySize * 0.05))
+                                        Dim totalAddedBack As Integer = 0
+
+                                        ' --- Remove proportionally from each unit ---
+                                        For Each u In a.Units
+                                            Dim portion As Integer = CInt(Math.Round(disbandAmount * (u.Size / totalArmySize)))
+                                            portion = Math.Min(portion, u.Size) ' Ensure we don't remove more than unit size
+                                            u.Size -= portion
+                                            totalAddedBack += portion
+                                        Next
+
+                                        ' --- Return disbanded soldiers to civilian population ---
+                                        owner.Population += totalAddedBack
+                                        Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) disbands {totalAddedBack} soldiers proportionally back to population.")
+
+                                    Case "TRAIN"
+                                        ' Placeholder
+                                        Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) trains (placeholder).")
+
+                                    Case "PATROL"
+                                        ' Placeholder
+                                        Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) patrols (placeholder).")
+
+                                    Case Else
+                                        Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) performs unknown special action: {moveCommand}")
+                                End Select
+
                             Else
-                                ' Convert direction to dx/dy
+                                ' --- Movement ---
                                 Dim offset As Point = DirectionToOffset(moveCommand)
                                 dx = offset.X
                                 dy = offset.Y
 
-                                ' Compute new coordinates with bounds check
-                                Dim newX As Integer = Math.Max(0, Math.Min(mapSize - 1, a.X + dx))
-                                Dim newY As Integer = Math.Max(0, Math.Min(mapSize - 1, a.Y + dy))
-
-                                ' Update army position
+                                Dim newX = Math.Max(0, Math.Min(mapSize - 1, a.X + dx))
+                                Dim newY = Math.Max(0, Math.Min(mapSize - 1, a.Y + dy))
                                 a.X = newX
                                 a.Y = newY
 
-                                ' Capture tile if Manhattan-adjacent
+                                ' Capture adjacent tiles (N/E/S/W)
                                 Dim captured As Boolean = False
                                 Dim directions As Point() = {New Point(0, -1), New Point(1, 0), New Point(0, 1), New Point(-1, 0)}
                                 For Each d In directions
-                                    Dim adjX As Integer = newX + d.X
-                                    Dim adjY As Integer = newY + d.Y
+                                    Dim adjX = newX + d.X
+                                    Dim adjY = newY + d.Y
                                     If adjX >= 0 AndAlso adjX < mapSize AndAlso adjY >= 0 AndAlso adjY < mapSize Then
                                         If Map(adjX, adjY, 1) = p.PlayerNumber Then
                                             Map(newX, newY, 1) = p.PlayerNumber
@@ -231,21 +472,19 @@ Public Class Form1
                                     End If
                                 Next
 
-                                ' Optional: log move
                                 Console.WriteLine($"{p.Race}'s army moves {moveCommand} to ({newX},{newY})" &
                                               If(captured, " and captures tile", ""))
                             End If
                         End If
-
                     Next
                 End If
             Next
 
-            ' --- Optional: After each step, handle combat resolution if multiple armies occupy same tile ---
+            ' --- Resolve combat after each step ---
             ResolveCombat()
         Next
 
-        ' After processing all 5 steps, clear all MoveQueues for next turn
+        ' --- Clear move queues and reset special flags ---
         For Each p In Players
             For Each a In p.Armies
                 a.MoveQueue.Clear()
@@ -254,148 +493,127 @@ Public Class Form1
         Next
     End Sub
 
-    Private Function GenerateAIMoves(army As Army, player As Player) As List(Of String)
-        Dim moves As New List(Of String)
-        Dim rnd As New Random()
-        Dim directions As String() = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-        Dim mapSize As Integer = Map.GetLength(0)
 
-        ' Determine preferred terrain
-        Dim preferredTerrain As Integer
-        Select Case player.Race.ToLower()
-            Case "elf" : preferredTerrain = 1
-            Case "dwarf" : preferredTerrain = 3
-            Case "orc" : preferredTerrain = 2
-            Case "human" : preferredTerrain = 0
-            Case Else : preferredTerrain = -1
-        End Select
+    Public Sub RecruitArmyUnits(army As Army, player As Player, unitType As UnitType)
+        ' --- Skip recruitment if no population available ---
+        If player.Population <= 0 Then
+            Console.WriteLine(player.Race & " has no population left to recruit.")
+            Return
+        End If
+
+        ' --- Find the race units ---
+        Dim raceUnits As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName = player.Race)
+        If raceUnits Is Nothing Then
+            Console.WriteLine("Recruitment failed: Race not found for " & player.Race)
+            Return
+        End If
+
+        ' --- Get the template unit for this type ---
+        Dim templateUnit As UnitStats = raceUnits.GetUnitByType(unitType)
+        If templateUnit Is Nothing Then
+            Console.WriteLine("Recruitment failed: Unit type not found: " & unitType.ToString())
+            Return
+        End If
+
+        ' --- Determine recruitment amount: 5% of population, minimum 1 ---
+        Dim recruitAmount As Integer = Math.Max(1, CInt(player.Population * 0.05))
+
+        ' --- Cap recruitment to remaining population ---
+        recruitAmount = Math.Min(recruitAmount, player.Population)
+
+        ' --- Add to army: either existing unit or new unit ---
+        Dim armyUnit As Unit = army.Units.FirstOrDefault(Function(u) u.Name = templateUnit.Name)
+        If armyUnit IsNot Nothing Then
+            armyUnit.Size += recruitAmount
+        Else
+            Dim newUnit As New Unit With {
+            .Name = templateUnit.Name,
+            .HP = templateUnit.HP,
+            .Melee = templateUnit.Melee,
+            .Ranged = templateUnit.Ranged,
+            .Special = templateUnit.Special,
+            .Size = recruitAmount,
+            .Armour = templateUnit.Armour,
+            .Shield = templateUnit.Shield
+        }
+            army.Units.Add(newUnit)
+        End If
+
+        ' --- Deduct population ---
+        player.Population -= recruitAmount
+
+        ' --- Log recruitment ---
+        Console.WriteLine(player.Race & "'s army at (" & army.X & "," & army.Y & ") recruits " & recruitAmount & " " & templateUnit.Name)
+    End Sub
+
+    Private Function GenerateAIMoves(army As Army, player As Player, maxSteps As Integer) As List(Of ArmyCommand)
+        Dim moves As New List(Of ArmyCommand)()
+        Dim mapSize As Integer = Map.GetLength(0)
 
         ' Hypothetical position for planning moves
         Dim currentX As Integer = army.X
         Dim currentY As Integer = army.Y
 
-        ' Generate 5 moves
-        For stepIndex As Integer = 1 To 5
+        ' Determine army index for role
+        Dim armyIndex As Integer = player.Armies.IndexOf(army)
+
+        ' Loop to generate moves
+        For stepIndex As Integer = 0 To maxSteps - 1
+            Dim cmd As New ArmyCommand()
+            cmd.Parameter = ""
+
+            ' Step 5 is special / recruitment
+            If stepIndex = maxSteps - 1 Then
+                If player.Population > 0 AndAlso army.TotalSoldiers > 0 Then
+                    ' Add AI recruit command using cleaned-up method
+                    AIRecruitArmy(army, player, armyIndex)
+                    ' Skip adding a placeholder movement
+                    Continue For
+                End If
+            End If
+
+            ' --- Regular movement logic ---
+            Dim directions As String() = {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
             Dim candidateDirs As New List(Of String)
             Dim dirScores As New Dictionary(Of String, Integer)
 
-            ' Evaluate all 8 directions for immediate capture
+            ' Evaluate each direction for capture
             For Each direction In directions
                 Dim offset As Point = DirectionToOffset(direction)
                 Dim newX As Integer = Math.Max(0, Math.Min(mapSize - 1, currentX + offset.X))
                 Dim newY As Integer = Math.Max(0, Math.Min(mapSize - 1, currentY + offset.Y))
 
-                ' Check for enemy in 5x5 radius
-                Dim enemyNearby As Boolean = False
-                For dx As Integer = -2 To 2
-                    For dy As Integer = -2 To 2
-                        Dim checkX As Integer = newX + dx
-                        Dim checkY As Integer = newY + dy
-                        If checkX >= 0 AndAlso checkX < mapSize AndAlso checkY >= 0 AndAlso checkY < mapSize Then
-                            For Each otherPlayer In Players
-                                If otherPlayer.PlayerNumber <> player.PlayerNumber Then
-                                    If otherPlayer.Armies IsNot Nothing Then
-                                        For Each enemyArmy In otherPlayer.Armies
-                                            If enemyArmy.X = checkX AndAlso enemyArmy.Y = checkY Then
-                                                enemyNearby = True
-                                                Exit For
-                                            End If
-                                        Next
-                                    End If
-                                End If
-                                If enemyNearby Then Exit For
-                            Next
-                        End If
-                        If enemyNearby Then Exit For
-                    Next
-                    If enemyNearby Then Exit For
-                Next
-
-                ' Only consider directions without nearby enemies for immediate capture
-                If enemyNearby Then Continue For
-
-                ' Check if tile is capturable
-                Dim captureValid As Boolean = IsCaptureValid(newX, newY, player.PlayerNumber, Map)
-                If captureValid Then
-                    ' Base score 1 for any valid capture (even non-preferred terrain)
-                    Dim score As Integer = 1
-                    ' Bonus for preferred terrain
-                    If Map(newX, newY, 0) = preferredTerrain Then score += 1
-
+                If IsCaptureValid(newX, newY, player.PlayerNumber, Map) Then
                     candidateDirs.Add(direction)
-                    dirScores(direction) = score
+                    dirScores(direction) = 1 ' Score for prioritizing capture
                 End If
             Next
 
-            Dim chosenMove As String = ""
-
+            ' Pick move
+            Dim chosenMove As String
             If candidateDirs.Count > 0 Then
-                ' Pick best scoring immediate capture
+                ' Randomly pick among best-scoring directions
                 Dim bestScore As Integer = dirScores.Values.Max()
                 Dim bestDirs = dirScores.Where(Function(kvp) kvp.Value = bestScore).Select(Function(kvp) kvp.Key).ToList()
                 chosenMove = bestDirs(rnd.Next(bestDirs.Count))
             Else
-                ' No immediate capture: frontier-wandering through any tile (including enemy)
-                Dim nearestTile As Point? = Nothing
-                Dim minDistance As Integer = Integer.MaxValue
-
-                ' Find nearest capturable tile
-                For x As Integer = 0 To mapSize - 1
-                    For y As Integer = 0 To mapSize - 1
-                        If IsCaptureValid(x, y, player.PlayerNumber, Map) Then
-                            Dim dist As Integer = Math.Abs(currentX - x) + Math.Abs(currentY - y)
-                            If dist < minDistance Then
-                                minDistance = dist
-                                nearestTile = New Point(x, y)
-                            End If
-                        End If
-                    Next
-                Next
-
-                If nearestTile.HasValue Then
-                    ' Evaluate all directions including enemy tiles
-                    Dim frontierDirs As New List(Of String)
-                    Dim frontierScores As New Dictionary(Of String, Integer)
-
-                    For Each direction In directions
-                        Dim offset As Point = DirectionToOffset(direction)
-                        Dim newX As Integer = currentX + offset.X
-                        Dim newY As Integer = currentY + offset.Y
-                        If newX < 0 OrElse newX >= mapSize OrElse newY < 0 OrElse newY >= mapSize Then Continue For
-
-                        Dim newDist As Integer = Math.Abs(nearestTile.Value.X - newX) + Math.Abs(nearestTile.Value.Y - newY)
-                        If newDist < minDistance Then
-                            frontierDirs.Add(direction)
-                            ' Slight penalty if tile is owned by enemy to prefer safer paths when possible
-                            Dim score As Integer = 1
-                            If Map(newX, newY, 1) <> -1 AndAlso Map(newX, newY, 1) <> player.PlayerNumber Then score -= 1
-                            frontierScores(direction) = score
-                        End If
-                    Next
-
-                    If frontierDirs.Count > 0 Then
-                        ' Pick best scoring direction toward frontier
-                        Dim bestScore As Integer = frontierScores.Values.Max()
-                        Dim bestDirs = frontierScores.Where(Function(kvp) kvp.Value = bestScore).Select(Function(kvp) kvp.Key).ToList()
-                        chosenMove = bestDirs(rnd.Next(bestDirs.Count))
-                    Else
-                        chosenMove = "Recruit"
-                    End If
-                Else
-                    chosenMove = "Recruit"
-                End If
+                ' No capture moves available: pick any random direction
+                chosenMove = directions(rnd.Next(directions.Length))
             End If
 
-            moves.Add(chosenMove)
+            ' Store move as ArmyCommand
+            cmd.Command = chosenMove
+            moves.Add(cmd)
 
-            ' Update hypothetical position
-            Dim moveOffset As Point = DirectionToOffset(chosenMove)
-            currentX = Math.Max(0, Math.Min(mapSize - 1, currentX + moveOffset.X))
-            currentY = Math.Max(0, Math.Min(mapSize - 1, currentY + moveOffset.Y))
+            ' Update hypothetical position for next step
+            Dim offsetPt As Point = DirectionToOffset(chosenMove)
+            currentX = Math.Max(0, Math.Min(mapSize - 1, currentX + offsetPt.X))
+            currentY = Math.Max(0, Math.Min(mapSize - 1, currentY + offsetPt.Y))
         Next
 
         Return moves
     End Function
+
 
 
     ''' <summary>
@@ -447,10 +665,132 @@ Public Class Form1
         End Select
     End Function
 
-    ' --- Placeholder for combat resolution ---
     Private Sub ResolveCombat()
-        ' TODO: Implement combat logic here if multiple armies occupy the same tile
+        Dim armiesAlreadyInBattle As New HashSet(Of Army)() ' Track armies that have already participated
+        Dim processedLocations As New HashSet(Of Point) ' Avoid duplicate reports for same location
+
+        ' --- Step 1: Check all pairs of enemy armies for overlapping grids ---
+        For i As Integer = 0 To Players.Count - 1
+            Dim p1 As Player = Players(i)
+            For Each a1 In p1.Armies
+                ' Skip if this army has already been in a battle this turn
+                If armiesAlreadyInBattle.Contains(a1) Then Continue For
+
+                Dim grid1 = GetCombatGrid(a1)
+                For j As Integer = i To Players.Count - 1
+                    Dim p2 As Player = Players(j)
+                    For Each a2 In p2.Armies
+                        ' Skip if same army or same player
+                        If a1 Is a2 Then Continue For
+                        If p1.PlayerNumber = p2.PlayerNumber Then Continue For
+                        ' Skip if either army already in a battle
+                        If armiesAlreadyInBattle.Contains(a2) Then Continue For
+
+                        Dim grid2 = GetCombatGrid(a2)
+                        Dim overlap = grid1.Intersect(grid2).ToList()
+                        If overlap.Count > 0 Then
+                            ' Step 2: determine clash tile = center of overlap
+                            Dim avgX As Integer = CInt(overlap.Average(Function(p) p.X))
+                            Dim avgY As Integer = CInt(overlap.Average(Function(p) p.Y))
+                            Dim clashTile As New Point(avgX, avgY)
+
+                            ' Avoid duplicate report for same location
+                            If processedLocations.Contains(clashTile) Then Continue For
+                            processedLocations.Add(clashTile)
+
+                            ' Step 3: find all armies whose grids include this clash tile
+                            Dim involvedArmies = New List(Of Army)()
+                            For Each p In Players
+                                For Each a In p.Armies
+                                    If GetCombatGrid(a).Contains(clashTile) Then
+                                        ' Only include if not already in another battle
+                                        If Not armiesAlreadyInBattle.Contains(a) Then
+                                            involvedArmies.Add(a)
+                                        End If
+                                    End If
+                                Next
+                            Next
+
+                            ' Only create report if 2 or more players involved
+                            If involvedArmies.Select(Function(a) Players.First(Function(p) p.Armies.Contains(a)).PlayerNumber).Distinct().Count() > 1 Then
+                                ' --- Step 4: Create CombatReport ---
+                                Dim report As New CombatReport()
+                                report.TurnNumber = currentTurnNumber
+                                report.BattleLocation = clashTile
+
+                                ' Get fantasy tile name
+                                Dim terrainType As Integer = Map(clashTile.X, clashTile.Y, 0)
+                                Dim tileName As String = GenerateTileName(terrainType, clashTile.X, clashTile.Y)
+                                report.Notes = $"Combat at {clashTile.X},{clashTile.Y} - The Battle of {tileName}"
+
+                                ' Store initial soldier counts before battle
+                                Dim initialCounts As New Dictionary(Of Army, Integer)
+                                For Each a In involvedArmies
+                                    initialCounts(a) = a.TotalSoldiers
+                                Next
+
+                                ' --- Step 5: Resolve battle to the death ---
+                                Battle(involvedArmies)
+
+                                ' Add armies to report and mark as processed
+                                For Each a In involvedArmies
+                                    Dim owner = Players.First(Function(p) p.Armies.Contains(a))
+                                    Dim info As New CombatArmyInfo() With {
+                                    .PlayerNumber = owner.PlayerNumber,
+                                    .PlayerRace = owner.Race,
+                                    .InitialSoldiers = initialCounts(a),
+                                    .RemainingSoldiers = a.TotalSoldiers,
+                                    .ArmyReference = a
+                                }
+                                    report.InvolvedArmies.Add(info)
+                                    armiesAlreadyInBattle.Add(a)
+                                Next
+
+                                ' Store and display report
+                                combatReports.Add(report)
+                                rtbInfo.AppendText(report.GetSummary() & Environment.NewLine & Environment.NewLine)
+                                rtbInfo.SelectionStart = rtbInfo.Text.Length
+                                rtbInfo.ScrollToCaret()
+                            End If
+                        End If
+                    Next
+                Next
+            Next
+        Next
+
+        ' --- Step 6: Reset all armies involved to starting corners for testing ---
+        For Each a In armiesAlreadyInBattle
+            Dim owner = Players.First(Function(p) p.Armies.Contains(a))
+            Dim startPos As Point = GetStartingCornerCenter(owner.PlayerNumber)
+            Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) engaged in combat! Returning to starting corner.")
+            a.X = startPos.X
+            a.Y = startPos.Y
+        Next
     End Sub
+
+
+
+    Private Function GetStartingCornerCenter(playerNumber As Integer) As Point
+        Select Case playerNumber
+            Case 0 : Return New Point(2, 2)          ' Elf, top-left 5x5 block (1..5)
+            Case 1 : Return New Point(22, 2)         ' Dwarf, top-right 5x5 block (21..25)
+            Case 2 : Return New Point(2, 22)         ' Orc, bottom-left 5x5 block (1..5)
+            Case 3 : Return New Point(22, 22)        ' Human, bottom-right 5x5 block (21..25)
+            Case Else : Return New Point(0, 0)
+        End Select
+    End Function
+
+
+    Private Function GetCombatGrid(a As Army) As List(Of Point)
+        Dim points As New List(Of Point)
+        For dx As Integer = -2 To 2
+            For dy As Integer = -2 To 2
+                points.Add(New Point(a.X + dx, a.Y + dy))
+            Next
+        Next
+        Return points
+    End Function
+
 
 
 #End Region
@@ -458,77 +798,84 @@ Public Class Form1
 
 #Region "=== Gameplay Logic ==="
 
-
-
     Public Sub CollectResources()
-        ' Loop through each player
+        Dim rows As Integer = Map.GetLength(0)
+        Dim cols As Integer = Map.GetLength(1)
+
         For Each p In Players
-            ' Reset food for this turn
-            p.Food = 0
+            ' Reset per-turn collection
             p.FoodCollectedThisTurn = 0
             p.IronCollectedThisTurn = 0
             p.WoodCollectedThisTurn = 0
 
-            Dim foodThisTurn As Integer = 0
-            Dim ironThisTurn As Integer = 0
-            Dim woodThisTurn As Integer = 0
-
-            ' Total squares
-            Dim rows As Integer = 25
-            Dim cols As Integer = 25
-            Dim totalSquares As Integer = rows * cols
-
-            ' Population per square
-            Dim popPerSquare As Integer = p.Population \ totalSquares
-
-            ' Determine player's preferred terrain (integer encoding)
-            Dim preferredTerrain As Integer
-            Select Case p.Race.ToLower()
-                Case "elf"
-                    preferredTerrain = 1  ' Forest
-                Case "dwarf"
-                    preferredTerrain = 3  ' Mountain
-                Case "orc"
-                    preferredTerrain = 2  ' Hills
-                Case "human"
-                    preferredTerrain = 0  ' Plains
-                Case Else
-                    preferredTerrain = -1 ' No bonus
-            End Select
-
-            ' Loop through map squares
+            ' Count owned squares
+            Dim ownedSquares As Integer = 0
             For x As Integer = 0 To rows - 1
                 For y As Integer = 0 To cols - 1
-                    Dim terrain As Integer = Map(x, y, 0)
-
-                    ' Base resources per square
-                    Dim foodPerSquare As Integer = 1
-                    Dim ironPerSquare As Integer = 1
-                    Dim woodPerSquare As Integer = 1
-
-                    ' Apply racial bonus
-                    If terrain = preferredTerrain Then
-                        foodPerSquare += 1
+                    If Map(x, y, 1) = p.PlayerNumber Then
+                        ownedSquares += 1
                     End If
-
-                    ' Multiply by population per square
-                    foodThisTurn += foodPerSquare * popPerSquare
-                    ironThisTurn += ironPerSquare * popPerSquare
-                    woodThisTurn += woodPerSquare * popPerSquare
                 Next
             Next
 
-            ' Update player resources
-            p.Food = foodThisTurn
-            p.FoodCollectedThisTurn = foodThisTurn
-            p.IronCollectedThisTurn = ironThisTurn
-            p.WoodCollectedThisTurn = woodThisTurn
+            ' Avoid division by zero
+            Dim popPerSquare As Integer = 0
+            If ownedSquares > 0 Then
+                popPerSquare = p.Population \ ownedSquares
+            End If
+
+            ' Determine preferred terrain
+            Dim preferredTerrain As Integer
+            Select Case p.Race.ToLower()
+                Case "elf"
+                    preferredTerrain = 1
+                Case "dwarf"
+                    preferredTerrain = 3
+                Case "orc"
+                    preferredTerrain = 2
+                Case "human"
+                    preferredTerrain = 0
+                Case Else
+                    preferredTerrain = -1
+            End Select
+
+            ' Loop through owned squares only
+            For x As Integer = 0 To rows - 1
+                For y As Integer = 0 To cols - 1
+                    If Map(x, y, 1) = p.PlayerNumber Then
+                        Dim terrain As Integer = Map(x, y, 0)
+                        Dim foodPerSquare As Integer = 1
+                        Dim ironPerSquare As Integer = 1
+                        Dim woodPerSquare As Integer = 1
+
+                        ' Apply racial bonus
+                        If terrain = preferredTerrain Then
+                            foodPerSquare += 1
+                        End If
+
+                        ' Add resources based on population per square
+                        p.FoodCollectedThisTurn += foodPerSquare * popPerSquare
+                        p.IronCollectedThisTurn += ironPerSquare * popPerSquare
+                        p.WoodCollectedThisTurn += woodPerSquare * popPerSquare
+                    End If
+                Next
+            Next
+
+            ' Apply territory bonus (2% per owned tile)
+            Dim territoryBonus As Double = ownedSquares * 0.005
+            p.FoodCollectedThisTurn = CInt(p.FoodCollectedThisTurn * (1 + territoryBonus))
+            p.IronCollectedThisTurn = CInt(p.IronCollectedThisTurn * (1 + territoryBonus))
+            p.WoodCollectedThisTurn = CInt(p.WoodCollectedThisTurn * (1 + territoryBonus))
 
             ' Add to cumulative totals
-            p.Iron += ironThisTurn
-            p.Wood += woodThisTurn
+            p.Iron += p.IronCollectedThisTurn
+            p.Wood += p.WoodCollectedThisTurn
+
+            ' Track food for feeding / growth
+            p.Food = p.FoodCollectedThisTurn
         Next
     End Sub
+
 
     Public Sub GrowPopulationAndFeedEverybody()
         ' Loop through all players
@@ -537,7 +884,7 @@ Public Class Form1
             Dim armyFoodRequirement As Integer = 0
             If p.Armies IsNot Nothing Then
                 For Each a In p.Armies
-                    armyFoodRequirement += a.Soldiers ' 1-to-1 food per soldier
+                    armyFoodRequirement += a.TotalSoldiers ' 1-to-1 food per soldier
                 Next
             End If
 
@@ -564,7 +911,6 @@ Public Class Form1
 #Region "=== Map Generation ==="
 
     Public Sub GenerateMap()
-        Dim rnd As New Random()
         Dim width As Integer = Map.GetLength(0)
         Dim height As Integer = Map.GetLength(1)
         Dim blockSize As Integer = 5
@@ -663,7 +1009,6 @@ Public Class Form1
 
     ' Private helper to fill a 5x5 block with exact terrain distribution for a player
     Private Sub FillStartingBlock(startX As Integer, startY As Integer, playerID As Integer, favTerrain As Integer)
-        Dim rnd As New Random() ' Local random generator for shuffling
         Dim terrainList As New List(Of Integer)
 
         ' 19 favored terrain
@@ -765,16 +1110,15 @@ Public Class Form1
         GrowPopulationAndFeedEverybody()
 
         ' --- 3. Execute army movements step by step ---
-        ' This uses the ProcessTurn() function we wrote earlier
         ProcessTurn()
 
-        ' --- 4. Refresh map display so GM can see new positions ---
+        ' --- 4. Refresh map display ---
         pnlMap.Invalidate()
 
-        ' --- Optional: update any UI labels or stats ---
-        ' For example, display player resources or army counts
-        ' DisplayPlayerResources()
+        ' --- 5. Update empire/resource info in RichTextBox ---
+        UpdateResourceInfo()
     End Sub
+
 
 
 
@@ -985,14 +1329,14 @@ Public Class Form1
                 For Each a In p.Armies
                     Dim pt As New Point(a.X, a.Y)
                     If tileTotals.ContainsKey(pt) Then
-                        tileTotals(pt) += a.Soldiers
+                        tileTotals(pt) += a.TotalSoldiers
                     Else
-                        tileTotals(pt) = a.Soldiers
+                        tileTotals(pt) = a.TotalSoldiers
                         tileOwner(pt) = p.PlayerNumber
                     End If
                 Next
             End If
-        Next
+        Next 'D
 
         For Each kvp In tileTotals
             Dim x = kvp.Key.X
@@ -1047,6 +1391,299 @@ Public Class Form1
         Next
     End Sub
 
+
+    Private Function GenerateTileName(terrainType As Integer, x As Integer, y As Integer) As String
+        ' --- Unique pools for each terrain, no overlaps ---
+        Dim plainsPrefixes As String() = {"Ash", "Craven", "Wither", "Fallow", "Rot", "Blight", "Wraith", "Fright", "Bane", "Drift",
+                                     "Shorn", "Pale", "Mire", "Doom", "Sallow", "Bleak", "Fester", "Hollow", "Shade", "Grave"}
+        Dim plainsSuffixes As String() = {"field", "plain", "reach", "vale", "steppe", "heath", "hollow", "waste", "pasture", "glen",
+                                     "moors", "acre", "fen", "march", "expanse", "fold", "drift", "moorland", "bleak", "rift"}
+
+        Dim forestPrefixes As String() = {"Thal", "Eryn", "Fay", "Mor", "Sil", "Loth", "Bryn", "El", "Cinder", "Ashwood",
+                                     "Raven", "Umber", "Brack", "Sorrow", "Night", "Dusk", "Fang", "Hollow", "Shade", "Wyrm"}
+        Dim forestSuffixes As String() = {"wood", "grove", "mere", "leaf", "copse", "thicket", "briar", "marsh", "loom", "tangle",
+                                     "bog", "darkling", "shroud", "hollow", "glade", "shade", "mire", "fen", "bramble", "thorn"}
+
+        Dim hillPrefixes As String() = {"Rock", "High", "Grim", "Fal", "Stone", "Bran", "Cold", "Iron", "Tor", "Crag",
+                                   "Obsidian", "Skull", "Blood", "Fell", "Ravenhill", "Brim", "Gorge", "Thorn", "Hollowcrest", "Storm"}
+        Dim hillSuffixes As String() = {"peak", "crest", "ridge", "fell", "knoll", "rise", "slope", "spur", "heath", "bluff",
+                                   "summit", "fang", "scar", "spire", "marrow", "bleak", "tor", "crag", "knoll", "brim"}
+
+        Dim mountainPrefixes As String() = {"Black", "Storm", "Snow", "Grim", "Frost", "Skull", "Blood", "Thunder", "Obsidian", "Dread",
+                                       "Bone", "Night", "Brimstone", "Ironhold", "Cragstone", "Shadowpeak", "Ravenspire", "Blight", "Stonefang", "Bleak"}
+        Dim mountainSuffixes As String() = {"spire", "crag", "hold", "mount", "cliff", "rock", "summit", "fang", "pinnacle", "keep",
+                                       "hollow", "bleak", "blight", "tor", "doom", "throne", "gloom", "fang", "spire", "crag"}
+
+        ' Select pools
+        Dim prefixes() As String
+        Dim suffixes() As String
+        Select Case terrainType
+            Case 0 : prefixes = plainsPrefixes : suffixes = plainsSuffixes
+            Case 1 : prefixes = forestPrefixes : suffixes = forestSuffixes
+            Case 2 : prefixes = hillPrefixes : suffixes = hillSuffixes
+            Case 3 : prefixes = mountainPrefixes : suffixes = mountainSuffixes
+            Case Else : prefixes = plainsPrefixes : suffixes = plainsSuffixes
+        End Select
+
+        ' Deterministic random using x, y, terrain
+        Dim seed As Integer = terrainType * 10000 + x * 25 + y
+        Dim rand As New Random(seed)
+
+        Dim prefix As String = prefixes(rand.Next(prefixes.Length))
+        Dim suffix As String = suffixes(rand.Next(suffixes.Length))
+
+        Return prefix & suffix
+    End Function
+
+    Private Sub UpdateResourceInfo()
+        rtbResourceInfo.Clear()
+
+        For Each p In Players
+            rtbResourceInfo.AppendText($"Player {p.PlayerNumber + 1} - {p.Race}" & Environment.NewLine)
+            rtbResourceInfo.AppendText($"Population: {p.Population}" & Environment.NewLine)
+            rtbResourceInfo.AppendText($"Food Collected: {p.FoodCollectedThisTurn}" & Environment.NewLine)
+            rtbResourceInfo.AppendText($"Iron Collected: {p.IronCollectedThisTurn}" & Environment.NewLine)
+            rtbResourceInfo.AppendText($"Wood Collected: {p.WoodCollectedThisTurn}" & Environment.NewLine)
+
+            ' --- Army sizes ---
+            If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
+                rtbResourceInfo.AppendText("Armies:" & Environment.NewLine)
+                For i As Integer = 0 To p.Armies.Count - 1
+                    Dim a = p.Armies(i)
+                    rtbResourceInfo.AppendText($"  Army {i + 1}: {a.TotalSoldiers} soldiers at ({a.X},{a.Y})" & Environment.NewLine)
+                Next
+            Else
+                rtbResourceInfo.AppendText("No armies" & Environment.NewLine)
+            End If
+
+            rtbResourceInfo.AppendText(Environment.NewLine)
+        Next
+
+    End Sub
+
+    Public Sub Battle(battleArmies As List(Of Army))
+        Dim roundNum As Integer = 0
+        Dim maxRounds As Integer = 1000 ' Safety limit
+
+        Dim aliveArmies As List(Of Army) = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+
+        Do While aliveArmies.Count > 1 AndAlso roundNum < maxRounds
+            roundNum += 1
+            Console.WriteLine("--- Round " & roundNum & " ---")
+
+            Dim anyCasualties As Boolean = False
+            Dim armyCasualties As New Dictionary(Of Army, Dictionary(Of Unit, Long))()
+
+            ' Apply chase bonus if applicable
+            Dim maxTotal As Integer = aliveArmies.Max(Function(a) a.TotalSoldiers)
+            For Each a In aliveArmies
+                For Each u In a.Units
+                    If u.Special IsNot Nothing AndAlso u.Special.ToLower().Contains("chase") Then
+                        If maxTotal >= 10 * a.TotalSoldiers Then
+                            u.Melee += 1
+                            Console.WriteLine(u.Name & " gains CHASE bonus (+1 melee) this round!")
+                        End If
+                    End If
+                Next
+            Next
+
+            ' Calculate damage for each defending army
+            For Each defArmy In aliveArmies
+                Dim enemyUnits As New List(Of Unit)
+                For Each atkArmy In aliveArmies
+                    If atkArmy IsNot defArmy Then enemyUnits.AddRange(atkArmy.Units)
+                Next
+
+                Dim totalAttack As Double = 0
+                For Each atkUnit In enemyUnits
+                    Dim atk As Integer = 0
+                    If roundNum = 1 AndAlso atkUnit.Ranged > 0 Then
+                        atk = atkUnit.Ranged
+                    Else
+                        atk = atkUnit.Melee
+                        If atkUnit.Special IsNot Nothing AndAlso atkUnit.Special.ToLower().Contains("+1 first round") AndAlso Not atkUnit.HasUsedCharge Then
+                            atk += 1
+                            atkUnit.HasUsedCharge = True
+                        End If
+                        If atkUnit.Ranged > 0 Then atk += atkUnit.Ranged
+                    End If
+                    totalAttack += atk * atkUnit.Size
+                Next
+
+                Dim totalDefHP As Double = defArmy.Units.Sum(Function(u) u.HP * u.Size)
+                Dim unitCasualties As New Dictionary(Of Unit, Long)()
+
+                For Each defUnit In defArmy.Units
+                    Dim prop As Double = (defUnit.HP * defUnit.Size) / totalDefHP
+                    Dim damage As Double = totalAttack * prop
+
+                    ' Apply mitigation
+                    Dim meleeMit As Double = 0
+                    Select Case defUnit.Armour?.ToLower()
+                        Case "none" : meleeMit += 0
+                        Case "chainmail" : meleeMit += 0.25
+                        Case "plate" : meleeMit += 0.5
+                    End Select
+                    Select Case defUnit.Shield?.ToLower()
+                        Case "wooden" : meleeMit += 0.1
+                        Case "iron" : meleeMit += 0.2
+                    End Select
+                    damage *= (1 - meleeMit)
+
+                    ' Calculate casualties safely using Long
+                    Dim rawCasualties As Double = Math.Floor(damage / defUnit.HP)
+                    If rawCasualties > Long.MaxValue Then rawCasualties = Long.MaxValue
+                    Dim casualties As Long = Math.Min(defUnit.Size, CLng(rawCasualties))
+
+                    If casualties > 0 Then anyCasualties = True
+                    unitCasualties(defUnit) = casualties
+                Next
+
+                armyCasualties(defArmy) = unitCasualties
+            Next
+
+            ' Apply casualties
+            For Each kvp In armyCasualties
+                Dim defArmy = kvp.Key
+                For Each uKvp In kvp.Value
+                    uKvp.Key.Size -= CInt(uKvp.Value)
+                    If uKvp.Key.Size < 0 Then uKvp.Key.Size = 0
+                Next
+            Next
+
+            ' If no casualties, wipe out weakest army
+            If Not anyCasualties Then
+                Dim alive = aliveArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+                If alive.Count > 1 Then
+                    Dim minTotal As Integer = alive.Min(Function(a) a.TotalSoldiers)
+                    For Each a In alive
+                        If a.TotalSoldiers = minTotal Then
+                            For Each u In a.Units
+                                u.Size = 0
+                            Next
+                            Console.WriteLine("No casualties occurred. Weakest army wiped out instantly: Army at (" & a.X & "," & a.Y & ")")
+                        End If
+                    Next
+                End If
+            End If
+
+            ' Log round results
+            For Each a In aliveArmies
+                Dim owner As Player = Players.FirstOrDefault(Function(p) p.Armies.Contains(a))
+                Dim ownerRace As String = "Unknown"
+                If owner IsNot Nothing AndAlso owner.Race IsNot Nothing Then
+                    ownerRace = owner.Race
+                End If
+
+                Dim unitsList As New List(Of String)
+                For Each u In a.Units
+                    unitsList.Add(u.Name & "=" & u.Size.ToString())
+                Next
+                Dim unitsStr As String = String.Join(", ", unitsList)
+
+                Console.WriteLine(ownerRace & " Army at (" & a.X & "," & a.Y & "): " & unitsStr)
+            Next
+
+            ' Update aliveArmies for next round
+            aliveArmies = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+        Loop
+
+        ' Declare winner
+        aliveArmies = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+        If aliveArmies.Count = 1 Then
+            Dim winner = Players.FirstOrDefault(Function(p) p.Armies.Contains(aliveArmies(0)))
+            Dim winnerRace As String = If(winner IsNot Nothing, winner.Race, "Unknown")
+            Console.WriteLine("Battle complete. Winner: " & winnerRace)
+        Else
+            Console.WriteLine("Battle ended with no clear winner!")
+        End If
+    End Sub
+
+    Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
+        ' Determine army role based on index
+        Dim role As String
+        Select Case armyIndex
+            Case 0
+                role = "Offensive"
+            Case 1
+                role = "Flexible"
+            Case 2
+                role = "Defensive"
+            Case Else
+                role = "Flexible"
+        End Select
+
+        ' Get race units
+        Dim raceUnits As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName = player.Race)
+        If raceUnits Is Nothing Then Exit Sub
+
+        Dim chosenUnit As UnitStats = Nothing
+
+        ' Step 0: Determine favored unit based on role
+        Select Case role
+            Case "Offensive"
+                ' Prefer Heavy Infantry
+                chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = UnitType.HeavyInfantry AndAlso CanAffordUnit(player, u))
+                If chosenUnit Is Nothing Then
+                    ' Fallback Heavy Cavalry
+                    chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = UnitType.HeavyCavalry AndAlso CanAffordUnit(player, u))
+                End If
+                If chosenUnit Is Nothing Then
+                    ' Fallback Light Cavalry
+                    chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = UnitType.LightCavalry AndAlso CanAffordUnit(player, u))
+                End If
+
+            Case "Flexible"
+                ' Random affordable unit
+                Dim affordableUnits = raceUnits.Units.Where(Function(u) CanAffordUnit(player, u)).ToList()
+                If affordableUnits.Count > 0 Then
+                    chosenUnit = affordableUnits(rnd.Next(affordableUnits.Count))
+                End If
+
+            Case "Defensive"
+                ' Prefer Light Infantry
+                chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = UnitType.LightInfantry AndAlso CanAffordUnit(player, u))
+                If chosenUnit Is Nothing Then
+                    ' Fallback Archer
+                    chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = UnitType.Archer AndAlso CanAffordUnit(player, u))
+                End If
+        End Select
+
+        ' Step 1: Last-resort – first affordable unit
+        If chosenUnit Is Nothing Then
+            chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) CanAffordUnit(player, u))
+        End If
+
+        ' Step 2: Add RECRUIT command to army MoveQueue if unit found
+        If chosenUnit IsNot Nothing Then
+            Dim cmd As New ArmyCommand With {
+            .Command = "RECRUIT",
+            .Parameter = chosenUnit.ShortName
+        }
+            army.MoveQueue.Add(cmd)
+        End If
+    End Sub
+
+
+    Private Function CanAffordUnit(player As Player, unit As UnitStats) As Boolean
+        ' Parse unit.Cost string and compare to player resources
+        ' Example cost format: "1 iron(axe),1 iron(chainmail),1 wood(shield)"
+        ' Simplified: just check if player has at least 1 iron and 1 wood per unit
+        ' You can expand this to your full resource parsing logic
+
+        ' For now, assume cost string always contains "iron" and/or "wood"
+        Dim ironRequired As Integer = 0
+        Dim woodRequired As Integer = 0
+
+        Dim parts() As String = unit.Cost.Split(","c)
+        For Each part In parts
+            Dim trimmed As String = part.Trim()
+            If trimmed.StartsWith("1 iron") Then ironRequired += 1
+            If trimmed.StartsWith("1 wood") Then woodRequired += 1
+        Next
+
+        Return (player.Iron >= ironRequired AndAlso player.Wood >= woodRequired)
+    End Function
 
 
 End Class
