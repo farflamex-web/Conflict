@@ -32,7 +32,7 @@ Partial Class Form1
         ' 
         ' btnPrint
         ' 
-        btnPrint.Location = New Point(1191, 768)
+        btnPrint.Location = New Point(15, 768)
         btnPrint.Name = "btnPrint"
         btnPrint.Size = New Size(124, 23)
         btnPrint.TabIndex = 0
@@ -43,12 +43,12 @@ Partial Class Form1
         ' 
         pnlMap.Location = New Point(15, 13)
         pnlMap.Name = "pnlMap"
-        pnlMap.Size = New Size(600, 600)
+        pnlMap.Size = New Size(391, 413)
         pnlMap.TabIndex = 2
         ' 
         ' btn_Show
         ' 
-        btn_Show.Location = New Point(1240, 739)
+        btn_Show.Location = New Point(15, 730)
         btn_Show.Name = "btn_Show"
         btn_Show.Size = New Size(75, 23)
         btn_Show.TabIndex = 3
@@ -57,7 +57,7 @@ Partial Class Form1
         ' 
         ' btnProcessTurn
         ' 
-        btnProcessTurn.Location = New Point(1191, 797)
+        btnProcessTurn.Location = New Point(15, 797)
         btnProcessTurn.Name = "btnProcessTurn"
         btnProcessTurn.Size = New Size(124, 23)
         btnProcessTurn.TabIndex = 4
@@ -66,19 +66,19 @@ Partial Class Form1
         ' 
         ' rtbInfo
         ' 
-        rtbInfo.Location = New Point(631, 13)
+        rtbInfo.Location = New Point(412, 13)
         rtbInfo.Name = "rtbInfo"
         rtbInfo.ReadOnly = True
         rtbInfo.ScrollBars = RichTextBoxScrollBars.Vertical
-        rtbInfo.Size = New Size(262, 600)
+        rtbInfo.Size = New Size(369, 807)
         rtbInfo.TabIndex = 5
         rtbInfo.Text = ""
         ' 
         ' rtbResourceInfo
         ' 
-        rtbResourceInfo.Location = New Point(899, 13)
+        rtbResourceInfo.Location = New Point(787, 13)
         rtbResourceInfo.Name = "rtbResourceInfo"
-        rtbResourceInfo.Size = New Size(416, 600)
+        rtbResourceInfo.Size = New Size(528, 807)
         rtbResourceInfo.TabIndex = 6
         rtbResourceInfo.Text = ""
         ' 

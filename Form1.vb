@@ -36,22 +36,19 @@ Public Class Form1
 #Region "=== Nested Classes ==="
 
     Public Class Army
-        Public Property X As Integer                 ' Current X coordinate
-        Public Property Y As Integer                 ' Current Y coordinate
+        Public Property X As Integer
+        Public Property Y As Integer
         Public Property Units As New List(Of Unit)
         Public ReadOnly Property TotalSoldiers As Integer
             Get
                 Return Units.Sum(Function(u) u.Size)
             End Get
         End Property
-
-        ' Queue of planned directions for the turn, max 5 moves
-        ' Each entry is either a string ("N", "NW", etc.) or a special action ("Recruit", "Train", etc.)
         Public Property MoveQueue As New List(Of ArmyCommand)
-
-
-        ' Optional flag to track if the special move has been used
         Public Property HasUsedSpecial As Boolean = False
+
+        ' Add this property
+        Public Property Race As String
     End Class
 
     Public Class Unit
@@ -64,7 +61,9 @@ Public Class Form1
         Public Property Size As Integer
         Public Property Armour As String
         Public Property Shield As String
+        Public Property Type As UnitType
     End Class
+
 
     Public Class UnitStats
         Public Property Name As String
@@ -113,28 +112,6 @@ Public Class Form1
         Public Property AIControlled As Boolean
     End Class
 
-    Public Class CombatReport
-        Public Property TurnNumber As Integer               ' Which turn this occurred
-        Public Property BattleLocation As Point            ' Tile where combat occurred (or center of clash)
-        Public Property InvolvedArmies As New List(Of CombatArmyInfo)
-        Public Property Notes As String = ""               ' Optional extra info
-
-        ' Summary helper
-        Public Function GetSummary() As String
-            Dim sb As New Text.StringBuilder
-
-            ' Top line: use Notes (coordinates + fantasy name)
-            sb.AppendLine($"Turn {TurnNumber} - {Notes}")
-
-            ' List all armies involved
-            For Each info In InvolvedArmies
-                sb.AppendLine($"{info.PlayerRace} army: {info.InitialSoldiers} soldiers -> {info.RemainingSoldiers} remaining")
-            Next
-
-            Return sb.ToString()
-        End Function
-
-    End Class
 
     ' Helper to store info about each army involved
     Public Class CombatArmyInfo
@@ -144,6 +121,56 @@ Public Class Form1
         Public Property RemainingSoldiers As Integer
         Public Property ArmyReference As Army               ' Optional reference back to the army
     End Class
+
+    Public Class BattleLog
+        ''' <summary>
+        ''' Stores the results of a battle for reporting and printing.
+        ''' Tracks per-phase damage, casualties, and army retreats.
+        ''' </summary>
+
+        ' Phase-by-phase log: dictionary of phase name -> list of entries
+        Public PhaseEntries As New Dictionary(Of String, List(Of BattleEntry))
+
+        ' Optional: track armies sent back to spawn
+        Public Retreats As New List(Of Army)
+
+        ' Constructor
+        Public Sub New(armies As List(Of Army))
+            ' Initialize phase entries
+            PhaseEntries("Ranged") = New List(Of BattleEntry)
+            PhaseEntries("Charge") = New List(Of BattleEntry)
+            PhaseEntries("Melee") = New List(Of BattleEntry)
+            PhaseEntries("Chase") = New List(Of BattleEntry)
+        End Sub
+
+        ' Record a single unit's action and casualties
+        Public Sub Record(attacker As Unit, defender As Unit, damage As Double, phase As String)
+            If Not PhaseEntries.ContainsKey(phase) Then PhaseEntries(phase) = New List(Of BattleEntry)
+            PhaseEntries(phase).Add(New BattleEntry With {
+                                   .Attacker = attacker,
+                                   .Defender = defender,
+                                   .Damage = damage,
+                                   .Phase = phase
+                               })
+        End Sub
+
+        ' Record army retreat
+        Public Sub RecordRetreat(army As Army)
+            Retreats.Add(army)
+        End Sub
+    End Class
+
+
+    ' --- Updated BattleEntry ---
+    Public Class BattleEntry
+        Public Property Attacker As Unit
+        Public Property Defender As Unit
+        Public Property Damage As Double
+        Public Property Phase As String
+        Public Property SizeBefore As Integer   ' Snapshot at start of phase
+        Public Property SizeAfter As Integer    ' Updated after damage applied
+    End Class
+
 
 
 
@@ -162,7 +189,6 @@ Public Class Form1
 
     Private WithEvents printDoc As New PrintDocument
 
-    Private combatReports As New List(Of CombatReport)
     Private currentTurnNumber As Integer = 1  ' Update this as part of your turn logic
 
     Public AllRaces As New List(Of RaceUnits)
@@ -290,7 +316,8 @@ Public Class Form1
             For a As Integer = 1 To 3
                 Dim army As New Army With {
                 .X = startPos.X,
-                .Y = startPos.Y
+                .Y = startPos.Y,
+                .Race = p.Race
             }
 
                 ' Start with Light Infantry (type = LightInfantry)
@@ -667,107 +694,51 @@ Public Class Form1
 
     Private Sub ResolveCombat()
         Dim armiesAlreadyInBattle As New HashSet(Of Army)() ' Track armies that have already participated
-        Dim processedLocations As New HashSet(Of Point) ' Avoid duplicate reports for same location
+        Dim processedLocations As New HashSet(Of Point)() ' Avoid duplicate combat per tile
 
-        ' --- Step 1: Check all pairs of enemy armies for overlapping grids ---
+        ' Step 1: Check all army pairs for overlapping 5x5 grids
         For i As Integer = 0 To Players.Count - 1
             Dim p1 As Player = Players(i)
             For Each a1 In p1.Armies
-                ' Skip if this army has already been in a battle this turn
                 If armiesAlreadyInBattle.Contains(a1) Then Continue For
 
                 Dim grid1 = GetCombatGrid(a1)
+
                 For j As Integer = i To Players.Count - 1
                     Dim p2 As Player = Players(j)
                     For Each a2 In p2.Armies
-                        ' Skip if same army or same player
-                        If a1 Is a2 Then Continue For
-                        If p1.PlayerNumber = p2.PlayerNumber Then Continue For
-                        ' Skip if either army already in a battle
+                        If a1 Is a2 OrElse p1.PlayerNumber = p2.PlayerNumber Then Continue For
                         If armiesAlreadyInBattle.Contains(a2) Then Continue For
 
                         Dim grid2 = GetCombatGrid(a2)
                         Dim overlap = grid1.Intersect(grid2).ToList()
-                        If overlap.Count > 0 Then
-                            ' Step 2: determine clash tile = center of overlap
-                            Dim avgX As Integer = CInt(overlap.Average(Function(p) p.X))
-                            Dim avgY As Integer = CInt(overlap.Average(Function(p) p.Y))
-                            Dim clashTile As New Point(avgX, avgY)
+                        If overlap.Count = 0 Then Continue For
 
-                            ' Avoid duplicate report for same location
-                            If processedLocations.Contains(clashTile) Then Continue For
-                            processedLocations.Add(clashTile)
+                        ' Determine clash tile
+                        Dim clashTile As New Point(CInt(overlap.Average(Function(pt) pt.X)), CInt(overlap.Average(Function(pt) pt.Y)))
+                        If processedLocations.Contains(clashTile) Then Continue For
+                        processedLocations.Add(clashTile)
 
-                            ' Step 3: find all armies whose grids include this clash tile
-                            Dim involvedArmies = New List(Of Army)()
-                            For Each p In Players
-                                For Each a In p.Armies
-                                    If GetCombatGrid(a).Contains(clashTile) Then
-                                        ' Only include if not already in another battle
-                                        If Not armiesAlreadyInBattle.Contains(a) Then
-                                            involvedArmies.Add(a)
-                                        End If
-                                    End If
-                                Next
-                            Next
+                        ' Find all armies involved at clashTile
+                        Dim involvedArmies = Players.SelectMany(Function(p) p.Armies).Where(Function(a) GetCombatGrid(a).Contains(clashTile) AndAlso Not armiesAlreadyInBattle.Contains(a)).ToList()
 
-                            ' Only create report if 2 or more players involved
-                            If involvedArmies.Select(Function(a) Players.First(Function(p) p.Armies.Contains(a)).PlayerNumber).Distinct().Count() > 1 Then
-                                ' --- Step 4: Create CombatReport ---
-                                Dim report As New CombatReport()
-                                report.TurnNumber = currentTurnNumber
-                                report.BattleLocation = clashTile
+                        ' Only engage if 2+ armies from different players
+                        If involvedArmies.Select(Function(a) Players.First(Function(p) p.Armies.Contains(a)).PlayerNumber).Distinct().Count() < 2 Then Continue For
 
-                                ' Get fantasy tile name
-                                Dim terrainType As Integer = Map(clashTile.X, clashTile.Y, 0)
-                                Dim tileName As String = GenerateTileName(terrainType, clashTile.X, clashTile.Y)
-                                report.Notes = $"Combat at {clashTile.X},{clashTile.Y} - The Battle of {tileName}"
+                        ' Step 2: Execute battle
+                        Dim battleLog As BattleLog = Battle(involvedArmies) ' Returns full log without displaying
+                        armiesAlreadyInBattle.UnionWith(involvedArmies)
 
-                                ' Store initial soldier counts before battle
-                                Dim initialCounts As New Dictionary(Of Army, Integer)
-                                For Each a In involvedArmies
-                                    initialCounts(a) = a.TotalSoldiers
-                                Next
-
-                                ' --- Step 5: Resolve battle to the death ---
-                                Battle(involvedArmies)
-
-                                ' Add armies to report and mark as processed
-                                For Each a In involvedArmies
-                                    Dim owner = Players.First(Function(p) p.Armies.Contains(a))
-                                    Dim info As New CombatArmyInfo() With {
-                                    .PlayerNumber = owner.PlayerNumber,
-                                    .PlayerRace = owner.Race,
-                                    .InitialSoldiers = initialCounts(a),
-                                    .RemainingSoldiers = a.TotalSoldiers,
-                                    .ArmyReference = a
-                                }
-                                    report.InvolvedArmies.Add(info)
-                                    armiesAlreadyInBattle.Add(a)
-                                Next
-
-                                ' Store and display report
-                                combatReports.Add(report)
-                                rtbInfo.AppendText(report.GetSummary() & Environment.NewLine & Environment.NewLine)
-                                rtbInfo.SelectionStart = rtbInfo.Text.Length
-                                rtbInfo.ScrollToCaret()
-                            End If
+                        ' Step 3: Show report in scrollable form
+                        If battleLog IsNot Nothing Then
+                            Dim reportWindow As New frmBattleReport()
+                            reportWindow.ShowReport(GenerateBattleReport(battleLog))
                         End If
                     Next
                 Next
             Next
         Next
-
-        ' --- Step 6: Reset all armies involved to starting corners for testing ---
-        For Each a In armiesAlreadyInBattle
-            Dim owner = Players.First(Function(p) p.Armies.Contains(a))
-            Dim startPos As Point = GetStartingCornerCenter(owner.PlayerNumber)
-            Console.WriteLine($"{owner.Race}'s army at ({a.X},{a.Y}) engaged in combat! Returning to starting corner.")
-            a.X = startPos.X
-            a.Y = startPos.Y
-        Next
     End Sub
-
 
 
     Private Function GetStartingCornerCenter(playerNumber As Integer) As Point
@@ -1461,143 +1432,352 @@ Public Class Form1
 
     End Sub
 
-    Public Sub Battle(battleArmies As List(Of Army))
-        Dim roundNum As Integer = 0
-        Dim maxRounds As Integer = 1000 ' Safety limit
+    Public Function Battle(battleArmies As List(Of Army)) As BattleLog
+        ''' <summary>
+        ''' Executes a battle between multiple armies in four phases: Ranged, Charge, Melee, Chase.
+        ''' Returns the BattleLog containing full technical details.
+        ''' Does NOT display the report; the caller handles output.
+        ''' </summary>
 
-        Dim aliveArmies As List(Of Army) = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+        ' --- Filter active armies ---
+        Dim activeArmies As List(Of Army) = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
+        If activeArmies.Count = 0 Then Return Nothing
 
-        Do While aliveArmies.Count > 1 AndAlso roundNum < maxRounds
-            roundNum += 1
-            Console.WriteLine("--- Round " & roundNum & " ---")
+        ' --- Initialize BattleLog ---
+        Dim battleLog As New BattleLog(activeArmies)
 
-            Dim anyCasualties As Boolean = False
-            Dim armyCasualties As New Dictionary(Of Army, Dictionary(Of Unit, Long))()
+        ' --- PHASE 1: RANGED ---
+        Dim unitSnapshot As New Dictionary(Of Unit, Integer)
+        For Each army In activeArmies
+            For Each u In army.Units
+                unitSnapshot(u) = u.Size
+            Next
+        Next
+        For Each defArmy In activeArmies
+            Dim attackers = activeArmies.Where(Function(a) a IsNot defArmy).SelectMany(Function(a) a.Units).ToList()
+            ApplyProportionalDamage(defArmy, attackers, "Ranged", unitSnapshot, battleLog)
+        Next
 
-            ' Apply chase bonus if applicable
-            Dim maxTotal As Integer = aliveArmies.Max(Function(a) a.TotalSoldiers)
-            For Each a In aliveArmies
-                For Each u In a.Units
-                    If u.Special IsNot Nothing AndAlso u.Special.ToLower().Contains("chase") Then
-                        If maxTotal >= 10 * a.TotalSoldiers Then
-                            u.Melee += 1
-                            Console.WriteLine(u.Name & " gains CHASE bonus (+1 melee) this round!")
-                        End If
-                    End If
+        ' --- PHASE 2: CHARGE ---
+        unitSnapshot = New Dictionary(Of Unit, Integer)
+        For Each army In activeArmies
+            For Each u In army.Units
+                unitSnapshot(u) = u.Size
+            Next
+        Next
+        For Each defArmy In activeArmies
+            Dim attackers = activeArmies.Where(Function(a) a IsNot defArmy).SelectMany(Function(a) a.Units).ToList()
+            ApplyProportionalDamage(defArmy, attackers, "Charge", unitSnapshot, battleLog)
+        Next
+
+        ' --- PHASE 3: MELEE ---
+        unitSnapshot = New Dictionary(Of Unit, Integer)
+        For Each army In activeArmies
+            For Each u In army.Units
+                unitSnapshot(u) = u.Size
+            Next
+        Next
+        For Each defArmy In activeArmies
+            Dim attackers = activeArmies.Where(Function(a) a IsNot defArmy).SelectMany(Function(a) a.Units).ToList()
+            ApplyProportionalDamage(defArmy, attackers, "Melee", unitSnapshot, battleLog)
+        Next
+
+        ' --- PHASE 4: CHASE ---
+        Dim strongestArmy = activeArmies.OrderByDescending(Function(a) a.TotalSoldiers).FirstOrDefault()
+        If strongestArmy IsNot Nothing AndAlso strongestArmy.TotalSoldiers > 0 Then
+            unitSnapshot = New Dictionary(Of Unit, Integer)
+            For Each army In activeArmies
+                For Each u In army.Units
+                    unitSnapshot(u) = u.Size
                 Next
             Next
 
-            ' Calculate damage for each defending army
-            For Each defArmy In aliveArmies
-                Dim enemyUnits As New List(Of Unit)
-                For Each atkArmy In aliveArmies
-                    If atkArmy IsNot defArmy Then enemyUnits.AddRange(atkArmy.Units)
-                Next
-
-                Dim totalAttack As Double = 0
-                For Each atkUnit In enemyUnits
-                    Dim atk As Integer = 0
-                    If roundNum = 1 AndAlso atkUnit.Ranged > 0 Then
-                        atk = atkUnit.Ranged
-                    Else
-                        atk = atkUnit.Melee
-                        If atkUnit.Special IsNot Nothing AndAlso atkUnit.Special.ToLower().Contains("+1 first round") AndAlso Not atkUnit.HasUsedCharge Then
-                            atk += 1
-                            atkUnit.HasUsedCharge = True
-                        End If
-                        If atkUnit.Ranged > 0 Then atk += atkUnit.Ranged
-                    End If
-                    totalAttack += atk * atkUnit.Size
-                Next
-
-                Dim totalDefHP As Double = defArmy.Units.Sum(Function(u) u.HP * u.Size)
-                Dim unitCasualties As New Dictionary(Of Unit, Long)()
-
-                For Each defUnit In defArmy.Units
-                    Dim prop As Double = (defUnit.HP * defUnit.Size) / totalDefHP
-                    Dim damage As Double = totalAttack * prop
-
-                    ' Apply mitigation
-                    Dim meleeMit As Double = 0
-                    Select Case defUnit.Armour?.ToLower()
-                        Case "none" : meleeMit += 0
-                        Case "chainmail" : meleeMit += 0.25
-                        Case "plate" : meleeMit += 0.5
-                    End Select
-                    Select Case defUnit.Shield?.ToLower()
-                        Case "wooden" : meleeMit += 0.1
-                        Case "iron" : meleeMit += 0.2
-                    End Select
-                    damage *= (1 - meleeMit)
-
-                    ' Calculate casualties safely using Long
-                    Dim rawCasualties As Double = Math.Floor(damage / defUnit.HP)
-                    If rawCasualties > Long.MaxValue Then rawCasualties = Long.MaxValue
-                    Dim casualties As Long = Math.Min(defUnit.Size, CLng(rawCasualties))
-
-                    If casualties > 0 Then anyCasualties = True
-                    unitCasualties(defUnit) = casualties
-                Next
-
-                armyCasualties(defArmy) = unitCasualties
-            Next
-
-            ' Apply casualties
-            For Each kvp In armyCasualties
-                Dim defArmy = kvp.Key
-                For Each uKvp In kvp.Value
-                    uKvp.Key.Size -= CInt(uKvp.Value)
-                    If uKvp.Key.Size < 0 Then uKvp.Key.Size = 0
-                Next
-            Next
-
-            ' If no casualties, wipe out weakest army
-            If Not anyCasualties Then
-                Dim alive = aliveArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
-                If alive.Count > 1 Then
-                    Dim minTotal As Integer = alive.Min(Function(a) a.TotalSoldiers)
-                    For Each a In alive
-                        If a.TotalSoldiers = minTotal Then
-                            For Each u In a.Units
-                                u.Size = 0
-                            Next
-                            Console.WriteLine("No casualties occurred. Weakest army wiped out instantly: Army at (" & a.X & "," & a.Y & ")")
-                        End If
-                    Next
+            For Each army In activeArmies
+                If army IsNot strongestArmy AndAlso army.TotalSoldiers < 0.5 * strongestArmy.TotalSoldiers Then
+                    Dim chasingUnits = strongestArmy.Units.Where(Function(u) u.Type = UnitType.LightCavalry AndAlso u.Size > 0).ToList()
+                    ApplyProportionalDamage(army, chasingUnits, "Chase", unitSnapshot, battleLog)
                 End If
-            End If
-
-            ' Log round results
-            For Each a In aliveArmies
-                Dim owner As Player = Players.FirstOrDefault(Function(p) p.Armies.Contains(a))
-                Dim ownerRace As String = "Unknown"
-                If owner IsNot Nothing AndAlso owner.Race IsNot Nothing Then
-                    ownerRace = owner.Race
-                End If
-
-                Dim unitsList As New List(Of String)
-                For Each u In a.Units
-                    unitsList.Add(u.Name & "=" & u.Size.ToString())
-                Next
-                Dim unitsStr As String = String.Join(", ", unitsList)
-
-                Console.WriteLine(ownerRace & " Army at (" & a.X & "," & a.Y & "): " & unitsStr)
             Next
+        End If
 
-            ' Update aliveArmies for next round
-            aliveArmies = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
-        Loop
+        ' --- Post-Battle: Retreat / Spawn Handling ---
+        Dim maxStrength As Integer = If(strongestArmy IsNot Nothing, strongestArmy.TotalSoldiers, 0)
+        If maxStrength > 0 Then
+            For Each army In activeArmies
+                If army.TotalSoldiers < 0.5 * maxStrength AndAlso army.TotalSoldiers > 0 Then
+                    SendArmyBackToSpawn(army)
+                    ClearArmyMoveQueue(army)
+                    battleLog.RecordRetreat(army)
+                End If
+            Next
+        End If
 
-        ' Declare winner
-        aliveArmies = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
-        If aliveArmies.Count = 1 Then
-            Dim winner = Players.FirstOrDefault(Function(p) p.Armies.Contains(aliveArmies(0)))
-            Dim winnerRace As String = If(winner IsNot Nothing, winner.Race, "Unknown")
-            Console.WriteLine("Battle complete. Winner: " & winnerRace)
-        Else
-            Console.WriteLine("Battle ended with no clear winner!")
+        ' --- Return the BattleLog for caller to handle display or further processing ---
+        Return battleLog
+    End Function
+
+
+
+    Public Sub SendArmyBackToSpawn(army As Army)
+        ''' <summary>
+        ''' Moves the army back to its spawn location after being defeated.
+        ''' Uses the army's Race property to determine starting coordinates:
+        ''' - Elf: top-left
+        ''' - Dwarf: top-right
+        ''' - Orc: bottom-left
+        ''' - Human: bottom-right
+        ''' </summary>
+
+        Select Case army.Race.ToLower()
+            Case "elf"
+                army.X = 0
+                army.Y = 0
+            Case "dwarf"
+                army.X = 24
+                army.Y = 0
+            Case "orc"
+                army.X = 0
+                army.Y = 24
+            Case "human"
+                army.X = 24
+                army.Y = 24
+        End Select
+    End Sub
+
+
+    Public Sub ClearArmyMoveQueue(army As Army)
+        ''' <summary>
+        ''' Clears all remaining moves in the army's MoveQueue.
+        ''' This is used after an army is sent back to spawn,
+        ''' since any queued moves are no longer relevant.
+        ''' </summary>
+
+        If army.MoveQueue IsNot Nothing Then
+            army.MoveQueue.Clear()
         End If
     End Sub
+
+    Public Sub ApplyProportionalDamage(defArmy As Army, attackingUnits As List(Of Unit),
+                                   phase As String, unitSnapshot As Dictionary(Of Unit, Integer),
+                                   battleLog As BattleLog)
+        ''' <summary>
+        ''' Applies proportional damage from multiple attackers to a defending army.
+        ''' Damage is calculated using snapshot sizes to ensure simultaneity.
+        ''' Each attack is logged individually, with SizeBefore and SizeAfter.
+        ''' </summary>
+
+        ' --- Initialize dictionary to accumulate casualties per defender unit ---
+        Dim calculatedCasualties As New Dictionary(Of Unit, Long)
+        For Each defUnit In defArmy.Units
+            calculatedCasualties(defUnit) = 0
+        Next
+
+        ' --- Loop over each attacker and apply proportional damage to all defender units ---
+        For Each atkUnit In attackingUnits
+            Dim atkSize As Integer = unitSnapshot(atkUnit)
+            Dim atkValue As Integer = 0
+
+            Select Case phase.ToLower()
+                Case "ranged"
+                    If atkUnit.Ranged > 0 Then
+                        atkValue = atkUnit.Ranged
+                        ' Elf archer bonus
+                        If atkUnit.Name.ToLower().Contains("archer") AndAlso
+                       atkUnit.Special IsNot Nothing AndAlso
+                       atkUnit.Special.ToLower().Contains("elf") Then
+                            atkValue += 1
+                        End If
+                    Else
+                        Continue For
+                    End If
+
+                Case "charge"
+                    atkValue = atkUnit.Melee + GetChargeBonus(atkUnit)
+                Case "melee"
+                    atkValue = atkUnit.Melee
+                Case "chase"
+                    If atkUnit.Type = UnitType.LightCavalry Then
+                        atkValue = atkUnit.Melee * 2
+                    Else
+                        Continue For
+                    End If
+            End Select
+
+            Dim totalDefHP As Double = defArmy.Units.Sum(Function(u) u.HP * unitSnapshot(u))
+            If totalDefHP = 0 Then Continue For
+
+            ' --- Apply proportional damage to each defender ---
+            For Each defUnit In defArmy.Units
+                Dim sizeBefore As Integer = unitSnapshot(defUnit)
+                Dim prop As Double = (defUnit.HP * sizeBefore) / totalDefHP
+                Dim damage As Double = atkValue * atkSize * prop
+                damage *= (1 - GetUnitMitigation(defUnit))
+
+                ' Calculate casualties but only accumulate here
+                Dim rawCasualties As Double = Math.Floor(damage / defUnit.HP)
+                Dim casualties As Long = Math.Min(sizeBefore, CLng(rawCasualties))
+                calculatedCasualties(defUnit) += casualties
+
+                ' --- Record each attacker-defender interaction ---
+                Dim entry As New BattleEntry With {
+                .Attacker = atkUnit,
+                .Defender = defUnit,
+                .Damage = damage,
+                .Phase = phase,
+                .SizeBefore = sizeBefore,
+                .SizeAfter = CInt(Math.Max(0, sizeBefore - calculatedCasualties(defUnit)))
+            }
+                battleLog.PhaseEntries(phase).Add(entry)
+            Next
+        Next
+
+        ' --- Apply all casualties simultaneously ---
+        For Each kvp In calculatedCasualties
+            kvp.Key.Size -= CInt(kvp.Value)
+            If kvp.Key.Size < 0 Then kvp.Key.Size = 0
+        Next
+    End Sub
+
+
+    Public Function GetChargeBonus(unit As Unit) As Integer
+        ''' <summary>
+        ''' Returns the charge-phase bonus for a given unit.
+        ''' 
+        ''' Phase behavior:
+        ''' - Dwarf Stormforged Hammerguards (Heavy Infantry): +1 attack in charge phase.
+        ''' - Human Steel Vanguard (Heavy Cavalry): +2 attack in charge phase (armoured charge).
+        ''' - All other units: 0.
+        ''' </summary>
+
+        Select Case unit.Name.ToLower()
+            Case "stormforged hammerguards"
+                Return 1
+            Case "steel vanguard"
+                Return 2
+            Case Else
+                Return 0
+        End Select
+    End Function
+
+    Public Function GetUnitMitigation(unit As Unit) As Double
+        ''' <summary>
+        ''' Returns the mitigation factor for a unit.
+        ''' 
+        ''' - Armour mitigation:
+        '''     None: 0
+        '''     Chainmail: 25%
+        '''     Plate: 50%
+        ''' - Shield mitigation:
+        '''     Wooden: 10%
+        '''     Iron: 20%
+        ''' - Race-specific bonuses:
+        '''     Dwarf HI (Stormforged Hammerguards): extra mitigation vs melee and ranged (+additional 0.1)
+        '''     Orc LI (War Grunts): extra mitigation even without armour/shield (+0.1)
+        ''' 
+        ''' Returns a value between 0 and 1 representing the percentage of damage mitigated.
+        ''' </summary>
+
+        Dim mitigation As Double = 0
+
+        ' Armour mitigation
+        Select Case unit.Armour?.ToLower()
+            Case "chainmail"
+                mitigation += 0.25
+            Case "plate"
+                mitigation += 0.5
+            Case Else
+                mitigation += 0
+        End Select
+
+        ' Shield mitigation
+        Select Case unit.Shield?.ToLower()
+            Case "wooden"
+                mitigation += 0.1
+            Case "iron"
+                mitigation += 0.2
+            Case Else
+                mitigation += 0
+        End Select
+
+        ' Race-specific bonuses
+        If unit.Name.ToLower() = "stormforged hammerguards" Then
+            mitigation += 0.1 ' extra mitigation for Dwarf HI
+        ElseIf unit.Name.ToLower() = "war grunts" Then
+            mitigation += 0.2 ' extra mitigation for Orc LI
+        End If
+
+        ' Ensure mitigation does not exceed 1
+        If mitigation > 1 Then mitigation = 1
+
+        Return mitigation
+    End Function
+
+    Public Function GenerateBattleReport(battleLog As BattleLog) As String
+        ''' <summary>
+        ''' Generates a detailed, technical, phase-by-phase battle report.
+        ''' Includes for each phase:
+        ''' - Attacking unit
+        ''' - Target unit
+        ''' - Damage dealt
+        ''' - Defender size BEFORE damage
+        ''' - Defender size AFTER damage
+        ''' - Full list of units in each army
+        ''' Also lists armies sent back to spawn at the end.
+        ''' </summary>
+
+        Dim report As New Text.StringBuilder()
+
+        report.AppendLine("=== Detailed Battle Report ===")
+        report.AppendLine()
+
+        ' Phase-by-phase details
+        For Each phase In New String() {"Ranged", "Charge", "Melee", "Chase"}
+            report.AppendLine($"--- Phase: {phase} ---")
+
+            If battleLog.PhaseEntries.ContainsKey(phase) Then
+                ' Group entries by defending unit
+                Dim groupedByDefender = battleLog.PhaseEntries(phase).GroupBy(Function(e) e.Defender)
+
+                For Each group In groupedByDefender
+                    Dim defUnit = group.Key
+                    report.AppendLine($"Defender: {defUnit.Name}")
+
+                    For Each entry In group
+                        Dim attackerName = entry.Attacker.Name
+                        Dim damage = Math.Round(entry.Damage, 2)
+                        Dim sizeBefore = entry.SizeBefore
+                        Dim sizeAfter = entry.SizeAfter
+
+                        report.AppendLine($"   {attackerName} deals {damage} damage to {defUnit.Name} " &
+                                      $"(Units: {sizeBefore} -> {sizeAfter})")
+                    Next
+
+                    ' Optional: show full army composition after phase
+                    Dim army = battleLog.PhaseEntries(phase).Select(Function(e) e.Defender).Distinct()
+                    report.AppendLine()
+                Next
+            Else
+                report.AppendLine("No actions in this phase.")
+            End If
+
+            report.AppendLine()
+        Next
+
+        ' Retreats
+        If battleLog.Retreats.Count > 0 Then
+            report.AppendLine("--- Retreats ---")
+            For Each army In battleLog.Retreats
+                report.AppendLine($"Army of {army.Race} sent back to spawn at ({army.X},{army.Y}). " &
+                              $"Remaining soldiers: {army.TotalSoldiers}")
+            Next
+            report.AppendLine()
+        End If
+
+        report.AppendLine("=== End of Detailed Battle Report ===")
+
+        Return report.ToString()
+    End Function
+
 
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
         ' Determine army role based on index
