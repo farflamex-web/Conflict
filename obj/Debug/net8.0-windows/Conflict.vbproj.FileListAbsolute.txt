@@ -15,4 +15,3 @@ C:\Users\glynn\source\repos\Conflict\Conflict\obj\Debug\net8.0-windows\refint\Co
 C:\Users\glynn\source\repos\Conflict\Conflict\obj\Debug\net8.0-windows\Conflict.pdb
 C:\Users\glynn\source\repos\Conflict\Conflict\obj\Debug\net8.0-windows\Conflict.genruntimeconfig.cache
 C:\Users\glynn\source\repos\Conflict\Conflict\obj\Debug\net8.0-windows\ref\Conflict.dll
-C:\Users\glynn\source\repos\Conflict\Conflict\obj\Debug\net8.0-windows\Conflict.frmBattleReport.resources
