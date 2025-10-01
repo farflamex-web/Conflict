@@ -1,7 +1,7 @@
 ﻿Option Strict On
 Option Explicit On
 
-' Test commit from Visual Studio, again, and again and again, and again, and again.
+' Test commit from Visual Studio, again, and again and again, and again, and again and again.
 
 Imports System.Drawing.Printing
 Imports System.IO
