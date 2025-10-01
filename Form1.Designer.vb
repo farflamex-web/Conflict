@@ -28,6 +28,7 @@ Partial Class Form1
         btnProcessTurn = New Button()
         rtbInfo = New RichTextBox()
         rtbResourceInfo = New RichTextBox()
+        rtbPlayerSummary = New RichTextBox()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -82,11 +83,20 @@ Partial Class Form1
         rtbResourceInfo.TabIndex = 6
         rtbResourceInfo.Text = ""
         ' 
+        ' rtbPlayerSummary
+        ' 
+        rtbPlayerSummary.Location = New Point(15, 432)
+        rtbPlayerSummary.Name = "rtbPlayerSummary"
+        rtbPlayerSummary.Size = New Size(391, 292)
+        rtbPlayerSummary.TabIndex = 7
+        rtbPlayerSummary.Text = ""
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1327, 832)
+        Controls.Add(rtbPlayerSummary)
         Controls.Add(rtbResourceInfo)
         Controls.Add(rtbInfo)
         Controls.Add(btnProcessTurn)
@@ -104,5 +114,6 @@ Partial Class Form1
     Friend WithEvents btnProcessTurn As Button
     Friend WithEvents rtbInfo As RichTextBox
     Friend WithEvents rtbResourceInfo As RichTextBox
+    Friend WithEvents rtbPlayerSummary As RichTextBox
 
 End Class
