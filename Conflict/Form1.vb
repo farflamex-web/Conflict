@@ -1,7 +1,114 @@
 ﻿Option Strict On
 Option Explicit On
 
-' Test commit from Visual Studio, again, and again and again, and again, and again and again.
+' ===========================================================
+' PROJECT: Conflict
+' ===========================================================
+' TYPE: Turn-based Play-By-Mail Strategy Game
+' LANGUAGE: VB.NET
+' ===========================================================
+' OVERVIEW
+' -----------------------------------------------------------
+' Conflict is a turn-based strategy game designed for play-by-mail.
+' It runs on a square 25x25 tile map with four players, each
+' representing a different fantasy race (Elf, Dwarf, Orc, Human).
+'
+' Each tile has:
+'   - Terrain type (Plains, Forest, Hills, Mountain)
+'   - Ownership (which player controls it)
+'
+' The game handles map creation, army movement, resource collection,
+' combat detection, and battle resolution. Players submit turns,
+' and the game engine processes results and generates reports.
+'
+' ===========================================================
+' MAP SYSTEM
+' -----------------------------------------------------------
+' - Map stored as a 3D array: map(x, y, layer)
+'   Layer 0: Terrain type
+'   Layer 1: Ownership
+'
+' - GenerateTerrain():
+'   Creates randomized terrain, smooths clumps, assigns
+'   starting blocks for each player.
+'
+' - FillStartingBlock():
+'   Each player starts with a fixed 5x5 block containing:
+'       * 19 tiles of their favored terrain
+'       * 2 tiles of each other terrain
+'
+' - GetDominantNeighbour():
+'   Used to smooth terrain by checking 3x3 neighbourhoods.
+'
+' ===========================================================
+' PLAYER FACTIONS
+' -----------------------------------------------------------
+' Race-to-corner assignment:
+'   - Elf    (Player 0, Top-Left,    Favored: Forest)
+'   - Dwarf  (Player 1, Top-Right,   Favored: Mountain)
+'   - Orc    (Player 2, Bottom-Left, Favored: Hills)
+'   - Human  (Player 3, Bottom-Right,Favored: Plains)
+'
+' ===========================================================
+' UNITS
+' -----------------------------------------------------------
+' Each race has unique units with stats and costs.
+'
+' Elves:
+'   - Archer
+'   - Forest Sentinel
+'   - Ranger
+'   - Forest Knight
+'   - Forest Archer
+'
+' Dwarves:
+'   - Ironbolters
+'   - Ironshield
+'   - Ironfoot
+'   - Ironhorn Riders
+'   - Ironhorn Maulers
+'
+' Orcs:
+'   - Orc Shortbows
+'   - Orc Grunts
+'   - Orc Berserkers
+'   - Fangriders
+'   - Bloodwolf Riders
+'
+' Humans:
+'   - Archer
+'   - Spearman
+'   - Heavy Infantry
+'   - Light Cavalry
+'   - Heavy Cavalry
+'
+' ===========================================================
+' GAME SYSTEMS
+' -----------------------------------------------------------
+' - Army movement between tiles
+' - Tile capture rules
+' - Resource collection (by terrain)
+' - Population growth
+' - Combat detection and resolution
+'
+' ===========================================================
+' STATUS
+' -----------------------------------------------------------
+' - Current code builds in VB.NET (Visual Studio)
+' - Core map generation and ownership system working
+' - Units roster and production rules defined
+' - Battle report system under development
+'
+' ===========================================================
+' AI/HELP NOTES (for ChatGPT assistance)
+' -----------------------------------------------------------
+' - Needs refactoring of combat resolution for clarity
+' - Possible automation of turn processing
+' - Consider additional map features (rivers, cities)
+' - Consider cleaner separation between UI (Form1) and
+'   game logic (modules/classes)
+' ===========================================================
+
 
 Imports System.Drawing.Printing
 Imports System.IO
