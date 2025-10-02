@@ -29,6 +29,7 @@ Partial Class Form1
         rtbInfo = New RichTextBox()
         rtbResourceInfo = New RichTextBox()
         rtbPlayerSummary = New RichTextBox()
+        rtbArmies = New RichTextBox()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -91,11 +92,20 @@ Partial Class Form1
         rtbPlayerSummary.TabIndex = 7
         rtbPlayerSummary.Text = ""
         ' 
+        ' rtbArmies
+        ' 
+        rtbArmies.Location = New Point(1321, 13)
+        rtbArmies.Name = "rtbArmies"
+        rtbArmies.Size = New Size(445, 946)
+        rtbArmies.TabIndex = 8
+        rtbArmies.Text = ""
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(1327, 832)
+        ClientSize = New Size(1778, 971)
+        Controls.Add(rtbArmies)
         Controls.Add(rtbPlayerSummary)
         Controls.Add(rtbResourceInfo)
         Controls.Add(rtbInfo)
@@ -115,5 +125,6 @@ Partial Class Form1
     Friend WithEvents rtbInfo As RichTextBox
     Friend WithEvents rtbResourceInfo As RichTextBox
     Friend WithEvents rtbPlayerSummary As RichTextBox
+    Friend WithEvents rtbArmies As RichTextBox
 
 End Class
