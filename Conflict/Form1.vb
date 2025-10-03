@@ -117,6 +117,7 @@ Imports System.Reflection
 
 Public Class Form1
 
+
 #Region "=== Constants and Enums ==="
 
     Private Const Rows As Integer = 25
@@ -130,6 +131,9 @@ Public Class Form1
     Private Races() As String = {"Elf", "Dwarf", "Orc", "Human"}
 
     Private terrainCache As New Dictionary(Of String, Image)
+
+    ' === Summoner settings ===
+    Public Const SummonerCostPerLevel As Integer = 500
 
     Public Enum UnitType
         Archer = 0
@@ -181,9 +185,12 @@ Public Class Form1
 
         ' --- Hero / Summoner flags ---
         Public Property IsHero As Boolean = False
-        Public Property IsSummoner As Boolean = False
+        Public Property HeroType As String ' e.g. "Summoner", "Champion", "Sorcerer"
+
         Public Property SummonerFaction As String
         Public Property Level As Integer = 0
+
+        Public Property IsMercenary As Boolean = False
 
 
         ' === Constructors ===
@@ -211,7 +218,7 @@ Public Class Form1
             ' Normal roster units are never heroes
             Me.Level = 0
             Me.IsHero = False
-            Me.IsSummoner = False
+            Me.HeroType = Nothing
             Me.SummonerFaction = Nothing
         End Sub
 
@@ -235,14 +242,14 @@ Public Class Form1
             Me.Race = u.Race
             Me.Size = u.Size
             Me.IsHero = u.IsHero
-            Me.IsSummoner = u.IsSummoner
+            Me.HeroType = u.HeroType
             Me.SummonerFaction = u.SummonerFaction
             Me.Level = u.Level
         End Sub
 
-        ' Summoner hero constructor
-        Public Sub New(faction As String, level As Integer, ownerRace As String)
-            Me.Name = $"{faction} Summoner"
+        ' Generic hero constructor
+        Public Sub New(heroType As String, displayName As String, ownerRace As String)
+            Me.Name = displayName
             Me.HP = 10
             Me.Melee = 0
             Me.Ranged = 0
@@ -253,12 +260,11 @@ Public Class Form1
             Me.Type = UnitType.LightInfantry
             Me.Race = ownerRace
             Me.FoodCost = 1
-
             Me.IsHero = True
-            Me.IsSummoner = True
-            Me.SummonerFaction = faction
-            Me.Level = If(level > 0, level, 1)
+            Me.HeroType = heroType
+            Me.Level = 1   ' <--- Always start at Level 1
         End Sub
+
 
 
         ' === Effective stat helpers ===
@@ -311,30 +317,130 @@ Public Class Form1
         Public Property Parameter As String     ' e.g., "Ironfoot", "li", "HeavyInfantry"
     End Class
 
+    ' === Map the summoner names to their rosters (class-scope field) ===
     Private ReadOnly Property SummonerRosters As Dictionary(Of String, List(Of UnitStats))
         Get
             Dim dict As New Dictionary(Of String, List(Of UnitStats))(StringComparer.OrdinalIgnoreCase)
-
-            Dim forest = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Druidic Spirits")?.Units
-            Dim undead = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Undead")?.Units
-            Dim golems = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Golems")?.Units
-            Dim elems = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Elementals")?.Units
-            Dim drags = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Dragons")?.Units
-            Dim constructs = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Constructs")?.Units
-            Dim beasts = AllRaces.FirstOrDefault(Function(r) r.RaceName = "Beasts")?.Units
-
-            If forest IsNot Nothing Then dict("Druid") = forest
-            If undead IsNot Nothing Then dict("Necromancer") = undead
-            If golems IsNot Nothing Then dict("Golemancer") = golems
-            If elems IsNot Nothing Then dict("Elementalist") = elems
-            If constructs IsNot Nothing Then dict("Construct Master") = constructs
-            If beasts IsNot Nothing Then dict("Beastlord") = beasts
-
+            For Each key In {"Druid", "Runesmith", "Cleric", "War Shaman"}
+                Dim ru = AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(key, StringComparison.OrdinalIgnoreCase))
+                If ru IsNot Nothing AndAlso ru.Units IsNot Nothing AndAlso ru.Units.Count > 0 Then
+                    dict(key) = ru.Units
+                End If
+            Next
             Return dict
         End Get
     End Property
 
 
+    Private ReadOnly SummonerNameParts As New Dictionary(Of String, (String(), String())) From {
+    {"Elf", (New String() {
+        "Ela", "Syl", "Tha", "Ari", "Lora", "Vael", "Eri", "Cal", "Fina", "Ithe",
+        "Luth", "Myri", "Nae", "Ola", "Phae", "Quel", "Rina", "Sae", "Tala", "Vanya"
+    },
+    New String() {
+        "nor", "rian", "theas", "orien", "thir", "diel", "wen", "loth", "mir", "las",
+        "hael", "dir", "thas", "ion", "viel", "wyn", "driel", "lith", "ros", "thal"
+    })},
+    {"Dwarf", (New String() {
+        "Bor", "Dur", "Thra", "Grim", "Khar", "Bald", "Gim", "Thro", "Kaz", "Dain",
+        "Brom", "Farn", "Rurik", "Orin", "Sten", "Varr", "Hald", "Mor", "Rag", "Thrun"
+    },
+    New String() {
+        "in", "ar", "ek", "gar", "orn", "grim", "rak", "dun", "bar", "nor",
+        "drum", "thar", "mod", "lok", "rin", "var", "dan", "grom", "tor", "lin"
+    })},
+    {"Orc", (New String() {
+        "Mor", "Zhul", "Rok", "Gor", "Ur", "Thok", "Grash", "Krul", "Dro", "Shag",
+        "Ug", "Vrok", "Harg", "Lok", "Brug", "Naz", "Orug", "Skarn", "Truk", "Zag"
+    },
+    New String() {
+        "gar", "thak", "dok", "nak", "rash", "zug", "mok", "rak", "tash", "lok",
+        "gash", "dur", "nak", "grom", "dor", "ruk", "vash", "gol", "mog", "dak"
+    })},
+    {"Human", (New String() {
+        "Al", "Ced", "Ser", "Mar", "Rol", "Ed", "Wil", "Hen", "Rob", "Thom",
+        "Geoff", "Rich", "Stev", "Paul", "Jon", "Andr", "Leon", "Phil", "Greg", "Dan"
+    },
+    New String() {
+        "aric", "ric", "aphine", "ian", "fred", "son", "bert", "ton", "field", "well",
+        "win", "ard", "den", "worth", "ham", "mond", "ard", "iel", "drick", "tine"
+    })}
+}
+
+
+    Private Function GenerateSummonerName(race As String, baseName As String) As String
+        If Not SummonerNameParts.ContainsKey(race) Then
+            Return $"Unnamed {baseName}"
+        End If
+
+        Dim parts = SummonerNameParts(race)
+        Dim rnd As New Random()
+
+        Dim prefix = parts.Item1(rnd.Next(parts.Item1.Length))
+        Dim suffix = parts.Item2(rnd.Next(parts.Item2.Length))
+
+        Return $"{prefix}{suffix} the {baseName}"
+    End Function
+
+
+    Private Sub AIBuySummoners()
+        For Each p In Players
+            If p Is Nothing OrElse Not p.AIControlled Then Continue For
+            BuySummoner(p) ' BuySummoner will handle cost check internally
+        Next
+    End Sub
+
+
+    Private Sub BuySummoner(p As Player)
+        If p Is Nothing Then Exit Sub
+
+        ' === 1) Which roster does this race use?
+        Dim baseSummonerKey As String = ""
+        Dim baseSummonerName As String = ""
+        Select Case p.Race
+            Case "Elf" : baseSummonerKey = "Druid" : baseSummonerName = "Druid"
+            Case "Dwarf" : baseSummonerKey = "Runesmith" : baseSummonerName = "Runesmith"
+            Case "Human" : baseSummonerKey = "Cleric" : baseSummonerName = "Cleric"
+            Case "Orc" : baseSummonerKey = "War Shaman" : baseSummonerName = "War Shaman"
+            Case Else
+                Debug.WriteLine($"[SUMMONER] Unknown race '{p.Race}'. Aborting purchase.")
+                Exit Sub
+        End Select
+
+        ' === 2) Cost: 1000 for first hero, +2000 per additional hero (any type)
+        Dim ownedHeroes As Integer =
+        p.Armies.SelectMany(Function(a) a.Units).
+                 Count(Function(u) u IsNot Nothing AndAlso u.IsHero)
+
+        Dim cost As Integer = If(ownedHeroes = 0, 1000, 1000 + (ownedHeroes * 2000))
+
+        If p.Gold < cost Then
+            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford {baseSummonerName}. Needs {cost}, has {p.Gold}.")
+            Exit Sub
+        End If
+
+        ' === 3) Pay
+        p.Gold -= cost
+
+        ' === 4) Create a Level-1 Summoner hero
+        ' NOTE: requires your generic hero ctor: New Unit(heroType As String, displayName As String, ownerRace As String)
+        Dim fullName As String = GenerateSummonerName(p.Race, baseSummonerName & " Summoner")
+        Dim summonerUnit As New Unit("Summoner", fullName, p.Race) ' ctor should set IsHero=True, HeroType="Summoner", Level=1
+        summonerUnit.SummonerFaction = baseSummonerKey
+
+        ' Safety: if your constructor doesn't set these, uncomment the next three lines:
+        'summonerUnit.IsHero = True
+        'summonerUnit.HeroType = "Summoner"
+        'summonerUnit.Level = 1
+
+        ' === 5) Place into Army #1
+        If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
+            p.Armies(0).Units.Add(summonerUnit)
+            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
+        Else
+            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) has no army to receive {fullName}.")
+        End If
+    End Sub
 
     Private Sub ProcessSummoners()
         For Each p In Players
@@ -342,7 +448,10 @@ Public Class Form1
             For Each a In p.Armies
                 Dim unitsSnapshot = a.Units.ToList()
                 For Each u In unitsSnapshot
-                    If u IsNot Nothing AndAlso u.IsSummoner AndAlso Not String.IsNullOrWhiteSpace(u.SummonerFaction) Then
+                    If u IsNot Nothing AndAlso
+                   u.IsHero AndAlso
+                   u.HeroType = "Summoner" AndAlso
+                   Not String.IsNullOrWhiteSpace(u.SummonerFaction) Then
                         SummonCreaturesForUnit(u, a)
                         u.Level += 1
                     End If
@@ -360,9 +469,8 @@ Public Class Form1
         Dim roster = SummonerRosters(summoner.SummonerFaction)
         If roster Is Nothing OrElse roster.Count = 0 Then Exit Sub
 
-        ' === Budget: 3 points per level ===
-        Dim level As Integer = If(summoner.Level > 0, summoner.Level, 1)
-        Dim budget As Integer = level * 3
+        ' === Budget: 3 points per summoner level ===
+        Dim budget As Integer = summoner.Level * 3
 
         ' Randomiser seeded so results vary but are consistent per turn/summoner
         Dim seed As Integer = (Math.Max(1, currentTurnNumber) * 97) Xor
@@ -404,6 +512,7 @@ Public Class Form1
     End Sub
 
 
+
     Public Class RaceUnits
         Public Property RaceName As String
         Public Property Units As List(Of UnitStats)
@@ -437,8 +546,9 @@ Public Class Form1
         Public Property Amber As Integer
         Public Property Wine As Integer
         Public Property Furs As Integer
-
         Public Property CurrentBid As Integer
+        Public Property LastMercWages As Integer = 0
+
 
     End Class
 
@@ -587,6 +697,7 @@ Public Class Form1
 
         GenerateMap()
 
+        lblTurn.Text = $"Turn {currentTurnNumber}"
 
     End Sub
 
@@ -665,78 +776,94 @@ Public Class Form1
     }
         AllRaces.Add(elfUnits)
 
+        ' === Summoner roster: wrap list in RaceUnits and add ===
+        Dim runesmithUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Gnome Infantry", .Power = 1, .HP = 5, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Gnome Crossbowmen", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Stone Construct", .Power = 3, .HP = 10, .Melee = 1, .DefencePoints = 5},
+            New UnitStats With {.Name = "Iron Construct", .Power = 6, .HP = 20, .Melee = 2, .DefencePoints = 8},
+            New UnitStats With {.Name = "Hill Giant", .Power = 10, .HP = 35, .Melee = 10, .DefencePoints = 6, .CanCharge = True},
+            New UnitStats With {.Name = "Gnome Gyrocopter", .Power = 15, .HP = 15, .Melee = 1, .Ranged = 2, .DefencePoints = 3, .Flying = True, .CanChase = True},
+            New UnitStats With {.Name = "Mithril Construct", .Power = 20, .HP = 50, .Melee = 3, .DefencePoints = 12},
+            New UnitStats With {.Name = "Frost Giant", .Power = 25, .HP = 50, .Melee = 8, .DefencePoints = 15, .CanCharge = True},
+            New UnitStats With {.Name = "Fire Giant", .Power = 30, .HP = 60, .Melee = 10, .DefencePoints = 15, .CanCharge = True},
+            New UnitStats With {.Name = "Storm Giant", .Power = 50, .HP = 100, .Melee = 20, .Ranged = 10, .DefencePoints = 15, .CanCharge = True}
+        }
+
+        Dim runesmithRoster As New RaceUnits With {
+            .RaceName = "Runesmith",   ' << this string is the key your SummonerFaction must use
+            .Units = runesmithUnits
+        }
+        AllRaces.Add(runesmithRoster)
+
+
+        Dim warshamanSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Kobold Rabble", .Power = 1, .HP = 2, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Kobold Archers", .Power = 2, .HP = 2, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Goblin Infantry", .Power = 3, .HP = 6, .Melee = 1, .DefencePoints = 2, .FoodCost = 1},
+            New UnitStats With {.Name = "Goblin Archers", .Power = 4, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 2, .FoodCost = 1},
+            New UnitStats With {.Name = "Lizardman Warriors", .Power = 6, .HP = 15, .Melee = 3, .DefencePoints = 4, .FoodCost = 1},
+            New UnitStats With {.Name = "Lizardman Hunters", .Power = 8, .HP = 15, .Melee = 1, .Ranged = 2, .DefencePoints = 4, .FoodCost = 1, .CanChase = True},
+            New UnitStats With {.Name = "Ogre Brutes", .Power = 15, .HP = 40, .Melee = 6, .DefencePoints = 6, .CanCharge = True},
+            New UnitStats With {.Name = "Ogre Warhulks", .Power = 20, .HP = 50, .Melee = 8, .DefencePoints = 8, .CanCharge = True},
+            New UnitStats With {.Name = "Cave Trolls", .Power = 30, .HP = 70, .Melee = 9, .DefencePoints = 12, .CanCharge = True},
+            New UnitStats With {.Name = "War Troll", .Power = 50, .HP = 100, .Melee = 20, .DefencePoints = 15, .CanCharge = True}
+        }
+        Dim warshamanRoster As New RaceUnits With {
+            .RaceName = "War Shaman",   ' << this string is the key your SummonerFaction must use
+            .Units = warshamanSummonerUnits
+        }
+        AllRaces.Add(warshamanRoster)
+
+        Dim druidSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Fauns", .Power = 3, .HP = 8, .Melee = 2, .DefencePoints = 2, .FoodCost = 1},
+            New UnitStats With {.Name = "Satyrs", .Power = 4, .HP = 12, .Melee = 3, .DefencePoints = 3, .FoodCost = 1},
+            New UnitStats With {.Name = "Centaur Archers", .Power = 6, .HP = 15, .Melee = 1, .Ranged = 3, .DefencePoints = 3, .FoodCost = 1},
+            New UnitStats With {.Name = "Dryads", .Power = 8, .HP = 20, .Melee = 2, .DefencePoints = 6, .FoodCost = 1},
+            New UnitStats With {.Name = "Centaur Lancers", .Power = 12, .HP = 25, .Melee = 6, .DefencePoints = 6, .FoodCost = 1, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Giant Eagles", .Power = 15, .HP = 30, .Melee = 4, .Ranged = 2, .DefencePoints = 7, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Fey Knights", .Power = 20, .HP = 40, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Unicorns", .Power = 25, .HP = 60, .Melee = 7, .DefencePoints = 10, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Ents", .Power = 35, .HP = 90, .Melee = 11, .DefencePoints = 14},
+            New UnitStats With {.Name = "Forest Dragon", .Power = 50, .HP = 100, .Melee = 12, .Ranged = 20, .DefencePoints = 15, .CanChase = True, .Flying = True}
+        }
+        Dim druidRoster As New RaceUnits With {
+            .RaceName = "Druid",   ' << this string is the key your SummonerFaction must use
+            .Units = druidSummonerUnits
+        }
+        AllRaces.Add(druidRoster)
+
+        Dim clericSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Peasant Levy", .Power = 1, .HP = 5, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Halfling Slingers", .Power = 2, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Militia Spearmen", .Power = 3, .HP = 12, .Melee = 2, .DefencePoints = 3, .FoodCost = 1},
+            New UnitStats With {.Name = "Crossbowmen", .Power = 4, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 3, .FoodCost = 1},
+            New UnitStats With {.Name = "Ballista Company", .Power = 6, .HP = 20, .Melee = 2, .Ranged = 10, .DefencePoints = 4},
+            New UnitStats With {.Name = "War Bears", .Power = 10, .HP = 30, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Magic Knights", .Power = 15, .HP = 40, .Melee = 6, .Ranged = 3, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "War Elephants", .Power = 20, .HP = 50, .Melee = 8, .DefencePoints = 12, .CanCharge = True},
+            New UnitStats With {.Name = "Paladin Champions", .Power = 30, .HP = 70, .Melee = 15, .DefencePoints = 14, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Avatar of Light", .Power = 50, .HP = 100, .Melee = 25, .Ranged = 15, .DefencePoints = 15, .Flying = True, .CanCharge = True, .CanChase = True}
+        }
+        Dim clericRoster As New RaceUnits With {
+            .RaceName = "Cleric",   ' << this string is the key your SummonerFaction must use
+            .Units = clericSummonerUnits
+        }
+        AllRaces.Add(clericRoster)
+
+
+
         ' === Mercenary Factions ===
-
-        ' Kobolds
-        Dim kobolds As New RaceUnits With {
-    .RaceName = "Kobolds",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Kobold Infantry", .ShortName = "KobInf", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Armour = "None", .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Kobold Bowmen", .ShortName = "KobBow", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Armour = "None", .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Kobold Raider", .ShortName = "KobRaid", .Power = 2, .HP = 3, .Melee = 2, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightCavalry, .CanChase = True, .Armour = "None", .Shield = "Wooden"}
-    }
-}
-        AllRaces.Add(kobolds)
-
-
-        ' === Lizardmen ===
-        Dim lizardmen As New RaceUnits With {
-    .RaceName = "Lizardmen",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Lizardman Warrior", .ShortName = "LizWar", .Power = 3, .HP = 15, .Melee = 4, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Lizardman Skirmisher", .ShortName = "LizSki", .Power = 3, .HP = 10, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Lizardman Priest", .ShortName = "LizPri", .Power = 10, .HP = 10, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Lizardman Guard", .ShortName = "LizGua", .Power = 20, .HP = 30, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Raptor Rider", .ShortName = "LizRap", .Power = 20, .HP = 10, .Melee = 1, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1, .Type = UnitType.LightCavalry, .CanCharge = True, .CanChase = True}
-    }
-}
-        AllRaces.Add(lizardmen)
-
 
         ' === Skulkrin ===
         Dim skulkrin As New RaceUnits With {
     .RaceName = "Skulkrin",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Skulkrin Scrapper", .ShortName = "SkuScr", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Skulkrin Slinger", .ShortName = "SkuSli", .Power = 2, .HP = 5, .Melee = 0, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
+        New UnitStats With {.Name = "Skulkrin Scrapper", .ShortName = "SkuScr", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Skulkrin Slinger", .ShortName = "SkuSli", .Power = 2, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
     }
 }
         AllRaces.Add(skulkrin)
-
-
-        ' === Faction: Gnomes ===
-        Dim gnomes As New RaceUnits With {
-    .RaceName = "Gnomes",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Gnome Infantry", .ShortName = "GnoInf", .Power = 2, .HP = 8, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Gnome Crossbowmen", .ShortName = "GnoXbw", .Power = 3, .HP = 7, .Melee = 1, .Ranged = 2, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Gnome Heavyguard", .ShortName = "GnoHvy", .Power = 5, .HP = 12, .Melee = 3, .Ranged = 0, .DefencePoints = 4, .FoodCost = 1, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Gnome Gyrocopter", .ShortName = "GnoGyro", .Power = 8, .HP = 15, .Melee = 2, .Ranged = 4, .DefencePoints = 2, .FoodCost = 1, .Flying = True, .CanChase = True, .Type = UnitType.LightCavalry}
-    }
-}
-        AllRaces.Add(gnomes)
-
-
-        ' Peasants
-        Dim peasants As New RaceUnits With {
-    .RaceName = "Peasants",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Peasant Militia", .ShortName = "PeaMil", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Peasant Slingers", .ShortName = "PeaSli", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
-    }
-}
-        AllRaces.Add(peasants)
-
-        ' ----------------- Centaurs -----------------
-        Dim centaurs As New RaceUnits With {
-    .RaceName = "Centaurs",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Centaur Skirmisher", .ShortName = "CenSkr", .Power = 2, .HP = 6, .Melee = 1, .Ranged = 2, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightCavalry, .Armour = "None", .Shield = Nothing},
-        New UnitStats With {.Name = "Centaur Lancer", .ShortName = "CenLan", .Power = 4, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.LightCavalry, .Armour = "None", .Shield = Nothing, .CanCharge = True, .CanChase = True}
-    }
-}
-        AllRaces.Add(centaurs)
-
 
         ' Barbarians
         Dim barbarians As New RaceUnits With {
@@ -749,16 +876,6 @@ Public Class Form1
 }
         AllRaces.Add(barbarians)
 
-        ' Ogres
-        Dim ogres As New RaceUnits With {
-    .RaceName = "Ogres",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Ogre Brute", .ShortName = "OgreBru", .Power = 50, .HP = 25, .Melee = 10, .Ranged = 0, .DefencePoints = 2, .FoodCost = 2, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Ogre Crusher", .ShortName = "OgreCru", .Power = 100, .HP = 35, .Melee = 15, .Ranged = 0, .DefencePoints = 2, .FoodCost = 2, .Type = UnitType.HeavyInfantry}
-    }
-}
-        AllRaces.Add(ogres)
-
         ' Gnolls
         Dim gnolls As New RaceUnits With {
     .RaceName = "Gnolls",
@@ -769,18 +886,6 @@ Public Class Form1
     }
 }
         AllRaces.Add(gnolls)
-
-        ' Goblins
-        Dim goblins As New RaceUnits With {
-    .RaceName = "Goblins",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Goblin Skirmishers", .ShortName = "GobSki", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Goblin Slingers", .ShortName = "GobSli", .Power = 2, .HP = 2, .Melee = 0, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Goblin Spider Riders", .ShortName = "GobSpi", .Power = 3, .HP = 10, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightCavalry, .CanChase = True},
-        New UnitStats With {.Name = "Hobgoblin Brutes", .ShortName = "HobBru", .Power = 6, .HP = 20, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry}
-    }
-}
-        AllRaces.Add(goblins)
 
         ' === Werecreatures ===
         Dim werecreatures As New RaceUnits With {
@@ -794,72 +899,63 @@ Public Class Form1
 }
         AllRaces.Add(werecreatures)
 
-
-        ' === Trolls ===
-        Dim trolls As New RaceUnits With {
-    .RaceName = "Trolls",
+        ' === Harpies & Hydra ===
+        Dim harpies As New RaceUnits With {
+    .RaceName = "Harpies",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Cave Troll", .ShortName = "CavTro", .Power = 500, .HP = 50, .Melee = 12, .Ranged = 0, .DefencePoints = 2, .FoodCost = 2, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Forest Troll", .ShortName = "ForTro", .Power = 600, .HP = 80, .Melee = 18, .Ranged = 0, .DefencePoints = 3, .FoodCost = 3, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Ice Troll", .ShortName = "IceTro", .Power = 700, .HP = 120, .Melee = 24, .Ranged = 10, .DefencePoints = 4, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "War Troll", .ShortName = "WarTro", .Power = 800, .HP = 160, .Melee = 32, .Ranged = 0, .DefencePoints = 5, .FoodCost = 5, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Dire Troll", .ShortName = "DirTro", .Power = 900, .HP = 220, .Melee = 42, .Ranged = 0, .DefencePoints = 6, .FoodCost = 6, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Elder Troll", .ShortName = "EldTro", .Power = 1000, .HP = 300, .Melee = 55, .Ranged = 15, .DefencePoints = 7, .FoodCost = 8, .Type = UnitType.HeavyInfantry, .CanCharge = True}
+        New UnitStats With {.Name = "Harpy", .ShortName = "Har", .Power = 2, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry, .Flying = True, .CanChase = True},
+        New UnitStats With {.Name = "Hydra", .ShortName = "Hyd", .Power = 2000, .HP = 600, .Melee = 120, .Ranged = 0, .DefencePoints = 10, .FoodCost = 8, .Type = UnitType.HeavyInfantry, .CanCharge = True}
     }
 }
-        AllRaces.Add(trolls)
+        AllRaces.Add(harpies)
 
-
-        ' === Giants ===
-        Dim giants As New RaceUnits With {
-    .RaceName = "Giants",
+        ' === Cult ===
+        Dim cult As New RaceUnits With {
+    .RaceName = "Cultists",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Hill Giant", .ShortName = "HilGia", .Power = 800, .HP = 200, .Melee = 60, .Ranged = 0, .DefencePoints = 4, .FoodCost = 6, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Stone Giant", .ShortName = "StoGia", .Power = 850, .HP = 250, .Melee = 70, .Ranged = 20, .DefencePoints = 5, .FoodCost = 7, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Frost Giant", .ShortName = "FroGia", .Power = 900, .HP = 300, .Melee = 90, .Ranged = 30, .DefencePoints = 6, .FoodCost = 8, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Fire Giant", .ShortName = "FirGia", .Power = 950, .HP = 320, .Melee = 100, .Ranged = 40, .DefencePoints = 7, .FoodCost = 9, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Cloud Giant", .ShortName = "CloGia", .Power = 1000, .HP = 400, .Melee = 120, .Ranged = 60, .DefencePoints = 8, .FoodCost = 10, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
-        New UnitStats With {.Name = "Storm Giant", .ShortName = "StoGnt", .Power = 2000, .HP = 500, .Melee = 150, .Ranged = 80, .DefencePoints = 10, .FoodCost = 12, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True}
+        New UnitStats With {.Name = "Cultist", .ShortName = "Cul", .Power = 1, .HP = 3, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Grimlock", .ShortName = "Gri", .Power = 10, .HP = 12, .Melee = 3, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Umber Hulk", .ShortName = "Umb", .Power = 500, .HP = 150, .Melee = 35, .Ranged = 0, .DefencePoints = 6, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Beholder", .ShortName = "Behold", .Power = 5000, .HP = 800, .Melee = 150, .Ranged = 200, .DefencePoints = 12, .FoodCost = 6, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True}
     }
 }
-        AllRaces.Add(giants)
+        AllRaces.Add(cult)
 
+        ' === Demons ===
+        Dim demons As New RaceUnits With {
+    .RaceName = "Demons",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Dretch", .ShortName = "Dre", .Power = 1, .HP = 4, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Quasit", .ShortName = "Qua", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer, .Flying = True},
+        New UnitStats With {.Name = "Vrock", .ShortName = "Vro", .Power = 100, .HP = 40, .Melee = 10, .Ranged = 0, .DefencePoints = 2, .FoodCost = 2, .Type = UnitType.LightCavalry, .Flying = True, .CanChase = True},
+        New UnitStats With {.Name = "Hezrou", .ShortName = "Hez", .Power = 500, .HP = 160, .Melee = 35, .Ranged = 0, .DefencePoints = 6, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True},
+        New UnitStats With {.Name = "Glabrezu", .ShortName = "Gla", .Power = 1000, .HP = 300, .Melee = 70, .Ranged = 0, .DefencePoints = 8, .FoodCost = 6, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Marilith", .ShortName = "Mar", .Power = 1500, .HP = 280, .Melee = 90, .Ranged = 0, .DefencePoints = 7, .FoodCost = 6, .Type = UnitType.HeavyInfantry, .CanCharge = True},
+        New UnitStats With {.Name = "Balor", .ShortName = "Bal", .Power = 5000, .HP = 1000, .Melee = 300, .Ranged = 200, .DefencePoints = 14, .FoodCost = 10, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True, .CanCharge = True}
+    }
+}
+        AllRaces.Add(demons)
 
         Dim dragons As New RaceUnits With {
     .RaceName = "Dragons",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "White Dragon", .ShortName = "WhiDra", .Power = 1000, .HP = 250, .Melee = 200, .Ranged = 120, .DefencePoints = 8, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Brass Dragon", .ShortName = "BraDra", .Power = 1100, .HP = 280, .Melee = 220, .Ranged = 180, .DefencePoints = 9, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Black Dragon", .ShortName = "BlaDra", .Power = 1200, .HP = 300, .Melee = 320, .Ranged = 150, .DefencePoints = 10, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Copper Dragon", .ShortName = "CopDra", .Power = 1300, .HP = 320, .Melee = 280, .Ranged = 220, .DefencePoints = 11, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Green Dragon", .ShortName = "GreDra", .Power = 1400, .HP = 350, .Melee = 350, .Ranged = 250, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Blue Dragon", .ShortName = "BluDra", .Power = 1500, .HP = 400, .Melee = 500, .Ranged = 300, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Red Dragon", .ShortName = "RedDra", .Power = 1600, .HP = 450, .Melee = 800, .Ranged = 500, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Bronze Dragon", .ShortName = "BroDra", .Power = 1700, .HP = 480, .Melee = 850, .Ranged = 550, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Silver Dragon", .ShortName = "SilDra", .Power = 1800, .HP = 520, .Melee = 900, .Ranged = 600, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Gold Dragon", .ShortName = "GolDra", .Power = 1900, .HP = 600, .Melee = 1000, .Ranged = 700, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Ancient Dragon", .ShortName = "AncDra", .Power = 6000, .HP = 2500, .Melee = 5000, .Ranged = 5000, .DefencePoints = 16, .FoodCost = 3, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True}
+        New UnitStats With {.Name = "White Dragon", .ShortName = "WhiDra", .Power = 2000, .HP = 500, .Melee = 250, .Ranged = 125, .DefencePoints = 8, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Brass Dragon", .ShortName = "BraDra", .Power = 2200, .HP = 600, .Melee = 300, .Ranged = 150, .DefencePoints = 9, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Black Dragon", .ShortName = "BlaDra", .Power = 2400, .HP = 700, .Melee = 350, .Ranged = 175, .DefencePoints = 10, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Copper Dragon", .ShortName = "CopDra", .Power = 2600, .HP = 800, .Melee = 400, .Ranged = 200, .DefencePoints = 11, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Green Dragon", .ShortName = "GreDra", .Power = 2800, .HP = 900, .Melee = 450, .Ranged = 225, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Blue Dragon", .ShortName = "BluDra", .Power = 3000, .HP = 1000, .Melee = 500, .Ranged = 250, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Red Dragon", .ShortName = "RedDra", .Power = 3500, .HP = 1500, .Melee = 750, .Ranged = 375, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Bronze Dragon", .ShortName = "BroDra", .Power = 4000, .HP = 2000, .Melee = 1000, .Ranged = 500, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Silver Dragon", .ShortName = "SilDra", .Power = 5000, .HP = 3000, .Melee = 1500, .Ranged = 750, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Gold Dragon", .ShortName = "GolDra", .Power = 6000, .HP = 4000, .Melee = 2000, .Ranged = 1000, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
+        New UnitStats With {.Name = "Ancient Dragon", .ShortName = "AncDra", .Power = 10000, .HP = 10000, .Melee = 5000, .Ranged = 5000, .DefencePoints = 16, .FoodCost = 3, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True}
     }
 }
         AllRaces.Add(dragons)
 
-
-        ' === Summoner Faction: Druid (Elf-themed summons) ===
-        Dim druids As New RaceUnits With {
-    .RaceName = "Druidic Spirits",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Faun", .ShortName = "Faun", .Power = 1, .HP = 4, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Satyr", .ShortName = "Satyr", .Power = 3, .HP = 15, .Melee = 3, .Ranged = 1, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Unicorn", .ShortName = "Unicrn", .Power = 25, .HP = 125, .Melee = 15, .Ranged = 5, .DefencePoints = 10, .FoodCost = 0, .CanChase = True, .Type = UnitType.HeavyCavalry},
-        New UnitStats With {.Name = "Ent", .ShortName = "Ent", .Power = 49, .HP = 250, .Melee = 25, .Ranged = 0, .DefencePoints = 15, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Ancient Ent", .ShortName = "AncEnt", .Power = 64, .HP = 350, .Melee = 40, .Ranged = 0, .DefencePoints = 20, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
-    }
-}
-        AllRaces.Add(druids)
-
-
         ' === Summoner Faction: Necromancer (rescued from NecromancerSummonerRoster) ===
-        Dim necromancers As New RaceUnits With {
+        Dim Undead As New RaceUnits With {
     .RaceName = "Undead",
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Zombie", .ShortName = "Zombie", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0, .Type = UnitType.LightInfantry},
@@ -878,31 +974,10 @@ Public Class Form1
         New UnitStats With {.Name = "Bone Dragon", .ShortName = "BnDrgn", .Power = 100, .HP = 500, .Melee = 1000, .Ranged = 500, .DefencePoints = 10, .FoodCost = 0, .CanChase = True, .CanCharge = True, .Flying = True, .Type = UnitType.HeavyCavalry}
     }
 }
-        AllRaces.Add(necromancers)
-
-
-        ' === Summoner Faction: Beastlord ===
-        Dim beasts As New RaceUnits With {
-    .RaceName = "Beasts",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Snake", .ShortName = "Snake", .Power = 1, .HP = 1, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0, .CanCharge = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Boar", .ShortName = "Boar", .Power = 2, .HP = 4, .Melee = 1, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .CanCharge = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Wolf", .ShortName = "Wolf", .Power = 3, .HP = 4, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1, .CanChase = True, .CanCharge = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Black Bear", .ShortName = "BlkBer", .Power = 6, .HP = 12, .Melee = 3, .Ranged = 0, .DefencePoints = 5, .FoodCost = 1, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "White Ape", .ShortName = "WhtApe", .Power = 8, .HP = 14, .Melee = 4, .Ranged = 0, .DefencePoints = 4, .FoodCost = 1, .CanCharge = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Lion", .ShortName = "Lion", .Power = 12, .HP = 18, .Melee = 6, .Ranged = 0, .DefencePoints = 4, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Tiger", .ShortName = "Tiger", .Power = 16, .HP = 22, .Melee = 8, .Ranged = 0, .DefencePoints = 5, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Giant Eagle", .ShortName = "GtEgl", .Power = 20, .HP = 30, .Melee = 5, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1, .Flying = True, .CanChase = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Forest Gryphon", .ShortName = "FrsGrp", .Power = 28, .HP = 50, .Melee = 10, .Ranged = 0, .DefencePoints = 6, .FoodCost = 1, .Flying = True, .CanChase = True, .CanCharge = True, .Type = UnitType.HeavyCavalry},
-        New UnitStats With {.Name = "War Elephant", .ShortName = "WrElph", .Power = 36, .HP = 120, .Melee = 12, .Ranged = 0, .DefencePoints = 12, .FoodCost = 2, .CanChase = True, .CanCharge = True, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Wyvern", .ShortName = "Wyvern", .Power = 49, .HP = 150, .Melee = 15, .Ranged = 5, .DefencePoints = 10, .FoodCost = 2, .Flying = True, .CanChase = True, .CanCharge = True, .Type = UnitType.HeavyCavalry}
-    }
-}
-        AllRaces.Add(beasts)
-
+        AllRaces.Add(Undead)
 
         ' === Summoner Faction: Golemancer ===
-        Dim golemancers As New RaceUnits With {
+        Dim Golems As New RaceUnits With {
     .RaceName = "Golems",
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Mud Golem", .ShortName = "MudGol", .Power = 1, .HP = 10, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0, .Type = UnitType.LightInfantry},
@@ -911,55 +986,22 @@ Public Class Form1
         New UnitStats With {.Name = "Flesh Golem", .ShortName = "FlhGol", .Power = 20, .HP = 70, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
         New UnitStats With {.Name = "Adamant Golem", .ShortName = "AdmGol", .Power = 25, .HP = 100, .Melee = 4, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
         New UnitStats With {.Name = "Crystal Golem", .ShortName = "CryGol", .Power = 30, .HP = 140, .Melee = 4, .Ranged = 2, .DefencePoints = 14, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Obsidian Golem", .ShortName = "ObsGol", .Power = 40, .HP = 180, .Melee = 5, .Ranged = 0, .DefencePoints = 15, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Mithril Golem", .ShortName = "MthGol", .Power = 50, .HP = 220, .Melee = 6, .Ranged = 0, .DefencePoints = 16, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
+        New UnitStats With {.Name = "Obsidian Golem", .ShortName = "ObsGol", .Power = 40, .HP = 180, .Melee = 5, .Ranged = 0, .DefencePoints = 15, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
     }
 }
-        AllRaces.Add(golemancers)
-
-        ' === Summoner Faction: Construct Master ===
-        Dim constructs As New RaceUnits With {
-    .RaceName = "Constructs",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Wooden Construct", .ShortName = "WodCon", .Power = 1, .HP = 6, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Clay Construct", .ShortName = "ClyCon", .Power = 2, .HP = 12, .Melee = 1, .Ranged = 0, .DefencePoints = 2, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Stone Construct", .ShortName = "StnCon", .Power = 6, .HP = 30, .Melee = 2, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Iron Construct", .ShortName = "IrnCon", .Power = 12, .HP = 60, .Melee = 3, .Ranged = 0, .DefencePoints = 8, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Magic Knight", .ShortName = "MagKnt", .Power = 16, .HP = 80, .Melee = 6, .Ranged = 2, .DefencePoints = 10, .FoodCost = 0, .CanCharge = True, .Type = UnitType.HeavyCavalry},
-        New UnitStats With {.Name = "Runed Guardian", .ShortName = "RunGrd", .Power = 25, .HP = 120, .Melee = 8, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Arcane Sentinel", .ShortName = "ArcSen", .Power = 36, .HP = 180, .Melee = 10, .Ranged = 5, .DefencePoints = 14, .FoodCost = 0, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Mithril Construct", .ShortName = "MthCon", .Power = 49, .HP = 350, .Melee = 15, .Ranged = 0, .DefencePoints = 16, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
-    }
-}
-        AllRaces.Add(constructs)
-
+        AllRaces.Add(Golems)
 
         ' === Summoner Faction: Elementalists ===
-        Dim elementalists As New RaceUnits With {
+        Dim Elementals As New RaceUnits With {
     .RaceName = "Elementals",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Wisp", .ShortName = "Wisp", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Flicker", .ShortName = "Flick", .Power = 3, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Earth Elemental", .ShortName = "ErtEle", .Power = 8, .HP = 40, .Melee = 2, .Ranged = 0, .DefencePoints = 6, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Air Elemental", .ShortName = "AirEle", .Power = 10, .HP = 30, .Melee = 2, .Ranged = 2, .DefencePoints = 4, .FoodCost = 0, .Flying = True, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Fire Elemental", .ShortName = "FirEle", .Power = 12, .HP = 35, .Melee = 2, .Ranged = 2, .DefencePoints = 3, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Water Elemental", .ShortName = "WatEle", .Power = 14, .HP = 50, .Melee = 2, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
+        New UnitStats With {.Name = "Earth Elemental", .ShortName = "ErtEle", .Power = 300, .HP = 100, .Melee = 100, .Ranged = 0, .DefencePoints = 6, .FoodCost = 0, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Air Elemental", .ShortName = "AirEle", .Power = 400, .HP = 200, .Melee = 200, .Ranged = 2, .DefencePoints = 4, .FoodCost = 0, .Flying = True, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Fire Elemental", .ShortName = "FirEle", .Power = 500, .HP = 300, .Melee = 300, .Ranged = 2, .DefencePoints = 3, .FoodCost = 0, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Water Elemental", .ShortName = "WatEle", .Power = 600, .HP = 400, .Melee = 400, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .CanCharge = True, .CanChase = True}
     }
 }
-        AllRaces.Add(elementalists)
-
-
-        Dim heroes As New RaceUnits With {
-    .RaceName = "Heroes",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Druid", .ShortName = "Druid", .Power = 5, .HP = 200, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry, .IsSummoner = True, .IsHero = True, .SummonerFaction = "Druidic Spirits"},
-        New UnitStats With {.Name = "Necromancer", .ShortName = "Necro", .Power = 5, .HP = 200, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry, .IsSummoner = True, .IsHero = True, .SummonerFaction = "Undead"},
-        New UnitStats With {.Name = "Golemancer", .ShortName = "Golem", .Power = 5, .HP = 250, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .IsSummoner = True, .IsHero = True, .SummonerFaction = "Golems"},
-        New UnitStats With {.Name = "Elementalist", .ShortName = "Elem", .Power = 5, .HP = 180, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry, .IsSummoner = True, .IsHero = True, .SummonerFaction = "Elementals"}
-    }
-}
-        AllRaces.Add(heroes)
-
+        AllRaces.Add(Elementals)
 
     End Sub
 
@@ -1636,7 +1678,7 @@ Public Class Form1
             p.Wood += p.WoodCollectedThisTurn
             p.Mounts += p.MountsCollectedThisTurn
             'p.Food = p.FoodCollectedThisTurn
-            p.GoldCollectedThisTurn = p.Population \ 100
+            p.GoldCollectedThisTurn = p.Population \ 10
             p.Gold += p.GoldCollectedThisTurn
         Next
     End Sub
@@ -1786,7 +1828,6 @@ Public Class Form1
         pnlMap.Invalidate()
     End Sub
 
-
     Private Function GetEmbeddedImage(terrainName As String) As Image
         ' terrainName: e.g., "forest.png", "plains.png"
         Dim asm As Reflection.Assembly = Reflection.Assembly.GetExecutingAssembly()
@@ -1815,10 +1856,14 @@ Public Class Form1
         ProduceTradeGoods()
 
         ' --- 4. Summoners act ---
+        AIBuySummoners()
         ProcessSummoners()
 
         ' --- 5. Execute army movements step by step ---
         ProcessTurn()
+
+        ' ... 5b Deduct mercenary wages
+        PayMercenaryWages()
 
         ' --- 6. Refresh map display ---
         pnlMap.Invalidate()
@@ -1830,12 +1875,14 @@ Public Class Form1
         rtbPlayerSummary.AppendText(GenerateEmpireSummary)
 
         currentTurnNumber += 1
+        lblTurn.Text = $"Turn {currentTurnNumber}"
 
         ' === 6. Generate a new mercenary offer for this turn ===
         CurrentMercOffer = GenerateMercenaryOffer(currentTurnNumber)
 
         If CurrentMercOffer IsNot Nothing Then
-            Debug.WriteLine("Turn " & currentTurnNumber & " Mercenary Offer: " & CurrentMercOffer.ToString())
+            Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
+            Debug.WriteLine("Turn " & currentTurnNumber & " Mercenary Offer: " & CurrentMercOffer.ToString() & ", Wages: " & offerWages & " gold/turn")
         End If
 
         UpdateArmiesReport()
@@ -2358,7 +2405,7 @@ Public Class Form1
 
             ' Optional: mark/report dead now
             If kvp.Key.Size = 0 Then
-                Debug.WriteLine($"[BATTLE] {kvp.Key.Name} wiped out in {phase} phase")
+                'Debug.WriteLine($"[BATTLE] {kvp.Key.Name} wiped out in {phase} phase")
             End If
         Next
 
@@ -3143,6 +3190,9 @@ Public Class Form1
 
             ' Gold (now using stored properties)
             sb.AppendLine($"Gold: {p.Gold} (+{p.GoldCollectedThisTurn} this turn)")
+            sb.AppendLine($"Wages: {p.LastMercWages} this turn")
+            sb.AppendLine($"Income: {p.GoldCollectedThisTurn} (Wages: {p.LastMercWages}, Net: {p.GoldCollectedThisTurn - p.LastMercWages})")
+
 
             ' --- Trade goods (totals only) ---
             sb.AppendLine($"Gems: {p.Gems}")
@@ -3270,22 +3320,22 @@ Public Class Form1
                 Case "dwarf"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Gems += produced
-                    Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Gems (Total: {p.Gems})")
+                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Gems (Total: {p.Gems})")
 
                 Case "elf"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Amber += produced
-                    Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Amber (Total: {p.Amber})")
+                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Amber (Total: {p.Amber})")
 
                 Case "human"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Wine += produced
-                    Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Wine (Total: {p.Wine})")
+                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Wine (Total: {p.Wine})")
 
                 Case "orc"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Furs += produced
-                    Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Furs (Total: {p.Furs})")
+                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Furs (Total: {p.Furs})")
             End Select
         Next
     End Sub
@@ -3359,6 +3409,8 @@ Public Class Form1
 
     Private CurrentMercOffer As MercenaryArmy
 
+    Private MercPriceLevel As Integer = 0
+
     Public Class MercenaryStack
         ' For normal merc units
         Public Property Template As UnitStats
@@ -3421,8 +3473,11 @@ Public Class Form1
                 Dim existing = target.Units.FirstOrDefault(Function(u) u.Name = t.Name AndAlso u.Type = t.Type)
                 If existing IsNot Nothing Then
                     existing.Size += s.Count
+                    existing.IsMercenary = True
                 Else
-                    target.Units.Add(New Unit(t, winner.Race, s.Count))
+                    Dim newU As New Unit(t, winner.Race, s.Count)
+                    newU.IsMercenary = True
+                    target.Units.Add(newU)
                 End If
 
                 parts.Add($"{t.Name} x{s.Count}")
@@ -3438,39 +3493,16 @@ Public Class Form1
     Private Function GenerateMercenaryOffer(turnNumber As Integer) As MercenaryArmy
         Dim rnd As New Random()
 
-        ' === 0. 25% chance: Hero mercenary ===
-        Dim heroTypes As List(Of String) =
-        AllRaces.SelectMany(Function(r) r.Units).
-                 Where(Function(u) u.IsHero).
-                 Select(Function(u) u.Name).
-                 ToList()
-
-        If heroTypes.Count > 0 AndAlso rnd.NextDouble() < 0.25 Then
-            Dim heroType As String = heroTypes(rnd.Next(heroTypes.Count))
-
-            Dim mercArmy As New MercenaryArmy With {
-            .Faction = $"{heroType} (Hero)",
-            .Units = New List(Of MercenaryStack),
-            .MinBid = 1
-        }
-
-            ' Hero at level = current turn
-            Dim heroUnit As Unit = CreateSummonerUnit(heroType, turnNumber, "Neutral")
-            mercArmy.Units.Add(New MercenaryStack With {.Hero = heroUnit})
-
-            Return mercArmy
-        End If
-
         ' === 1. Budget scales with turn ===
-        Dim basePower As Integer = 150
+        Dim basePower As Integer = 50
         Dim powerGrowth As Integer = 50
-        Dim maxBudget As Integer = basePower + (turnNumber * powerGrowth)
+        Dim maxBudget As Integer = basePower + (MercPriceLevel * powerGrowth)
 
         Dim mercFactions As String() = {
-        "Lizardmen", "Barbarians", "Ogres", "Gnolls", "Dragons",
-        "Goblins", "Kobolds", "Peasants", "Gnomes", "Beasts",
-        "Giants", "Werecreatures", "Trolls", "Skulkrin"
-    }
+            "Skulkrin", "Barbarians", "Gnolls", "Werecreatures", "Harpies",
+            "Cultists", "Demons", "Dragons", "Undead", "Golems", "Elementals"
+        }
+
         Dim mercArmyNormal As MercenaryArmy = Nothing
 
         Dim outerGuard As Integer = 1000 ' prevent infinite faction loop
@@ -3622,6 +3654,7 @@ Public Class Form1
 
         AwardMercenariesToPlayer(CurrentMercOffer, winner)
         Debug.WriteLine($"Mercenaries hired by Player {winner.PlayerNumber} ({winner.Race}) for {amount} gold!")
+        MercPriceLevel += 1
 
         ' Clear current offer
         CurrentMercOffer = Nothing
@@ -3640,7 +3673,12 @@ Public Class Form1
 
                 ' Only accept valid bids
                 If p.CurrentBid > 0 AndAlso p.CurrentBid <= p.Gold Then
-                    bids(p) = p.CurrentBid
+                    ' --- Wage cap check ---
+                    If CanAffordMercenaries(p, CurrentMercOffer) Then
+                        bids(p) = p.CurrentBid
+                    Else
+                        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
+                    End If
                 End If
             Next
 
@@ -3652,6 +3690,36 @@ Public Class Form1
             Next
         End If
     End Sub
+
+    Private Function CanAffordMercenaries(p As Player, offer As MercenaryArmy) As Boolean
+        If p Is Nothing OrElse offer Is Nothing Then Return False
+
+        ' Current ongoing wages for this player
+        Dim currentWages As Integer = CalculateMercenaryWages(p)
+
+        ' Wages for the offered army (sum of Power × Count)
+        Dim newWages As Integer = 0
+        For Each s In offer.Units
+            If s Is Nothing Then Continue For
+
+            If s.Hero IsNot Nothing Then
+                ' Hero wage = their Power value
+                ' newWages += s.Hero.Power
+            ElseIf s.Template IsNot Nothing Then
+                newWages += s.Template.Power * s.Count
+            End If
+        Next
+
+        ' Projected total wages if this army is added
+        Dim projected As Integer = currentWages + newWages
+
+        ' Gold income per turn = population / 10
+        Dim income As Integer = p.Population \ 10
+
+        ' Can only afford if projected wages fit into income
+        Return projected <= income
+    End Function
+
 
     Private Function GenerateAIBid(p As Player, offer As MercenaryArmy) As Integer
         If p Is Nothing OrElse offer Is Nothing OrElse offer.Units.Count = 0 Then
@@ -3678,27 +3746,6 @@ Public Class Form1
 
 #End Region
 
-    Public Function CreateSummonerUnit(faction As String, level As Integer, ownerRace As String) As Unit
-        Return New Unit(faction, level, ownerRace)
-    End Function
-
-
-    ' Helper: format flags nicely for a unit line
-    Private Function FormatUnitFlags(u As Unit) As String
-        Dim flags As New List(Of String)
-        If u.CanCharge Then flags.Add("Charge")
-        If u.CanChase Then flags.Add("Chase")
-        If u.Flying Then flags.Add("Flying")
-
-        If u.IsSummoner Then
-            Dim fac As String = If(String.IsNullOrEmpty(u.SummonerFaction), "Unknown", u.SummonerFaction)
-            flags.Add($"Summoner({fac}, L{Math.Max(1, u.Level)})")
-        ElseIf u.IsHero Then
-            flags.Add($"Hero L{Math.Max(1, u.Level)}")
-        End If
-
-        Return If(flags.Count > 0, " | " & String.Join(", ", flags), "")
-    End Function
 
     Private Sub UpdateArmiesReport()
         rtbArmies.Clear()
@@ -3729,8 +3776,55 @@ Public Class Form1
             Next
         Next
     End Sub
+    Private Function CalculateMercenaryWages(p As Player) As Integer
+        If p Is Nothing OrElse p.Armies Is Nothing Then Return 0
 
+        Dim wages As Integer = 0
 
+        For Each a In p.Armies
+            If a.Units Is Nothing Then Continue For
+            For Each u In a.Units
+                If u IsNot Nothing AndAlso u.IsMercenary Then
+                    wages += u.Power * u.Size
+                    'Debug.WriteLine($"[WAGE-CHECK] {p.Race} army at ({a.X},{a.Y}): {u.Name} x{u.Size} costing {u.Power * u.Size}")
+                End If
+            Next
+        Next
+
+        Return wages
+    End Function
+
+    Private Sub PayMercenaryWages()
+        For Each p In Players
+            Dim wages As Integer = CalculateMercenaryWages(p)
+            p.LastMercWages = wages
+
+            If wages > 0 Then
+                p.Gold -= wages
+                If p.Gold < 0 Then p.Gold = 0 ' prevent negative gold
+
+                Debug.WriteLine($"[WAGES] {p.Race} (Player {p.PlayerNumber + 1}) paid {wages} gold in mercenary wages. Remaining gold: {p.Gold}")
+            End If
+        Next
+    End Sub
+
+    ' === Helper: calculate wages for a mercenary offer before hire ===
+    Private Function CalculateMercenaryOfferWages(offer As MercenaryArmy) As Integer
+        If offer Is Nothing OrElse offer.Units Is Nothing Then Return 0
+
+        Dim wages As Integer = 0
+        For Each s In offer.Units
+            If s Is Nothing Then Continue For
+
+            If s.Hero IsNot Nothing Then
+                wages += s.Hero.Power
+            ElseIf s.Template IsNot Nothing Then
+                wages += s.Template.Power * s.Count
+            End If
+        Next
+
+        Return wages
+    End Function
 
 
 End Class
