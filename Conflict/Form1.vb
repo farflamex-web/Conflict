@@ -135,6 +135,8 @@ Public Class Form1
     ' === Summoner settings ===
     Public Const SummonerCostPerLevel As Integer = 500
 
+    Private TheMarket As New Market()
+
     Public Enum UnitType
         Archer = 0
         LightInfantry = 1
@@ -548,18 +550,300 @@ Public Class Form1
         Public Property Furs As Integer
         Public Property CurrentBid As Integer
         Public Property LastMercWages As Integer = 0
+        Public Property Xorns As Integer = 0
 
 
     End Class
 
+    'Public Class Market
+    'Public Property GemPrice As Double = 50
+    'Public Property AmberPrice As Double = 25
+    'Public Property WinePrice As Double = 15
+    'Public Property FurPrice As Double = 10
+    'Public Property IronPrice As Double = 5
+    'Public Property WoodPrice As Double = 5
+    'End Class
+
+
+#Region "Market Stuff"
+
+    ' === Market Class (nested) ===
     Public Class Market
-        Public Property GemPrice As Double = 50
-        Public Property AmberPrice As Double = 25
-        Public Property WinePrice As Double = 15
-        Public Property FurPrice As Double = 10
-        Public Property IronPrice As Double = 5
-        Public Property WoodPrice As Double = 5
+        ' Prices (Double so we can use decimals)
+        Public Property GemPrice As Double = 20.0
+        Public Property AmberPrice As Double = 15.0
+        Public Property WinePrice As Double = 10.0
+        Public Property FurPrice As Double = 5.0
+        Public Property IronPrice As Double = 2.0
+        Public Property WoodPrice As Double = 2.0
+
+        ' Optional: track history or supply/demand stats later
+        ' Public Property TradeLog As New List(Of String)
+
+        ' === Market trading ===
+        Private Const FeeRate As Double = 0.1 ' 10% fee on trades
+
+        Public Sub BuyGoods(p As Player, good As String, amount As Integer)
+            If p Is Nothing OrElse amount <= 0 Then Exit Sub
+
+            Dim price As Double = GetPrice(good)
+            Dim cost As Double = price * amount
+            cost *= (1 + FeeRate) ' add fee
+
+            If p.Gold < cost Then
+                Debug.WriteLine($"[MARKET] {p.Race} cannot afford to buy {amount} {good}. Needed {cost}, has {p.Gold}")
+                Exit Sub
+            End If
+
+            p.Gold -= CInt(Math.Round(cost))
+
+            Select Case good.ToLower()
+                Case "gems" : p.Gems += amount
+                Case "amber" : p.Amber += amount
+                Case "wine" : p.Wine += amount
+                Case "furs" : p.Furs += amount
+                Case "iron" : p.Iron += amount
+                Case "wood" : p.Wood += amount
+            End Select
+
+            demand(good) += amount
+
+            Debug.WriteLine($"[MARKET] {p.Race} bought {amount} {good} for {Math.Round(cost, 2)} gold.")
+        End Sub
+
+        Public Sub SellGoods(p As Player, good As String, amount As Integer)
+            If p Is Nothing OrElse amount <= 0 Then Exit Sub
+
+            ' check stock
+            Dim hasEnough As Boolean = False
+            Select Case good.ToLower()
+                Case "gems" : hasEnough = (p.Gems >= amount)
+                Case "amber" : hasEnough = (p.Amber >= amount)
+                Case "wine" : hasEnough = (p.Wine >= amount)
+                Case "furs" : hasEnough = (p.Furs >= amount)
+                Case "iron" : hasEnough = (p.Iron >= amount)
+                Case "wood" : hasEnough = (p.Wood >= amount)
+            End Select
+
+            If Not hasEnough Then
+                Debug.WriteLine($"[MARKET] {p.Race} tried to sell {amount} {good} but doesn’t have enough.")
+                Exit Sub
+            End If
+
+            Dim price As Double = GetPrice(good)
+            Dim gross As Double = price * amount
+            gross *= (1 - FeeRate) ' subtract fee
+
+            p.Gold += CInt(Math.Round(gross))
+
+            Select Case good.ToLower()
+                Case "gems" : p.Gems -= amount
+                Case "amber" : p.Amber -= amount
+                Case "wine" : p.Wine -= amount
+                Case "furs" : p.Furs -= amount
+                Case "iron" : p.Iron -= amount
+                Case "wood" : p.Wood -= amount
+            End Select
+
+            supply(good) += amount
+
+            Debug.WriteLine($"[MARKET] {p.Race} sold {amount} {good} for {Math.Round(gross, 2)} gold.")
+        End Sub
+
+        Public Function GetPrice(good As String) As Double
+            Select Case good.ToLower()
+                Case "gems" : Return GemPrice
+                Case "amber" : Return AmberPrice
+                Case "wine" : Return WinePrice
+                Case "furs" : Return FurPrice
+                Case "iron" : Return IronPrice
+                Case "wood" : Return WoodPrice
+                Case Else : Return 1.0
+            End Select
+        End Function
+
+
+        ' === Adjust a price given demand vs supply ===
+        Public Sub UpdatePrices(demand As Dictionary(Of String, Integer),
+                            supply As Dictionary(Of String, Integer))
+
+            GemPrice = AdjustPrice(GemPrice, demand("gems"), supply("gems"), 500)
+            AmberPrice = AdjustPrice(AmberPrice, demand("amber"), supply("amber"), 500)
+            WinePrice = AdjustPrice(WinePrice, demand("wine"), supply("wine"), 500)
+            FurPrice = AdjustPrice(FurPrice, demand("furs"), supply("furs"), 500)
+            IronPrice = AdjustPrice(IronPrice, demand("iron"), supply("iron"), 2000)
+            WoodPrice = AdjustPrice(WoodPrice, demand("wood"), supply("wood"), 2000)
+        End Sub
+
+        Private Function AdjustPrice(oldPrice As Double, demand As Integer, supply As Integer, factor As Integer) As Double
+            Dim change As Double = (demand - supply) / factor
+            Dim newPrice As Double = oldPrice * (1 + change)
+            newPrice = Math.Max(oldPrice * 0.75, Math.Min(oldPrice * 1.25, newPrice))
+            Return Math.Round(newPrice, 2) ' 2 decimal places
+        End Function
+
+        ' Track per-turn trade volumes
+        Private demand As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) From {
+            {"gems", 0}, {"amber", 0}, {"wine", 0}, {"furs", 0}, {"iron", 0}, {"wood", 0}
+}
+
+        Private supply As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) From {
+            {"gems", 0}, {"amber", 0}, {"wine", 0}, {"furs", 0}, {"iron", 0}, {"wood", 0}
+}
+
+        Public Sub ResetTradeLogs()
+            For Each key In demand.Keys.ToList()
+                demand(key) = 0
+                supply(key) = 0
+            Next
+        End Sub
+        Public Sub UpdatePrices()
+            GemPrice = AdjustPrice(GemPrice, demand("gems"), supply("gems"), 500)
+            AmberPrice = AdjustPrice(AmberPrice, demand("amber"), supply("amber"), 500)
+            WinePrice = AdjustPrice(WinePrice, demand("wine"), supply("wine"), 500)
+            FurPrice = AdjustPrice(FurPrice, demand("furs"), supply("furs"), 500)
+            IronPrice = AdjustPrice(IronPrice, demand("iron"), supply("iron"), 2000)
+            WoodPrice = AdjustPrice(WoodPrice, demand("wood"), supply("wood"), 2000)
+        End Sub
+
+        Public Function DebugDemand() As Dictionary(Of String, Integer)
+            Return New Dictionary(Of String, Integer)(demand)
+        End Function
+
+        Public Function DebugSupply() As Dictionary(Of String, Integer)
+            Return New Dictionary(Of String, Integer)(supply)
+        End Function
+
+
     End Class
+
+    ' === Call this once per turn from btnProcessTurn_Click ===
+    ' === Call this once per turn from btnProcessTurn_Click ===
+    Private Sub AIHandleMarketTurn()
+        For Each p In Players
+            If p Is Nothing OrElse Not p.AIControlled Then Continue For
+
+            Dim log As String = $"{p.Race} (Player {p.PlayerNumber + 1}):" & vbCrLf
+
+            ' Random factor each turn
+            Dim roll As Integer = rnd.Next(100)
+
+            ' === SELL logic ===
+            Dim didSomething As Boolean = False
+            Dim sellChance As Integer = 20
+            If p.Gold < 500 Then sellChance += 30
+            If TheMarket.GemPrice > 25 OrElse TheMarket.AmberPrice > 20 OrElse
+           TheMarket.WinePrice > 15 OrElse TheMarket.FurPrice > 10 Then
+                sellChance += 20
+            End If
+
+            If roll < sellChance Then
+                Dim choice As String = PickTradeGoodForRace(p.Race)
+                Dim stock As Integer = GetPlayerStock(p, choice)
+                If stock > 0 Then
+                    Dim amount As Integer = Math.Min(stock, rnd.Next(5, 16))
+                    TheMarket.SellGoods(p, choice, amount)
+                    log &= $"   Sold {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
+                    didSomething = True
+                End If
+            End If
+
+            ' === BUY logic ===
+            roll = rnd.Next(100)
+            Dim buyChance As Integer = 10
+            If TheMarket.GemPrice < 15 OrElse TheMarket.AmberPrice < 12 OrElse
+           TheMarket.WinePrice < 8 OrElse TheMarket.FurPrice < 4 Then
+                buyChance += 30
+            End If
+            If p.Gold > 1000 Then buyChance += 20
+
+            If roll < buyChance Then
+                Dim goods() As String = {"gems", "amber", "wine", "furs", "iron", "wood"}
+                Dim choice As String = goods(rnd.Next(goods.Length))
+                Dim budget As Integer = Math.Min(p.Gold \ 5, rnd.Next(50, 151))
+                If budget > 0 Then
+                    Dim price As Double = TheMarket.GetPrice(choice)
+                    Dim amount As Integer = CInt(Math.Floor(budget / price))
+                    If amount > 0 Then
+                        TheMarket.BuyGoods(p, choice, amount)
+                        log &= $"   Bought {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
+                        didSomething = True
+                    End If
+                End If
+            End If
+
+            If Not didSomething Then
+                log &= "   No trades this turn." & vbCrLf
+            End If
+
+            ' Write to RTB
+            rtbGameInfo.AppendText(log & vbCrLf)
+        Next
+    End Sub
+
+
+    Private Function PickTradeGoodForRace(race As String) As String
+        Select Case race.ToLower()
+            Case "dwarf" : Return "gems"
+            Case "elf" : Return "amber"
+            Case "human" : Return "wine"
+            Case "orc" : Return "furs"
+            Case Else : Return "gems"
+        End Select
+    End Function
+
+    Private Function GetPlayerStock(p As Player, good As String) As Integer
+        Select Case good.ToLower()
+            Case "gems" : Return p.Gems
+            Case "amber" : Return p.Amber
+            Case "wine" : Return p.Wine
+            Case "furs" : Return p.Furs
+            Case "iron" : Return p.Iron
+            Case "wood" : Return p.Wood
+            Case Else : Return 0
+        End Select
+    End Function
+
+
+    Private Sub UpdateMarketReport(turnNumber As Integer)
+        rtbGameInfo.AppendText("=== Market Report ===" & vbCrLf)
+
+        ' Prices
+        rtbGameInfo.AppendText($"Gems:  {TheMarket.GemPrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText($"Amber: {TheMarket.AmberPrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText($"Wine:  {TheMarket.WinePrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText($"Furs:  {TheMarket.FurPrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText($"Iron:  {TheMarket.IronPrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText($"Wood:  {TheMarket.WoodPrice:F2} gold" & vbCrLf)
+        rtbGameInfo.AppendText(vbCrLf)
+
+        ' Demand/Supply logs (this turn so far)
+        rtbGameInfo.AppendText("Demand this turn:" & vbCrLf)
+        For Each kv In TheMarket.DebugDemand()
+            rtbGameInfo.AppendText($"  {kv.Key}: {kv.Value}" & vbCrLf)
+        Next
+        rtbGameInfo.AppendText("Supply this turn:" & vbCrLf)
+        For Each kv In TheMarket.DebugSupply()
+            rtbGameInfo.AppendText($"  {kv.Key}: {kv.Value}" & vbCrLf)
+        Next
+
+        rtbGameInfo.AppendText(vbCrLf & "(prices will update at end of turn)" & vbCrLf & vbCrLf)
+
+        ' === Player Inventories ===
+        rtbGameInfo.AppendText("=== Player Inventories ===" & vbCrLf)
+        For Each p In Players
+            rtbGameInfo.AppendText(
+            $"{p.Race}: " &
+            $"Gold {p.Gold}, " &
+            $"Gems {p.Gems}, Amber {p.Amber}, Wine {p.Wine}, Furs {p.Furs}, " &
+            $"Iron {p.Iron}, Wood {p.Wood}" & vbCrLf
+        )
+        Next
+        rtbGameInfo.AppendText(vbCrLf)
+    End Sub
+
+
+
 
 
     ' Helper to store info about each army involved
@@ -697,12 +981,12 @@ Public Class Form1
 
         GenerateMap()
 
-        lblTurn.Text = $"Turn {currentTurnNumber}"
-
+        lblHud.Text =
+            $"Turn: {currentTurnNumber}" & vbCrLf &
+            $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
     End Sub
 
 #End Region
-
 
 
 #Region "=== Initialization ==="
@@ -875,6 +1159,41 @@ Public Class Form1
     }
 }
         AllRaces.Add(barbarians)
+
+        ' Freeblades
+        Dim freeblades As New RaceUnits With {
+    .RaceName = "Freeblades",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Freeblade Skirmisher", .ShortName = "FreSkr", .Power = 2, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Freeblade Archer", .ShortName = "FreArc", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Freeblade Rider", .ShortName = "FreRid", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry}
+    }
+}
+        AllRaces.Add(freeblades)
+
+
+        ' Nomads
+        Dim nomads As New RaceUnits With {
+    .RaceName = "Nomads",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Nomad Rider", .ShortName = "NomRid", .Power = 3, .HP = 7, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 2, .CanChase = True, .Type = UnitType.LightCavalry},
+        New UnitStats With {.Name = "Nomad Horse Archer", .ShortName = "NomArc", .Power = 3, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 2, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Nomad Heavy Rider", .ShortName = "NomHev", .Power = 10, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 3, .CanCharge = True, .Type = UnitType.HeavyCavalry}
+    }
+}
+        AllRaces.Add(nomads)
+
+        ' Bandits
+        Dim bandits As New RaceUnits With {
+    .RaceName = "Bandits",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Bandit", .ShortName = "Bandit", .Power = 2, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Bandit Archer", .ShortName = "BanArc", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Bandit Rider", .ShortName = "BanRai", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 2, .CanChase = True, .Type = UnitType.LightCavalry}
+    }
+}
+        AllRaces.Add(bandits)
+
 
         ' Gnolls
         Dim gnolls As New RaceUnits With {
@@ -1051,11 +1370,11 @@ Public Class Form1
                 p.Armies.Add(army)
 
                 ' Debug log
-                Dim logLine As String = $"{p.Race} Army {a} at ({army.X},{army.Y}): " &
-                String.Join(", ", army.Units.Select(Function(u) $"{u.Name}({u.Size})")) &
-                $" | TotalSoldiers = {army.TotalSoldiers}"
-                System.Diagnostics.Debug.WriteLine(logLine)
-                rtbInfo.AppendText(logLine & Environment.NewLine)
+                'Dim logLine As String = $"{p.Race} Army {a} at ({army.X},{army.Y}): " &
+                'String.Join(", ", army.Units.Select(Function(u) $"{u.Name}({u.Size})")) &
+                '$" | TotalSoldiers = {army.TotalSoldiers}"
+                'System.Diagnostics.Debug.WriteLine(logLine)
+                'rtbInfo.AppendText(logLine & Environment.NewLine)
             Next
 
             Players.Add(p)
@@ -1868,14 +2187,14 @@ Public Class Form1
         ' --- 6. Refresh map display ---
         pnlMap.Invalidate()
 
-        ' --- 7. Update empire/resource info in RichTextBox ---
-        UpdateResourceInfo()
-
         rtbPlayerSummary.Clear()
         rtbPlayerSummary.AppendText(GenerateEmpireSummary)
 
         currentTurnNumber += 1
-        lblTurn.Text = $"Turn {currentTurnNumber}"
+
+        lblHud.Text =
+            $"Turn: {currentTurnNumber}" & vbCrLf &
+            $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
 
         ' === 6. Generate a new mercenary offer for this turn ===
         CurrentMercOffer = GenerateMercenaryOffer(currentTurnNumber)
@@ -1885,10 +2204,28 @@ Public Class Form1
             Debug.WriteLine("Turn " & currentTurnNumber & " Mercenary Offer: " & CurrentMercOffer.ToString() & ", Wages: " & offerWages & " gold/turn")
         End If
 
+        ProcessMarketTurn(currentTurnNumber)
+
         UpdateArmiesReport()
 
     End Sub
 
+    Private Sub ProcessMarketTurn(currentTurnNumber As Integer)
+        ' Clear RTB at start of turn
+        rtbGameInfo.Clear()
+
+        ' Show AI activity
+        rtbGameInfo.AppendText($"=== AI Market Actions (Turn {currentTurnNumber}) ===" & vbCrLf)
+        AIHandleMarketTurn()
+        rtbGameInfo.AppendText(vbCrLf)
+
+        ' Update prices + show report
+        TheMarket.UpdatePrices()
+        UpdateMarketReport(currentTurnNumber)
+
+        ' Reset demand/supply logs ready for next turn
+        TheMarket.ResetTradeLogs()
+    End Sub
 
 
 
@@ -2176,38 +2513,6 @@ Public Class Form1
         Return prefix & suffix
     End Function
 
-    Private Sub UpdateResourceInfo()
-        rtbResourceInfo.Clear()
-
-        For Each p In Players
-            rtbResourceInfo.AppendText($"Player {p.PlayerNumber + 1} - {p.Race}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Population: {p.Population}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Food Collected: {p.FoodCollectedThisTurn}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Iron Collected: {p.IronCollectedThisTurn}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Wood Collected: {p.WoodCollectedThisTurn}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Mounts Collected: {p.MountsCollectedThisTurn}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Total Mounts: {p.Mounts}" & Environment.NewLine)
-
-            ' --- Trade goods ---
-            rtbResourceInfo.AppendText($"Gems: {p.Gems}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Amber: {p.Amber}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Wine: {p.Wine}" & Environment.NewLine)
-            rtbResourceInfo.AppendText($"Furs: {p.Furs}" & Environment.NewLine)
-
-            ' --- Army sizes ---
-            If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
-                rtbResourceInfo.AppendText("Armies:" & Environment.NewLine)
-                For i As Integer = 0 To p.Armies.Count - 1
-                    Dim a = p.Armies(i)
-                    rtbResourceInfo.AppendText($"  Army {i + 1}: {a.TotalSoldiers} soldiers at ({a.X},{a.Y})" & Environment.NewLine)
-                Next
-            Else
-                rtbResourceInfo.AppendText("No armies" & Environment.NewLine)
-            End If
-
-            rtbResourceInfo.AppendText(Environment.NewLine)
-        Next
-    End Sub
 
 
     Public Function Battle(battleArmies As List(Of Army)) As BattleLog
@@ -2694,11 +2999,19 @@ Public Class Form1
         For i As Integer = 0 To startSnapshot.Count - 1
             Dim snapA = startSnapshot(i)
             Dim parts = New List(Of String)
-            For Each u In snapA.Units
+
+            ' Sort units by descending size for initial report
+            For Each u In snapA.Units.OrderByDescending(Function(x) x.Size)
                 parts.Add($"{u.Name} ({u.Size})")
             Next
+
             Dim total0 As Integer = snapA.Units.Sum(Function(u) u.Size)
             sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {total0}")
+
+            ' Add a blank line between armies, except after the last one
+            If i < startSnapshot.Count - 1 Then
+                sb.AppendLine()
+            End If
         Next
         sb.AppendLine(New String("-"c, 60))
 
@@ -2715,14 +3028,19 @@ Public Class Form1
                 Continue For
             End If
 
-            Dim phaseIndex As Integer = Array.IndexOf(phases, phase)
             sb.AppendLine($"{phase} Phase")
 
-            ' Narrative summary
-            Dim summaryLine As String = BuildPhaseSummary(battleLog, phase, phaseIndex)
-            If Not String.IsNullOrEmpty(summaryLine) Then
-                sb.AppendLine(summaryLine)
-                sb.AppendLine()
+            ' === Simplified losses summary by race ===
+            If battleLog IsNot Nothing AndAlso battleLog.PhaseEntries.ContainsKey(phase) Then
+                Dim raceLosses = battleLog.PhaseEntries(phase).
+                GroupBy(Function(e) ownerByUnit(e.Defender).Race).
+                Select(Function(g) $"{g.Key} ({g.Sum(Function(e) e.Casualties)})").
+                ToList()
+
+                If raceLosses.Any() Then
+                    sb.AppendLine("Losses: " & String.Join(", ", raceLosses))
+                    sb.AppendLine()
+                End If
             End If
 
             ' === Main Casualties summary (top 5, filter out 0-loss, always include heroes) ===
@@ -2795,6 +3113,8 @@ Public Class Form1
                             sb.AppendLine($" - {g.Name} ({g.Race}) lost {g.Casualties}")
                         End If
                     Next
+                    ' Add separator line after casualties
+                    sb.AppendLine("------------")
                     sb.AppendLine()
                 End If
             End If
@@ -2815,9 +3135,6 @@ Public Class Form1
                     End If
                 Next
             End If
-
-            ' === Commented out: mid-phase recaps ===
-            ' (kept for reference, removed to reduce report length)
         Next
 
         ' ---------- Final Army Status ----------
@@ -2829,15 +3146,27 @@ Public Class Form1
             Dim sizes = currentSizesByArmy(liveA)
 
             Dim parts As New List(Of String)
-            For j As Integer = 0 To names.Count - 1
-                If sizes(j) <= 0 Then
-                    parts.Add($"{names(j).Name} (0 - DEAD)")
+
+            ' Sort by descending size for final report
+            Dim sorted = names.Select(Function(u, idx) New With {.Unit = u, .Size = sizes(idx)}).
+                           OrderByDescending(Function(x) x.Size).
+                           ToList()
+
+            For Each pair In sorted
+                If pair.Size <= 0 Then
+                    parts.Add($"{pair.Unit.Name} (0 - DEAD)")
                 Else
-                    parts.Add($"{names(j).Name} ({sizes(j)})")
+                    parts.Add($"{pair.Unit.Name} ({pair.Size})")
                 End If
             Next
+
             Dim totalNow As Integer = sizes.Sum()
             sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {totalNow}")
+
+            ' Add a blank line between armies, except after the last one
+            If i < startSnapshot.Count - 1 Then
+                sb.AppendLine()
+            End If
         Next
         sb.AppendLine(New String("-"c, 60))
 
@@ -3196,6 +3525,7 @@ Public Class Form1
 
             ' --- Trade goods (totals only) ---
             sb.AppendLine($"Gems: {p.Gems}")
+            If p.Xorns > 0 Then sb.AppendLine($"Xorns: {p.Xorns}")
             sb.AppendLine($"Amber: {p.Amber}")
             sb.AppendLine($"Wine: {p.Wine}")
             sb.AppendLine($"Furs: {p.Furs}")
@@ -3311,8 +3641,6 @@ Public Class Form1
     End Sub
 
 
-#Region "Market Stuff"
-
     ' === Trade Goods Production ===
     Public Sub ProduceTradeGoods()
         For Each p In Players
@@ -3320,22 +3648,33 @@ Public Class Form1
                 Case "dwarf"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Gems += produced
-                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Gems (Total: {p.Gems})")
+
+                    ' === Xorn discovery chance (based on gems produced) ===
+                    ' Roll % chance equal to gems produced
+                    If rnd.Next(100) < produced Then
+                        p.Xorns += 1
+                        ' Announce discovery (later you can hook this into your report system) - TO DO
+                        Debug.WriteLine($"[XORN] {p.Race} Player discovered a Xorn! Total Xorns: {p.Xorns}")
+                    End If
+
+                    ' === Xorn bonus gems each turn ===
+                    If p.Xorns > 0 Then
+                        Dim bonus As Integer = Enumerable.Range(1, p.Xorns).Sum(Function(i) rnd.Next(1, 11))
+                        p.Gems += bonus
+                        Debug.WriteLine($"[XORN] {p.Race} Player gained {bonus} bonus Gems from {p.Xorns} Xorn(s). (Total: {p.Gems})")
+                    End If
 
                 Case "elf"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Amber += produced
-                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Amber (Total: {p.Amber})")
 
                 Case "human"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Wine += produced
-                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Wine (Total: {p.Wine})")
 
                 Case "orc"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
                     p.Furs += produced
-                    'Debug.WriteLine($"[MARKET] {p.Race} Player produced {produced} Furs (Total: {p.Furs})")
             End Select
         Next
     End Sub
@@ -3347,48 +3686,6 @@ Public Class Form1
         Dim efficiency As Double = 1000.0 / (1000.0 + goldHeld)
         Return CInt(profit * efficiency)
     End Function
-
-    Public Sub SellGoods(p As Player, good As String, amount As Integer, m As Market)
-        Dim price As Double
-        Select Case good.ToLower()
-            Case "gems" : price = m.GemPrice : p.Gems -= amount
-            Case "amber" : price = m.AmberPrice : p.Amber -= amount
-            Case "wine" : price = m.WinePrice : p.Wine -= amount
-            Case "furs" : price = m.FurPrice : p.Furs -= amount
-            Case "iron" : price = m.IronPrice : p.Iron -= amount
-            Case "wood" : price = m.WoodPrice : p.Wood -= amount
-        End Select
-
-        Dim gross As Double = price * amount
-        Dim afterFee As Double = gross * (1 - FeeRate)
-        Dim profit As Integer = ApplyDiminishingReturns(p.Gold, afterFee)
-        p.Gold += profit
-    End Sub
-
-    Public Sub BuyGoods(p As Player, good As String, amount As Integer, m As Market)
-        Dim price As Double
-        Select Case good.ToLower()
-            Case "gems" : price = m.GemPrice : p.Gems += amount
-            Case "amber" : price = m.AmberPrice : p.Amber += amount
-            Case "wine" : price = m.WinePrice : p.Wine += amount
-            Case "furs" : price = m.FurPrice : p.Furs += amount
-            Case "iron" : price = m.IronPrice : p.Iron += amount
-            Case "wood" : price = m.WoodPrice : p.Wood += amount
-        End Select
-
-        Dim cost As Double = price * amount
-        Dim afterFee As Double = cost * (1 + FeeRate)
-        p.Gold -= CInt(afterFee)
-    End Sub
-
-    Public Sub UpdatePrices(m As Market, demand As Dictionary(Of String, Integer), supply As Dictionary(Of String, Integer))
-        m.GemPrice = AdjustPrice(m.GemPrice, demand("gems"), supply("gems"), 500)
-        m.AmberPrice = AdjustPrice(m.AmberPrice, demand("amber"), supply("amber"), 500)
-        m.WinePrice = AdjustPrice(m.WinePrice, demand("wine"), supply("wine"), 500)
-        m.FurPrice = AdjustPrice(m.FurPrice, demand("furs"), supply("furs"), 500)
-        m.IronPrice = AdjustPrice(m.IronPrice, demand("iron"), supply("iron"), 2000)
-        m.WoodPrice = AdjustPrice(m.WoodPrice, demand("wood"), supply("wood"), 2000)
-    End Sub
 
     Private Function AdjustPrice(oldPrice As Double, demand As Integer, supply As Integer, factor As Integer) As Double
         Dim change As Double = (demand - supply) / factor
@@ -3500,7 +3797,8 @@ Public Class Form1
 
         Dim mercFactions As String() = {
             "Skulkrin", "Barbarians", "Gnolls", "Werecreatures", "Harpies",
-            "Cultists", "Demons", "Dragons", "Undead", "Golems", "Elementals"
+            "Cultists", "Demons", "Dragons", "Undead", "Golems", "Elementals",
+            "Bandits", "Nomads", "Freeblades"
         }
 
         Dim mercArmyNormal As MercenaryArmy = Nothing
