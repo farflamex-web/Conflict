@@ -24,7 +24,6 @@ Partial Class Form1
     Private Sub InitializeComponent()
         btnPrint = New Button()
         pnlMap = New Panel()
-        btn_Show = New Button()
         btnProcessTurn = New Button()
         rtbInfo = New RichTextBox()
         rtbGameInfo = New RichTextBox()
@@ -48,15 +47,6 @@ Partial Class Form1
         pnlMap.Name = "pnlMap"
         pnlMap.Size = New Size(391, 413)
         pnlMap.TabIndex = 2
-        ' 
-        ' btn_Show
-        ' 
-        btn_Show.Location = New Point(542, 855)
-        btn_Show.Name = "btn_Show"
-        btn_Show.Size = New Size(75, 23)
-        btn_Show.TabIndex = 3
-        btn_Show.Text = "Show"
-        btn_Show.UseVisualStyleBackColor = True
         ' 
         ' btnProcessTurn
         ' 
@@ -121,7 +111,6 @@ Partial Class Form1
         Controls.Add(rtbGameInfo)
         Controls.Add(rtbInfo)
         Controls.Add(btnProcessTurn)
-        Controls.Add(btn_Show)
         Controls.Add(pnlMap)
         Controls.Add(btnPrint)
         Name = "Form1"
@@ -132,7 +121,6 @@ Partial Class Form1
 
     Friend WithEvents btnPrint As Button
     Friend WithEvents pnlMap As Panel
-    Friend WithEvents btn_Show As Button
     Friend WithEvents btnProcessTurn As Button
     Friend WithEvents rtbInfo As RichTextBox
     Friend WithEvents rtbGameInfo As RichTextBox

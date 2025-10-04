@@ -426,7 +426,7 @@ Public Class Form1
 
         ' === 4) Create a Level-1 Summoner hero
         ' NOTE: requires your generic hero ctor: New Unit(heroType As String, displayName As String, ownerRace As String)
-        Dim fullName As String = GenerateSummonerName(p.Race, baseSummonerName & " Summoner")
+        Dim fullName As String = GenerateSummonerName(p.Race, baseSummonerName)
         Dim summonerUnit As New Unit("Summoner", fullName, p.Race) ' ctor should set IsHero=True, HeroType="Summoner", Level=1
         summonerUnit.SummonerFaction = baseSummonerKey
 
@@ -1014,7 +1014,7 @@ Public Class Form1
         .Units = New List(Of UnitStats) From {
             New UnitStats With {.Name = "Ironbolters", .Type = UnitType.Archer, .HP = 6, .Melee = 1, .Ranged = 1, .Armour = "Chainmail", .Shield = Nothing, .Cost = "I:2, W:1", .ShortName = "a"},
             New UnitStats With {.Name = "Ironshield", .Type = UnitType.LightInfantry, .HP = 7, .Melee = 2, .Ranged = 0, .Armour = "Chainmail", .Shield = "Iron", .Cost = "I:2", .ShortName = "li"},
-            New UnitStats With {.Name = "Stormforged Hammerguards", .Type = UnitType.HeavyInfantry, .HP = 15, .Melee = 3, .Ranged = 0, .Armour = "Plate", .Shield = Nothing, .Cost = "I:3", .ShortName = "hi", .CanCharge = True},
+            New UnitStats With {.Name = "Hammerguards", .Type = UnitType.HeavyInfantry, .HP = 15, .Melee = 3, .Ranged = 0, .Armour = "Plate", .Shield = Nothing, .Cost = "I:3", .ShortName = "hi", .CanCharge = True},
             New UnitStats With {.Name = "Ironhorn Riders", .Type = UnitType.LightCavalry, .HP = 7, .Melee = 2, .Ranged = 0, .Armour = "Chainmail", .Shield = "Iron", .Cost = "I:3, M:1", .ShortName = "lc", .CanChase = True},
             New UnitStats With {.Name = "Ironhorn Maulers", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 3, .Ranged = 0, .Armour = "Plate", .Shield = Nothing, .Cost = "I:3, M:1", .ShortName = "hc", .CanCharge = True}
         }
@@ -1273,7 +1273,6 @@ Public Class Form1
 }
         AllRaces.Add(dragons)
 
-        ' === Summoner Faction: Necromancer (rescued from NecromancerSummonerRoster) ===
         Dim Undead As New RaceUnits With {
     .RaceName = "Undead",
     .Units = New List(Of UnitStats) From {
@@ -1295,7 +1294,6 @@ Public Class Form1
 }
         AllRaces.Add(Undead)
 
-        ' === Summoner Faction: Golemancer ===
         Dim Golems As New RaceUnits With {
     .RaceName = "Golems",
     .Units = New List(Of UnitStats) From {
@@ -1310,7 +1308,6 @@ Public Class Form1
 }
         AllRaces.Add(Golems)
 
-        ' === Summoner Faction: Elementalists ===
         Dim Elementals As New RaceUnits With {
     .RaceName = "Elementals",
     .Units = New List(Of UnitStats) From {
@@ -1756,7 +1753,7 @@ Public Class Form1
                     Next
 
                     ' Skip if less than 2 distinct players are present
-                    Dim distinctPlayers As New HashSet(Of String)(allArmiesHere.Select(Function(ar) ar.Race))
+                    Dim distinctPlayers As New HashSet(Of String)(allArmiesHere.Select(Function(ar) ar.Race), StringComparer.OrdinalIgnoreCase)
                     If distinctPlayers.Count < 2 Then Continue For
 
                     processedLocations.Add(pt)
@@ -1766,7 +1763,7 @@ Public Class Form1
                     Dim mergedToOriginal As New Dictionary(Of Army, List(Of Army))
 
                     For Each race As String In distinctPlayers
-                        Dim playerArmies As List(Of Army) = allArmiesHere.Where(Function(ar) ar.Race = race).ToList()
+                        Dim playerArmies As List(Of Army) = allArmiesHere.Where(Function(ar) ar.Race.Equals(race, StringComparison.OrdinalIgnoreCase)).ToList()
 
                         Dim mergedArmy As New Army With {
                         .Race = race,
@@ -1816,10 +1813,7 @@ Public Class Form1
                             For Each origArmy As Army In originalArmies
                                 For Each u As Unit In origArmy.Units
                                     If u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type Then
-                                        Dim proportion As Double = 0.0
-                                        If totalOriginalSize > 0 Then
-                                            proportion = CDbl(u.Size) / CDbl(totalOriginalSize)
-                                        End If
+                                        Dim proportion As Double = If(totalOriginalSize > 0, CDbl(u.Size) / CDbl(totalOriginalSize), 0.0)
                                         Dim casualtiesToApply As Integer = CInt(Math.Round(mergedCasualties * proportion))
                                         u.Size -= casualtiesToApply
                                         If u.Size < 0 Then u.Size = 0
@@ -1830,28 +1824,37 @@ Public Class Form1
                     Next
 
                     ' --- Retreat handling for the real armies on the map ---
-                    Dim maxStrength As Integer = Integer.MinValue
-                    For Each army As Army In allArmiesHere
-                        If army.TotalSoldiers > maxStrength Then maxStrength = army.TotalSoldiers
-                    Next
+                    ' Determine the WINNING SIDE (race) from the post-battle merged totals.
+                    Dim winningRace As String = Nothing
 
-                    Dim strongestCount As Integer = 0
-                    For Each ar As Army In allArmiesHere
-                        If ar.TotalSoldiers = maxStrength Then
-                            strongestCount += 1
+                    Dim raceTotals = mergedArmies _
+                    .GroupBy(Function(ma) ma.Race, StringComparer.OrdinalIgnoreCase) _
+                    .Select(Function(g) New With {
+                        .Race = g.Key,
+                        .Total = g.Sum(Function(ma) ma.TotalSoldiers)
+                    }) _
+                    .OrderByDescending(Function(x) x.Total) _
+                    .ToList()
+
+                    If raceTotals.Count > 0 Then
+                        Dim top = raceTotals(0)
+                        ' Unique winner only if strictly greater than second place (if it exists)
+                        If raceTotals.Count = 1 OrElse top.Total > raceTotals(1).Total Then
+                            winningRace = top.Race
                         End If
-                    Next
+                    End If
 
-                    ' Weaker (or tied-at-top in a multiway-tie) armies go home
-                    For Each army As Army In allArmiesHere
-                        Dim sendHome As Boolean = (army.TotalSoldiers < maxStrength) OrElse
-                        (army.TotalSoldiers = maxStrength AndAlso strongestCount > 1)
-
-                        If sendHome Then
-                            SendArmyBackToSpawn(army)          ' now teleports + clears + flags
-                            battleLog.RecordRetreat(army)
-                        End If
-                    Next
+                    If Not String.IsNullOrEmpty(winningRace) Then
+                        ' Send home ONLY the armies not on the winning side
+                        For Each army As Army In allArmiesHere
+                            If Not army.Race.Equals(winningRace, StringComparison.OrdinalIgnoreCase) Then
+                                SendArmyBackToSpawn(army)
+                                battleLog.RecordRetreat(army)
+                            End If
+                        Next
+                    Else
+                        ' Tie or unresolved → no retreats this tick
+                    End If
 
                     ' --- Mark these armies as having battled this tick ---
                     For Each army As Army In allArmiesHere
@@ -2143,7 +2146,7 @@ Public Class Form1
         DrawMap(e.Graphics, pnlMap.ClientSize.Width, pnlMap.ClientSize.Height)
     End Sub
 
-    Private Sub btn_Show_Click(sender As Object, e As EventArgs) Handles btn_Show.Click
+    Private Sub btn_Show_Click(sender As Object, e As EventArgs)
         pnlMap.Invalidate()
     End Sub
 
@@ -2672,17 +2675,20 @@ Public Class Form1
                 Const CASUALTY_MULTIPLIER As Double = 3.0
                 Dim finalDamage As Double = rawDamage * (1 - mitigationValue) * CASUALTY_MULTIPLIER
 
-                ' Calculate casualties (cannot exceed unit size)
-                Dim casualties As Integer = Math.Min(sizeBefore, CInt(Math.Floor(finalDamage / defUnit.GetEffectiveHP())))
+                ' --- Calculate casualties (clamped to remaining men this phase) ---
+                Dim casualtiesRaw As Integer = CInt(Math.Floor(finalDamage / defUnit.GetEffectiveHP()))
+                Dim alreadyAllocated As Integer = CInt(calculatedCasualties(defUnit))
+                Dim remainingThisPhase As Integer = Math.Max(0, sizeBefore - alreadyAllocated)
+                Dim casualties As Integer = Math.Min(remainingThisPhase, casualtiesRaw)
 
-                ' --- Record entry in BattleLog ---
-                If battleLog IsNot Nothing Then
+                ' --- Record entry in BattleLog (using clamped casualties) ---
+                If battleLog IsNot Nothing AndAlso casualties > 0 Then
                     Dim entry As New BattleEntry With {
                     .Attacker = atkUnit,
                     .Defender = defUnit,
                     .Phase = phase,
                     .SizeBefore = sizeBefore,
-                    .SizeAfter = Math.Max(0, sizeBefore - CInt(calculatedCasualties(defUnit) + casualties)),
+                    .SizeAfter = Math.Max(0, sizeBefore - (alreadyAllocated + casualties)),
                     .RawDamage = rawDamage,
                     .Mitigation = mitigationValue,
                     .MitigationExplanation = mitigationExplanation,
@@ -2779,67 +2785,104 @@ Public Class Form1
         AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(player.Race, StringComparison.OrdinalIgnoreCase))
         If raceUnits Is Nothing Then Exit Sub
 
-        ' ---------- DESPERATION OVERRIDE ----------
+        ' ---------- STRENGTH COMPARISON ----------
         Dim ourStrength As Integer = player.Armies.Sum(Function(a) a.TotalSoldiers)
         Dim enemyStrongest As Integer =
         Players.Where(Function(pp) Not pp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase)) _
-               .GroupBy(Function(pp) pp.Race, StringComparer.OrdinalIgnoreCase) _
-               .Select(Function(g) g.SelectMany(Function(pp) pp.Armies).Sum(Function(a) a.TotalSoldiers)) _
+               .Select(Function(pp) pp.Armies.Sum(Function(a) a.TotalSoldiers)) _
                .DefaultIfEmpty(0) _
                .Max()
 
-        ' Desperate if we have less than 20% of the strongest rival
-        Dim desperate As Boolean = (enemyStrongest > 0 AndAlso ourStrength < enemyStrongest * 0.2)
+        ' Panic flag: if any enemy is >= 2× our strength OR we are <25% of strongest rival
+        Dim panic As Boolean = (enemyStrongest >= ourStrength * 2) OrElse (ourStrength < enemyStrongest * 0.25)
 
-        If desperate Then
-            Dim cheapest As UnitStats = GetCheapestAvailableUnit(player)
-            If cheapest IsNot Nothing AndAlso player.Population > 0 Then
-                ' Force recruit – ignore starvation concerns
-                army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = cheapest.ShortName})
-                Exit Sub
+        ' ---------- BASELINE REVIVE ----------
+        ' If this army is below 500, always recruit up to 500 if possible
+        If army.TotalSoldiers < 500 AndAlso player.Population > 0 Then
+            Dim recruitUnit As UnitStats = GetCheapestAvailableUnit(player)
+            If recruitUnit IsNot Nothing Then
+                Dim maxUnits As Integer = MaxRecruitableUnits(player, recruitUnit)
+                Dim target As Integer = Math.Min(500 - army.TotalSoldiers, maxUnits)
+                If target > 0 Then
+                    army.MoveQueue.Add(New ArmyCommand With {
+                    .Command = "RECRUIT",
+                    .Parameter = recruitUnit.ShortName
+                })
+                    Debug.WriteLine($"[AI] {player.Race} baseline revive: queued {recruitUnit.Name} (up to {target}).")
+                    Exit Sub ' baseline recruit takes priority
+                Else
+                    Debug.WriteLine($"[AI] {player.Race} baseline revive failed: insufficient resources/pop for {recruitUnit.Name}.")
+                End If
             End If
         End If
-        ' ---------- /DESPERATION OVERRIDE ----------
+
+        ' ---------- PANIC RECRUIT ----------
+        If panic AndAlso player.Population > 0 Then
+            Dim recruitUnit As UnitStats = GetCheapestAvailableUnit(player)
+            If recruitUnit IsNot Nothing Then
+                Dim maxUnits As Integer = MaxRecruitableUnits(player, recruitUnit)
+                If maxUnits > 0 Then
+                    army.MoveQueue.Add(New ArmyCommand With {
+                    .Command = "RECRUIT",
+                    .Parameter = recruitUnit.ShortName
+                })
+                    Debug.WriteLine($"[AI] {player.Race} panic recruit: queued {recruitUnit.Name} (up to {maxUnits}).")
+                    Exit Sub
+                Else
+                    Debug.WriteLine($"[AI] {player.Race} panic recruit failed: insufficient resources/pop for {recruitUnit.Name}.")
+                End If
+            End If
+        End If
 
         ' ---------- EMERGENCY: army <500 -> force a recruit if affordable ----------
-        If army.TotalSoldiers < 500 Then
-            ' Preferred type by race (your "best" list)
-            Dim preferred As UnitType
+        If army.TotalSoldiers < 500 AndAlso player.Population > 0 Then
+            ' Step 1: figure out race’s favourite type
+            Dim favourite As UnitType
             Select Case player.Race.ToLowerInvariant()
-                Case "elf" : preferred = UnitType.Archer
-                Case "orc" : preferred = UnitType.LightInfantry
-                Case "dwarf" : preferred = UnitType.HeavyInfantry
-                Case "human" : preferred = UnitType.HeavyCavalry
-                Case Else : preferred = UnitType.LightInfantry
+                Case "elf" : favourite = UnitType.Archer
+                Case "orc" : favourite = UnitType.LightInfantry
+                Case "dwarf" : favourite = UnitType.HeavyInfantry
+                Case "human" : favourite = UnitType.HeavyCavalry
+                Case Else : favourite = UnitType.LightInfantry
             End Select
 
-            ' Try preferred first
-            Dim pick As UnitStats = raceUnits.Units.FirstOrDefault(Function(u) u.Type = preferred)
-            If pick Is Nothing AndAlso raceUnits.Units.Count > 0 Then pick = raceUnits.Units(0)
+            ' Step 2: build list to try: favourite first, then everything in roster order
+            Dim tryUnits As New List(Of UnitStats)
+            Dim favUnit As UnitStats = raceUnits.Units.FirstOrDefault(Function(u) u.Type = favourite)
+            If favUnit IsNot Nothing Then tryUnits.Add(favUnit)
 
-            If pick IsNot Nothing AndAlso MaxRecruitableUnits(player, pick) > 0 AndAlso player.Population > 0 Then
-                army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = pick.ShortName})
-                Exit Sub
-            End If
+            For Each u In raceUnits.Units
+                If Not tryUnits.Contains(u) Then tryUnits.Add(u)
+            Next
 
-            ' Fallback to absolute cheapest affordable
-            Dim cheapest As UnitStats = GetCheapestAvailableUnit(player)
-            If cheapest IsNot Nothing AndAlso MaxRecruitableUnits(player, cheapest) > 0 AndAlso player.Population > 0 Then
-                army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = cheapest.ShortName})
-                Exit Sub
+            ' Step 3: attempt to recruit each candidate in turn
+            Dim recruited As Boolean = False
+            For Each candidate In tryUnits
+                If candidate Is Nothing Then Continue For
+                Dim maxAvail As Integer = MaxRecruitableUnits(player, candidate)
+
+                If maxAvail > 0 Then
+                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = candidate.ShortName})
+                    Debug.WriteLine($"[AI] {player.Race} successfully queued recruit of {candidate.Name} (up to {maxAvail}).")
+                    recruited = True
+                    Exit For
+                Else
+                    Debug.WriteLine($"[AI] {player.Race} tried to recruit {candidate.Name} but failed: insufficient resources/pop (Iron={player.Iron}, Wood={player.Wood}, Mounts={player.Mounts}, Pop={player.Population}).")
+                End If
+            Next
+
+            If Not recruited Then
+                Debug.WriteLine($"[AI] {player.Race} could not recruit ANY unit this turn (army {armyIndex + 1}).")
             End If
-            ' Nothing affordable => no recruit this turn
         End If
-        ' ---------- /EMERGENCY ----------
 
-        ' Tactical context (optional for future flavor)
+        ' ---------- NORMAL RECRUITING ----------
         Dim nearbyEnemies = Players.SelectMany(Function(pp) pp.Armies) _
         .Where(Function(a) a.Race <> player.Race AndAlso Math.Abs(a.X - army.X) <= 5 AndAlso Math.Abs(a.Y - army.Y) <= 5) _
         .ToList()
         Dim underThreat As Boolean = nearbyEnemies.Any(Function(ea) ea.TotalSoldiers >= army.TotalSoldiers)
         Dim hasOpportunity As Boolean = nearbyEnemies.Any(Function(ea) ea.TotalSoldiers < army.TotalSoldiers)
 
-        ' === Gate: random 25% OR badly-behind (vs strongest) with cooldown ===
         Dim randomRecruit As Boolean = (rnd.Next(0, 100) < 25)
 
         ourStrength = player.Armies.Sum(Function(a) a.TotalSoldiers)
@@ -2850,26 +2893,20 @@ Public Class Form1
                .DefaultIfEmpty(0) _
                .Max()
 
-        ' "Badly behind" := strictly below 75% of the strongest rival
         Dim badlyBehind As Boolean = (enemyStrongest > 0 AndAlso ourStrength < CInt(Math.Floor(enemyStrongest * 0.75)))
         Dim mayUseCatchUp As Boolean = (badlyBehind AndAlso player.CatchUpCooldown <= 0)
 
-        ' If neither random nor catch-up applies, do nothing this special step
         If Not randomRecruit AndAlso Not mayUseCatchUp Then Exit Sub
 
         If mayUseCatchUp Then
-            ' Start a small cooldown to avoid spamming catch-up every turn
             player.CatchUpCooldown = 2
         End If
 
-        ' === Choose WHAT to recruit ===
         Dim chosenUnit As UnitStats = Nothing
 
         If mayUseCatchUp Then
-            ' Catch-up: cheapest affordable to ensure growth
             chosenUnit = GetCheapestAvailableUnit(player)
         Else
-            ' Random: 50% preferred, else random among the other four types
             Dim preferred As UnitType
             Select Case player.Race.ToLowerInvariant()
                 Case "elf" : preferred = UnitType.Archer
@@ -2893,14 +2930,17 @@ Public Class Form1
             End If
         End If
 
-        ' Enqueue only if affordable and population available
         If chosenUnit IsNot Nothing Then
             Dim maxByResources As Integer = MaxRecruitableUnits(player, chosenUnit)
             If maxByResources > 0 AndAlso player.Population > 0 Then
                 army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = chosenUnit.ShortName})
+                Debug.WriteLine($"[AI] {player.Race} normal recruit: queued {chosenUnit.Name} (up to {maxByResources}).")
+            Else
+                Debug.WriteLine($"[AI] {player.Race} normal recruit failed: insufficient resources/pop for {chosenUnit.Name}.")
             End If
         End If
     End Sub
+
 
 
     Private Function MaxRecruitableUnits(player As Player, unit As UnitStats) As Integer
@@ -3524,11 +3564,11 @@ Public Class Form1
 
 
             ' --- Trade goods (totals only) ---
-            sb.AppendLine($"Gems: {p.Gems}")
+            'sb.AppendLine($"Gems: {p.Gems}")
             If p.Xorns > 0 Then sb.AppendLine($"Xorns: {p.Xorns}")
-            sb.AppendLine($"Amber: {p.Amber}")
-            sb.AppendLine($"Wine: {p.Wine}")
-            sb.AppendLine($"Furs: {p.Furs}")
+            'sb.AppendLine($"Amber: {p.Amber}")
+            'sb.AppendLine($"Wine: {p.Wine}")
+            'sb.AppendLine($"Furs: {p.Furs}")
 
             ' Armies (short summary)
             If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
@@ -3546,7 +3586,6 @@ Public Class Form1
 
         Return sb.ToString()
     End Function
-
 
 
     Public Function GetCheapestAvailableUnit(player As Player) As UnitStats
@@ -3625,10 +3664,16 @@ Public Class Form1
         Dim chosen As UnitStats = pickBest(preferredAffordable)
         If chosen Is Nothing Then chosen = pickBest(globalAffordable)
 
+        ' --- FINAL FALLBACK: if nothing affordable, still return the cheapest defined unit ---
+        If chosen Is Nothing Then
+            chosen = raceUnits.Units.
+            OrderBy(Function(u) u.Cost.Length). ' crude tie-breaker, still deterministic
+            ThenBy(Function(u) u.Name, StringComparer.OrdinalIgnoreCase).
+            FirstOrDefault()
+        End If
+
         Return chosen
     End Function
-
-
 
     Private Sub ParseCost(spec As String, ByRef iron As Integer, ByRef wood As Integer, ByRef mounts As Integer)
         iron = 0 : wood = 0 : mounts = 0
