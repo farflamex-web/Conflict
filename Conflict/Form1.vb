@@ -1,6 +1,11 @@
 ﻿Option Strict On
 Option Explicit On
 
+
+' TO DO - Mercenary gold?
+' If a summoner can't afford a single unit, they should level up instead.
+' Break summoners into seperate factions, e.g Kobolds, goblins, lizardmen, ogres/trolls.
+
 ' ===========================================================
 ' PROJECT: Conflict
 ' ===========================================================
@@ -114,8 +119,17 @@ Imports System.Drawing.Printing
 Imports System.IO
 Imports System.Linq
 Imports System.Reflection
+Imports Newtonsoft.Json
 
 Public Class Form1
+
+    ' Represents everything stored in a save file
+    Public Class GameState
+        Public Property TurnNumber As Integer
+        Public Property Players As List(Of Player)
+        Public Property Map As Integer(,,)
+        Public Property MercPriceLevel As Integer
+    End Class
 
 
 #Region "=== Constants and Enums ==="
@@ -131,9 +145,6 @@ Public Class Form1
     Private Races() As String = {"Elf", "Dwarf", "Orc", "Human"}
 
     Private terrainCache As New Dictionary(Of String, Image)
-
-    ' === Summoner settings ===
-    Public Const SummonerCostPerLevel As Integer = 500
 
     Private TheMarket As New Market()
 
@@ -162,6 +173,11 @@ Public Class Form1
         Public Property HasUsedSpecial As Boolean = False
         Public Property RetreatedThisTurn As Boolean = False
         Public Property Race As String
+
+        Public Sub New()
+            ' required for JSON deserialization
+        End Sub
+
     End Class
 
 
@@ -191,6 +207,10 @@ Public Class Form1
         Public Property Level As Integer = 0
 
         Public Property IsMercenary As Boolean = False
+
+        Public Sub New()
+            ' required for JSON deserialization
+        End Sub
 
 
         ' === Constructors ===
@@ -310,21 +330,38 @@ Public Class Form1
         Public Property Parameter As String     ' e.g., "Ironfoot", "li", "HeavyInfantry"
     End Class
 
-    ' === Map the summoner names to their rosters (class-scope field) ===
+    ' === Central definition for all summoners ===
+    Public Class SummonerInfo
+        Public Property Name As String            ' e.g. "Kobold War Chief"
+        Public Property AllowedRace As String     ' e.g. "Orc"
+        Public Property RosterKey As String       ' e.g. "Kobold War Chief" or "Kobolds"
+        Public Property Description As String     ' optional for UI
+    End Class
+
+    Private ReadOnly SummonerDefinitions As New List(Of SummonerInfo) From {
+        New SummonerInfo With {.Name = "Druid", .AllowedRace = "Elf", .RosterKey = "Druid"},
+        New SummonerInfo With {.Name = "Runesmith", .AllowedRace = "Dwarf", .RosterKey = "Runesmith"},
+        New SummonerInfo With {.Name = "Kobold War Chief", .AllowedRace = "Orc", .RosterKey = "Kobold War Chief"},
+        New SummonerInfo With {.Name = "Goblin Chieftain", .AllowedRace = "Orc", .RosterKey = "Goblin Chieftain"},
+        New SummonerInfo With {.Name = "Cleric", .AllowedRace = "Human", .RosterKey = "Cleric"}
+}
+
     Private ReadOnly Property SummonerRosters As Dictionary(Of String, List(Of UnitStats))
         Get
             Dim dict As New Dictionary(Of String, List(Of UnitStats))(StringComparer.OrdinalIgnoreCase)
-            For Each key In {"Druid", "Runesmith", "Cleric", "War Shaman"}
-                Dim ru = AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(key, StringComparison.OrdinalIgnoreCase))
-                If ru IsNot Nothing AndAlso ru.Units IsNot Nothing AndAlso ru.Units.Count > 0 Then
-                    dict(key) = ru.Units
+
+            For Each def In SummonerDefinitions
+                Dim roster = AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(def.RosterKey, StringComparison.OrdinalIgnoreCase))
+                If roster IsNot Nothing AndAlso roster.Units IsNot Nothing AndAlso roster.Units.Count > 0 Then
+                    dict(def.Name) = roster.Units
                 End If
             Next
+
             Return dict
         End Get
     End Property
 
-
+    ' === Summoner name parts per base race ===
     Private ReadOnly SummonerNameParts As New Dictionary(Of String, (String(), String())) From {
     {"Elf", (New String() {
         "Ela", "Syl", "Tha", "Ari", "Lora", "Vael", "Eri", "Cal", "Fina", "Ithe",
@@ -358,28 +395,29 @@ Public Class Form1
         "aric", "ric", "aphine", "ian", "fred", "son", "bert", "ton", "field", "well",
         "win", "ard", "den", "worth", "ham", "mond", "ard", "iel", "drick", "tine"
     })}
-}
+    }
 
+    ' === Generate a new summoner name using the BUYER race for style ===
+    Private Function GenerateSummonerName(buyerRace As String, summonerType As String) As String
+        Dim rnd As New Random(Guid.NewGuid().GetHashCode())
 
-    Private Function GenerateSummonerName(race As String, baseName As String) As String
-        If Not SummonerNameParts.ContainsKey(race) Then
-            Return $"Unnamed {baseName}"
+        ' Use Orcish, Elvish, Dwarvish, or Human name style
+        If Not SummonerNameParts.ContainsKey(buyerRace) Then
+            Return $"Unnamed {summonerType}"
         End If
 
-        Dim parts = SummonerNameParts(race)
-        Dim rnd As New Random()
-
+        Dim parts = SummonerNameParts(buyerRace)
         Dim prefix = parts.Item1(rnd.Next(parts.Item1.Length))
         Dim suffix = parts.Item2(rnd.Next(parts.Item2.Length))
 
-        Return $"{prefix}{suffix} the {baseName}"
+        Return $"{prefix}{suffix} the {summonerType}"
     End Function
 
 
     Private Sub AIBuySummoners()
         For Each p In Players
             If p Is Nothing OrElse Not p.AIControlled Then Continue For
-            BuySummoner(p) ' BuySummoner will handle cost check internally
+            BuySummoner(p) ' BuySummoner will handle cost and random choice
         Next
     End Sub
 
@@ -387,20 +425,22 @@ Public Class Form1
     Private Sub BuySummoner(p As Player)
         If p Is Nothing Then Exit Sub
 
-        ' === 1) Which roster does this race use?
-        Dim baseSummonerKey As String = ""
-        Dim baseSummonerName As String = ""
-        Select Case p.Race
-            Case "Elf" : baseSummonerKey = "Druid" : baseSummonerName = "Druid"
-            Case "Dwarf" : baseSummonerKey = "Runesmith" : baseSummonerName = "Runesmith"
-            Case "Human" : baseSummonerKey = "Cleric" : baseSummonerName = "Cleric"
-            Case "Orc" : baseSummonerKey = "War Shaman" : baseSummonerName = "War Shaman"
-            Case Else
-                Debug.WriteLine($"[SUMMONER] Unknown race '{p.Race}'. Aborting purchase.")
-                Exit Sub
-        End Select
+        ' === 1) Find all summoners this race can hire ===
+        Dim allowed = SummonerDefinitions.
+        Where(Function(s) s.AllowedRace.Equals(p.Race, StringComparison.OrdinalIgnoreCase)).
+        ToList()
 
-        ' === 2) Cost: 1000 for first hero, +2000 per additional hero (any type)
+        If allowed.Count = 0 Then
+            Debug.WriteLine($"[SUMMONER] No summoners available for {p.Race}.")
+            Exit Sub
+        End If
+
+        ' === 2) Pick a random summoner ===
+        Dim chosen As SummonerInfo = allowed(rnd.Next(allowed.Count))
+        Dim baseSummonerKey As String = chosen.Name
+        Dim baseSummonerName As String = chosen.Name
+
+        ' === 3) Calculate gold cost ===
         Dim ownedHeroes As Integer =
         p.Armies.SelectMany(Function(a) a.Units).
                  Count(Function(u) u IsNot Nothing AndAlso u.IsHero)
@@ -412,28 +452,35 @@ Public Class Form1
             Exit Sub
         End If
 
-        ' === 3) Pay
+        ' === 4) Pay ===
         p.Gold -= cost
 
-        ' === 4) Create a Level-1 Summoner hero
-        ' NOTE: requires your generic hero ctor: New Unit(heroType As String, displayName As String, ownerRace As String)
+        ' === 5) Create hero ===
         Dim fullName As String = GenerateSummonerName(p.Race, baseSummonerName)
-        Dim summonerUnit As New Unit("Summoner", fullName, p.Race) ' ctor should set IsHero=True, HeroType="Summoner", Level=1
+        Dim summonerUnit As New Unit("Summoner", fullName, p.Race)
         summonerUnit.SummonerFaction = baseSummonerKey
 
-        ' Safety: if your constructor doesn't set these, uncomment the next three lines:
+        ' Safety if ctor doesn’t auto-fill
         'summonerUnit.IsHero = True
         'summonerUnit.HeroType = "Summoner"
         'summonerUnit.Level = 1
 
-        ' === 5) Place into Army #1
+        ' === 6) Place into first army (or make new one) ===
+        Dim targetArmy As Army = Nothing
         If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
-            p.Armies(0).Units.Add(summonerUnit)
-            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
+            targetArmy = p.Armies(0)
         Else
-            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) has no army to receive {fullName}.")
+            targetArmy = New Army With {.Race = p.Race, .X = 0, .Y = 0}
+            If p.Armies Is Nothing Then p.Armies = New List(Of Army)
+            p.Armies.Add(targetArmy)
         End If
+
+        targetArmy.Units.Add(summonerUnit)
+
+        Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
     End Sub
+
+
 
     Private Sub ProcessSummoners()
         For Each p In Players
@@ -454,85 +501,50 @@ Public Class Form1
     End Sub
 
     Private Sub SummonCreaturesForUnit(summoner As Unit, ownerArmy As Army)
-        ' Skip if invalid
+        ' === Validation ===
         If String.IsNullOrEmpty(summoner.SummonerFaction) Then Exit Sub
         If Not SummonerRosters.ContainsKey(summoner.SummonerFaction) Then Exit Sub
 
         Dim roster = SummonerRosters(summoner.SummonerFaction)
         If roster Is Nothing OrElse roster.Count = 0 Then Exit Sub
 
-        ' === Base budget: 5 points per summoner level ===
-        Dim budget As Integer = summoner.Level * 5
+        ' === Base budget: 10 points per summoner level ===
+        Dim budget As Integer = summoner.Level * 10
 
-        ' Double the budget for Orc War Shamans
-        If summoner.SummonerFaction.Equals("War Shaman", StringComparison.OrdinalIgnoreCase) Then
-            budget *= 5
-        End If
-
-        ' Randomiser seeded so results vary but are consistent per turn/summoner
+        ' --- Deterministic randomiser per turn/summoner ---
         Dim seed As Integer = (Math.Max(1, currentTurnNumber) * 97) Xor
                           (ownerArmy.X * 73856093) Xor
                           (ownerArmy.Y * 19349663) Xor
                           (If(summoner.Name, "").GetHashCode())
         Dim rnd As New Random(seed)
 
-        ' === Spend budget ===
+        ' === If too weak to summon anything, train instead ===
+        Dim minPower As Integer = roster.Min(Function(u) u.Power)
+        If budget < minPower Then
+            summoner.Level += 1
+            Debug.WriteLine($"[SUMMON] {summoner.Name} ({summoner.SummonerFaction}) too weak to summon. Trains to Level {summoner.Level}.")
+            Exit Sub
+        End If
+
+        ' === Summoning loop ===
         Dim remaining As Integer = budget
         Dim guard As Integer = 10000
 
         Do While remaining > 0 AndAlso guard > 0
             guard -= 1
 
-            Dim pick As UnitStats = Nothing
+            ' Pick a random affordable creature
+            Dim affordable = roster.Where(Function(u) u.Power > 0 AndAlso u.Power <= remaining).ToList()
+            If affordable.Count = 0 Then Exit Do
 
-            ' --- War Shaman special bias ---
-            If summoner.SummonerFaction.Equals("War Shaman", StringComparison.OrdinalIgnoreCase) Then
-                Dim roll As Double = rnd.NextDouble()
-
-                If roll < 0.95 Then
-                    ' 95% chance: only Kobolds & Goblins (top 4)
-                    Dim weakRoster = roster.Take(4).Where(Function(u) u.Power <= remaining).ToList()
-                    If weakRoster.Count = 0 Then Exit Do
-                    pick = weakRoster(rnd.Next(weakRoster.Count))
-
-                ElseIf roll < 0.99 Then
-                    ' 4% chance: Lizardmen (positions 5–6)
-                    Dim lizardRoster = roster.Skip(4).Take(2).Where(Function(u) u.Power <= remaining).ToList()
-                    If lizardRoster.Count = 0 Then Exit Do
-                    pick = lizardRoster(rnd.Next(lizardRoster.Count))
-
-                Else
-                    ' 1% chance: Ogres/Trolls (positions 7+), only one at a time
-                    Dim strongRoster = roster.Skip(6).Where(Function(u) u.Power <= remaining).ToList()
-                    If strongRoster.Count = 0 Then Exit Do
-                    pick = strongRoster(rnd.Next(strongRoster.Count))
-                End If
-
-            Else
-                ' Normal summoners
-                Dim affordable = roster.Where(Function(u) u.Power > 0 AndAlso u.Power <= remaining).ToList()
-                If affordable.Count = 0 Then Exit Do
-                pick = affordable(rnd.Next(affordable.Count))
-            End If
-
+            Dim pick As UnitStats = affordable(rnd.Next(affordable.Count))
             If pick Is Nothing Then Exit Do
 
-            ' === Summon unit ===
-            Dim count As Integer = 1
+            ' Group size scaling — weak units appear in small groups
+            Dim count As Integer = Math.Max(1, rnd.Next(1, 4))
+            If pick.Power >= 8 Then count = 1
 
-            ' Allow larger groups only for weaker & lizard units
-            If summoner.SummonerFaction.Equals("War Shaman", StringComparison.OrdinalIgnoreCase) Then
-                Dim index As Integer = roster.IndexOf(pick)
-                If index <= 5 Then
-                    ' Kobolds, Goblins, or Lizardmen can appear in small groups
-                    count = Math.Max(1, rnd.Next(1, 4))
-                Else
-                    ' Ogres/Trolls stay single
-                    count = 1
-                End If
-            End If
-
-            ' Merge into existing army if unit type already present
+            ' Merge into army or add new
             Dim existing = ownerArmy.Units.FirstOrDefault(Function(u) u.Name = pick.Name)
             If existing IsNot Nothing Then
                 existing.Size += count
@@ -592,17 +604,117 @@ Public Class Form1
         Public Property DwarfSlaves As Integer = 0
         Public Property HumanSlaves As Integer = 0
 
+        Public Sub New()
+            ' required for JSON deserialization
+        End Sub
+
 
     End Class
 
-    'Public Class Market
-    'Public Property GemPrice As Double = 50
-    'Public Property AmberPrice As Double = 25
-    'Public Property WinePrice As Double = 15
-    'Public Property FurPrice As Double = 10
-    'Public Property IronPrice As Double = 5
-    'Public Property WoodPrice As Double = 5
-    'End Class
+
+#Region "=== Save / Load ==="
+
+    Private Sub SaveGame(gameName As String)
+        Try
+            Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
+            If Not IO.Directory.Exists(saveDir) Then IO.Directory.CreateDirectory(saveDir)
+
+            Dim saveFile As String = IO.Path.Combine(saveDir, $"Turn{currentTurnNumber:D3}.json")
+
+            Dim state As New GameState With {
+            .TurnNumber = currentTurnNumber,
+            .Players = Players,
+            .Map = Map,
+            .MercPriceLevel = MercPriceLevel
+        }
+
+            Dim json As String = Newtonsoft.Json.JsonConvert.SerializeObject(state, Newtonsoft.Json.Formatting.Indented)
+            IO.File.WriteAllText(saveFile, json)
+
+            Debug.WriteLine($"[SAVE] Game saved to {saveFile}")
+        Catch ex As Exception
+            MessageBox.Show($"Error saving game: {ex.Message}")
+        End Try
+    End Sub
+
+    Private Sub LoadGame(gameName As String)
+        Try
+            Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
+            If Not IO.Directory.Exists(saveDir) Then
+                MessageBox.Show($"No saved games found for {gameName}.")
+                Exit Sub
+            End If
+
+            ' --- Find most recent turn file ---
+            Dim latestFile = IO.Directory.GetFiles(saveDir, "Turn*.json").
+                         OrderByDescending(Function(f) f).FirstOrDefault()
+
+            If latestFile Is Nothing Then
+                MessageBox.Show($"No save files found in {saveDir}.")
+                Exit Sub
+            End If
+
+            ' --- Read and deserialize ---
+            Dim json As String = IO.File.ReadAllText(latestFile)
+            Dim state As GameState = Newtonsoft.Json.JsonConvert.DeserializeObject(Of GameState)(json)
+
+            ' --- Restore data ---
+            currentTurnNumber = state.TurnNumber
+            Players = state.Players
+            Map = state.Map
+            MercPriceLevel = state.MercPriceLevel
+
+            ' --- Rebuild runtime-only data ---
+            InitializeRaceUnits()             ' ensures AllRaces & SummonerRosters are alive
+            If terrainCache Is Nothing OrElse terrainCache.Count = 0 Then CreateTerrainCache()
+            PostLoadFixups()                  ' rehydrate lists, repair nulls, hero/summoner sanity
+
+            ' --- Refresh UI ---
+            lblHud.Text = $"Game: {gameName}" & vbCrLf &
+                      $"Turn: {currentTurnNumber}" & vbCrLf &
+                      $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+
+            pnlMap.Invalidate()
+            pnlMap.Update()
+
+            rtbPlayerSummary.Clear()
+            rtbPlayerSummary.AppendText(GenerateEmpireSummary())
+            UpdateArmiesReport()
+
+            Debug.WriteLine($"[LOAD] Loaded {latestFile}")
+        Catch ex As Exception
+            MessageBox.Show($"Error loading game: {ex.Message}")
+        End Try
+    End Sub
+
+
+    Private Sub PostLoadFixups()
+        If Players Is Nothing Then Exit Sub
+
+        For Each p In Players
+            If p.Armies Is Nothing Then p.Armies = New List(Of Army)
+            For Each a In p.Armies
+                If a.Units Is Nothing Then a.Units = New List(Of Unit)
+                If a.MoveQueue Is Nothing Then a.MoveQueue = New List(Of ArmyCommand)
+                a.HasUsedSpecial = False
+                a.RetreatedThisTurn = False
+
+                ' Defensive fixups
+                If String.IsNullOrWhiteSpace(a.Race) Then a.Race = p.Race
+
+                For Each u In a.Units
+                    If u Is Nothing Then Continue For
+                    If u.FoodCost <= 0 AndAlso Not u.IsHero Then u.FoodCost = 1
+                    If u.IsHero AndAlso String.Equals(u.HeroType, "Summoner", StringComparison.OrdinalIgnoreCase) _
+                   AndAlso u.Level <= 0 Then u.Level = 1
+                Next
+            Next
+        Next
+    End Sub
+
+
+#End Region
+
 
 
 #Region "Market Stuff"
@@ -1011,25 +1123,48 @@ Public Class Form1
 
 #Region "=== Form Lifecycle ==="
 
+    ' === Called when the form first loads ===
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
-
-        CreateTerrainCache()
-
-        InitializeRaceUnits()
-
-        InitializePlayers()
-
-        GenerateMap()
-
-        lblHud.Text =
-            $"Turn: {currentTurnNumber}" & vbCrLf &
-            $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+        ' Do nothing yet — just show welcome text
+        lblHud.Text = "Conflict"
     End Sub
+
 
 #End Region
 
+#Region "=== New / Load Game ==="
+    Private Sub btnNewGame_Click(sender As Object, e As EventArgs) Handles btnNewGame.Click
+        StartNewGame("Game1")   ' later we’ll allow naming / auto-numbering
+    End Sub
 
-#Region "=== Initialization ==="
+    Private Sub btnLoadGame_Click(sender As Object, e As EventArgs) Handles btnLoadGame.Click
+        LoadGame("Game1")
+    End Sub
+
+
+    Private Sub StartNewGame(gameName As String)
+        ' --- Clear existing data ---
+        Players = Nothing
+        rtbInfo.Clear()
+        rtbGameInfo.Clear()
+        currentTurnNumber = 1
+
+        ' --- Initialize everything ---
+        CreateTerrainCache()
+        InitializeRaceUnits()
+        InitializePlayers()
+        GenerateMap()
+
+        ' --- Update HUD ---
+        lblHud.Text = $"Game: {gameName}" & vbCrLf &
+                  $"Turn: {currentTurnNumber}" & vbCrLf &
+                  $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+
+        ' --- Draw map ---
+        pnlMap.Invalidate()
+
+        Debug.WriteLine($"[NEW GAME] {gameName} created successfully.")
+    End Sub
 
     Private Sub CreateTerrainCache()
         ' Clear existing cache (in case called multiple times)
@@ -1124,10 +1259,32 @@ Public Class Form1
         }
         AllRaces.Add(runesmithRoster)
 
+        ' === Kobold War Chief Summoner Roster ===
+        Dim koboldSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Kobold Rabble", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0.1, .Type = UnitType.LightInfantry},
+            New UnitStats With {.Name = "Kobold Slinger", .Power = 1, .HP = 2, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 0.1, .Type = UnitType.Archer}
+        }
+        Dim koboldRoster As New RaceUnits With {
+            .RaceName = "Kobold War Chief",   ' key used by SummonerFaction
+            .Units = koboldSummonerUnits
+        }
+        AllRaces.Add(koboldRoster)
+
+        ' === Goblin Chieftain Summoner Roster ===
+        Dim goblinSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Goblin Grunts", .Power = 2, .HP = 3, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0.2, .Type = UnitType.LightInfantry},
+            New UnitStats With {.Name = "Goblin Skirmishers", .Power = 2, .HP = 3, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 0.2, .Type = UnitType.Archer},
+            New UnitStats With {.Name = "Hobgoblins", .Power = 5, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 0.4, .CanCharge = True, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "Goblin Spider Riders", .Power = 5, .HP = 6, .Melee = 1, .Ranged = 0, .DefencePoints = 2, .FoodCost = 0.4, .CanChase = True, .Type = UnitType.LightCavalry}
+        }
+        Dim goblinRoster As New RaceUnits With {
+            .RaceName = "Goblin Chieftain",   ' key used by SummonerFaction
+            .Units = goblinSummonerUnits
+        }
+        AllRaces.Add(goblinRoster)
+
 
         Dim warshamanSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Kobold Rabble", .Power = 1, .HP = 2, .Melee = 1, .DefencePoints = 0, .FoodCost = 0.1},
-            New UnitStats With {.Name = "Kobold Archers", .Power = 2, .HP = 2, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 0.1},
             New UnitStats With {.Name = "Goblin Infantry", .Power = 3, .HP = 4, .Melee = 2, .DefencePoints = 2, .FoodCost = 0.25},
             New UnitStats With {.Name = "Goblin Archers", .Power = 3, .HP = 3, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 0.25},
             New UnitStats With {.Name = "Lizardman Warriors", .Power = 20, .HP = 15, .Melee = 3, .DefencePoints = 4, .FoodCost = 1},
@@ -2408,34 +2565,51 @@ Public Class Form1
         ' --- 5. Execute army movements step by step ---
         ProcessTurn()
 
-        ' ... 5b Deduct mercenary wages
+        ' --- 5b. Deduct mercenary wages ---
         PayMercenaryWages()
 
-        ' --- 6. Refresh map display ---
+        ' --- 6. Refresh map and summaries ---
         pnlMap.Invalidate()
-
         rtbPlayerSummary.Clear()
-        rtbPlayerSummary.AppendText(GenerateEmpireSummary)
+        rtbPlayerSummary.AppendText(GenerateEmpireSummary())
 
-        currentTurnNumber += 1
+        ' --- 7. Generate new mercenary offer (for next turn) ---
+        HandleNewMercenaryOffer(currentTurnNumber)
 
-        lblHud.Text =
-            $"Turn: {currentTurnNumber}" & vbCrLf &
-            $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
-
-        ' === 6. Generate a new mercenary offer for this turn ===
-        CurrentMercOffer = GenerateMercenaryOffer(currentTurnNumber)
-
-        If CurrentMercOffer IsNot Nothing Then
-            Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
-            Debug.WriteLine("Turn " & currentTurnNumber & " Mercenary Offer: " & CurrentMercOffer.ToString() & ", Wages: " & offerWages & " gold/turn")
-        End If
-
+        ' --- 8. Process market for this turn ---
         ProcessMarketTurn(currentTurnNumber)
 
+        ' --- 9. Update army reports ---
         UpdateArmiesReport()
 
+        ' --- 10. Save the game as this completed turn ---
+        SaveGame("Game1")
+
+        ' --- 11. Increment for the next turn ---
+        currentTurnNumber += 1
+
+        ' --- 12. Update HUD text ---
+        lblHud.Text =
+        $"Turn: {currentTurnNumber}" & vbCrLf &
+        $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+
     End Sub
+
+    Private Sub HandleNewMercenaryOffer(turnNumber As Integer)
+        ''' <summary>
+        ''' Handles generation and logging of a new mercenary offer for the current turn.
+        ''' </summary>
+        CurrentMercOffer = GenerateMercenaryOffer(turnNumber)
+
+        If CurrentMercOffer Is Nothing Then
+            Debug.WriteLine($"Turn {turnNumber}: No mercenary offer generated this turn.")
+            Exit Sub
+        End If
+
+        Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
+        Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
+    End Sub
+
 
     Private Sub ProcessMarketTurn(currentTurnNumber As Integer)
         ' Clear RTB at start of turn
@@ -2520,6 +2694,11 @@ Public Class Form1
                      Optional isPanel As Boolean = True,
                      Optional e As PrintPageEventArgs = Nothing,
                      Optional topOffset As Single = 0)
+
+        If terrainCache Is Nothing OrElse terrainCache.Count = 0 Then
+            ' nothing to draw yet
+            Exit Sub
+        End If
 
         Dim mapSize As Integer = 25
         Dim numberMargin As Single = 20
@@ -4413,6 +4592,7 @@ Public Class Form1
 
         Return wages
     End Function
+
 
 
 End Class

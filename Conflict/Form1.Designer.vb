@@ -30,6 +30,8 @@ Partial Class Form1
         rtbPlayerSummary = New RichTextBox()
         rtbArmies = New RichTextBox()
         lblHud = New Label()
+        btnNewGame = New Button()
+        btnLoadGame = New Button()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -100,11 +102,31 @@ Partial Class Form1
         lblHud.TabIndex = 9
         lblHud.Text = "Label1"
         ' 
+        ' btnNewGame
+        ' 
+        btnNewGame.Location = New Point(547, 869)
+        btnNewGame.Name = "btnNewGame"
+        btnNewGame.Size = New Size(119, 23)
+        btnNewGame.TabIndex = 10
+        btnNewGame.Text = "Create Game"
+        btnNewGame.UseVisualStyleBackColor = True
+        ' 
+        ' btnLoadGame
+        ' 
+        btnLoadGame.Location = New Point(547, 898)
+        btnLoadGame.Name = "btnLoadGame"
+        btnLoadGame.Size = New Size(119, 23)
+        btnLoadGame.TabIndex = 11
+        btnLoadGame.Text = "Load Game"
+        btnLoadGame.UseVisualStyleBackColor = True
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(btnLoadGame)
+        Controls.Add(btnNewGame)
         Controls.Add(lblHud)
         Controls.Add(rtbArmies)
         Controls.Add(rtbPlayerSummary)
@@ -127,5 +149,7 @@ Partial Class Form1
     Friend WithEvents rtbPlayerSummary As RichTextBox
     Friend WithEvents rtbArmies As RichTextBox
     Friend WithEvents lblHud As Label
+    Friend WithEvents btnNewGame As Button
+    Friend WithEvents btnLoadGame As Button
 
 End Class
