@@ -340,10 +340,21 @@ Public Class Form1
 
     Private ReadOnly SummonerDefinitions As New List(Of SummonerInfo) From {
         New SummonerInfo With {.Name = "Druid", .AllowedRace = "Elf", .RosterKey = "Druid"},
+        New SummonerInfo With {.Name = "Centaur Warchief", .AllowedRace = "Elf", .RosterKey = "Centaur Warchief"},
+        New SummonerInfo With {.Name = "Archdruid", .AllowedRace = "Elf", .RosterKey = "Archdruid"},
+        New SummonerInfo With {.Name = "Gnome Commander", .AllowedRace = "Dwarf", .RosterKey = "Gnome Commander"},
         New SummonerInfo With {.Name = "Runesmith", .AllowedRace = "Dwarf", .RosterKey = "Runesmith"},
+        New SummonerInfo With {.Name = "Giant Overlord", .AllowedRace = "Dwarf", .RosterKey = "Giant Overlord"},
         New SummonerInfo With {.Name = "Kobold War Chief", .AllowedRace = "Orc", .RosterKey = "Kobold War Chief"},
         New SummonerInfo With {.Name = "Goblin Chieftain", .AllowedRace = "Orc", .RosterKey = "Goblin Chieftain"},
-        New SummonerInfo With {.Name = "Cleric", .AllowedRace = "Human", .RosterKey = "Cleric"}
+        New SummonerInfo With {.Name = "Gnoll Packlord", .AllowedRace = "Orc", .RosterKey = "Gnoll Packlord"},
+        New SummonerInfo With {.Name = "Lizardman High Priest", .AllowedRace = "Orc", .RosterKey = "Lizardman High Priest"},
+        New SummonerInfo With {.Name = "Ogre Warlord", .AllowedRace = "Orc", .RosterKey = "Ogre Warlord"},
+        New SummonerInfo With {.Name = "Troll Tamer", .AllowedRace = "Orc", .RosterKey = "Troll Caller"},
+        New SummonerInfo With {.Name = "Orc Dragonbinder", .AllowedRace = "Orc", .RosterKey = "Orc Dragonbinder"},
+        New SummonerInfo With {.Name = "Cleric", .AllowedRace = "Human", .RosterKey = "Cleric"},
+        New SummonerInfo With {.Name = "Beastmaster", .AllowedRace = "Human", .RosterKey = "Beastmaster"},
+        New SummonerInfo With {.Name = "Dragonlord", .AllowedRace = "Human", .RosterKey = "Dragonlord"}
 }
 
     Private ReadOnly Property SummonerRosters As Dictionary(Of String, List(Of UnitStats))
@@ -869,66 +880,114 @@ Public Class Form1
 
     End Class
 
-    ' === Call this once per turn from btnProcessTurn_Click ===
-    ' === Call this once per turn from btnProcessTurn_Click ===
     Private Sub AIHandleMarketTurn()
         For Each p In Players
             If p Is Nothing OrElse Not p.AIControlled Then Continue For
 
             Dim log As String = $"{p.Race} (Player {p.PlayerNumber + 1}):" & vbCrLf
+            Dim transactionDone As Boolean = False
 
-            ' Random factor each turn
-            Dim roll As Integer = rnd.Next(100)
+            ' ===========================================================
+            ' === STEP 1: Check next-turn resource needs for recruitment ==
+            ' ===========================================================
+            Dim expectedRecruits As Integer = 0
+            For Each a In p.Armies
+                If a.TotalSoldiers < 500 Then
+                    expectedRecruits += Math.Min(CInt(p.Population * 0.05), 500 - a.TotalSoldiers)
+                End If
+            Next
 
-            ' === SELL logic ===
-            Dim didSomething As Boolean = False
-            Dim sellChance As Integer = 20
-            If p.Gold < 500 Then sellChance += 30
-            If TheMarket.GemPrice > 25 OrElse TheMarket.AmberPrice > 20 OrElse
-           TheMarket.WinePrice > 15 OrElse TheMarket.FurPrice > 10 Then
-                sellChance += 20
-            End If
+            ' Estimate rough material requirements
+            Dim avgIronCost As Double = 0.5
+            Dim avgWoodCost As Double = 0.3
+            Dim ironNeeded As Integer = CInt(expectedRecruits * avgIronCost)
+            Dim woodNeeded As Integer = CInt(expectedRecruits * avgWoodCost)
 
-            If roll < sellChance Then
-                Dim choice As String = PickTradeGoodForRace(p.Race)
-                Dim stock As Integer = GetPlayerStock(p, choice)
-                If stock > 0 Then
-                    Dim amount As Integer = Math.Min(stock, rnd.Next(5, 16))
-                    TheMarket.SellGoods(p, choice, amount)
-                    log &= $"   Sold {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
-                    didSomething = True
+            Dim ironShort As Integer = Math.Max(0, ironNeeded - p.Iron)
+            Dim woodShort As Integer = Math.Max(0, woodNeeded - p.Wood)
+
+            ' ===========================================================
+            ' === STEP 2: Prioritise buying missing iron/wood ===========
+            ' ===========================================================
+            If (ironShort > 0 OrElse woodShort > 0) AndAlso p.Gold > 0 Then
+                Dim ironRatio As Double = If(ironNeeded > 0, p.Iron / Math.Max(1, ironNeeded), 1)
+                Dim woodRatio As Double = If(woodNeeded > 0, p.Wood / Math.Max(1, woodNeeded), 1)
+
+                Dim buyGood As String = If(ironRatio < woodRatio, "iron", "wood")
+                Dim shortage As Integer = If(buyGood = "iron", ironShort, woodShort)
+                Dim price As Double = TheMarket.GetPrice(buyGood)
+                Dim maxAffordable As Integer = CInt(p.Gold / (price * 1.1)) ' 10% fee margin
+                Dim amountToBuy As Integer = Math.Min(shortage, Math.Min(2000, maxAffordable))
+
+                If amountToBuy > 0 Then
+                    TheMarket.BuyGoods(p, buyGood, amountToBuy)
+                    log &= $"   [Prep] Bought {amountToBuy} {buyGood} to cover next-turn recruits." & vbCrLf
+                    transactionDone = True
                 End If
             End If
 
-            ' === BUY logic ===
-            roll = rnd.Next(100)
-            Dim buyChance As Integer = 10
-            If TheMarket.GemPrice < 15 OrElse TheMarket.AmberPrice < 12 OrElse
-           TheMarket.WinePrice < 8 OrElse TheMarket.FurPrice < 4 Then
-                buyChance += 30
-            End If
-            If p.Gold > 1000 Then buyChance += 20
+            ' ===========================================================
+            ' === STEP 3: Normal market behaviour (only if free) ========
+            ' ===========================================================
+            If Not transactionDone Then
+                Dim roll As Integer = rnd.Next(100)
+                Dim didSomething As Boolean = False
 
-            If roll < buyChance Then
-                Dim goods() As String = {"gems", "amber", "wine", "furs", "iron", "wood"}
-                Dim choice As String = goods(rnd.Next(goods.Length))
-                Dim budget As Integer = Math.Min(p.Gold \ 5, rnd.Next(50, 151))
-                If budget > 0 Then
-                    Dim price As Double = TheMarket.GetPrice(choice)
-                    Dim amount As Integer = CInt(Math.Floor(budget / price))
-                    If amount > 0 Then
-                        TheMarket.BuyGoods(p, choice, amount)
-                        log &= $"   Bought {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
+                ' === SELL logic ===
+                Dim sellChance As Integer = 20
+                If p.Gold < 500 Then sellChance += 30
+                If TheMarket.GemPrice > 25 OrElse TheMarket.AmberPrice > 20 OrElse
+               TheMarket.WinePrice > 15 OrElse TheMarket.FurPrice > 10 Then
+                    sellChance += 20
+                End If
+
+                If roll < sellChance Then
+                    Dim choice As String = PickTradeGoodForRace(p.Race)
+                    Dim stock As Integer = GetPlayerStock(p, choice)
+                    If stock > 0 Then
+                        Dim amount As Integer = Math.Min(stock, rnd.Next(5, 16))
+                        TheMarket.SellGoods(p, choice, amount)
+                        log &= $"   Sold {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
                         didSomething = True
                     End If
                 End If
+
+                ' === BUY logic ===
+                If Not didSomething Then
+                    roll = rnd.Next(100)
+                    Dim buyChance As Integer = 10
+                    If TheMarket.GemPrice < 15 OrElse TheMarket.AmberPrice < 12 OrElse
+                   TheMarket.WinePrice < 8 OrElse TheMarket.FurPrice < 4 Then
+                        buyChance += 30
+                    End If
+                    If p.Gold > 1000 Then buyChance += 20
+
+                    If roll < buyChance Then
+                        Dim goods() As String = {"gems", "amber", "wine", "furs", "iron", "wood"}
+                        Dim choice As String = goods(rnd.Next(goods.Length))
+                        Dim budget As Integer = Math.Min(p.Gold \ 5, rnd.Next(50, 151))
+                        If budget > 0 Then
+                            Dim price As Double = TheMarket.GetPrice(choice)
+                            Dim amount As Integer = CInt(Math.Floor(budget / price))
+                            If amount > 0 Then
+                                TheMarket.BuyGoods(p, choice, amount)
+                                log &= $"   Bought {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
+                                didSomething = True
+                            End If
+                        End If
+                    End If
+                End If
+
+                If Not didSomething Then
+                    log &= "   No trades this turn." & vbCrLf
+                End If
+
+                transactionDone = True
             End If
 
-            If Not didSomething Then
-                log &= "   No trades this turn." & vbCrLf
-            End If
-
-            ' Write to RTB
+            ' ===========================================================
+            ' === Write log =============================================
+            ' ===========================================================
             rtbGameInfo.AppendText(log & vbCrLf)
         Next
     End Sub
@@ -1187,11 +1246,11 @@ Public Class Form1
         Dim elfUnits As New RaceUnits With {
     .RaceName = "Elf",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Moonbow Archers", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .Cost = "W:1", .ShortName = "a"},
-        New UnitStats With {.Name = "Forest Sentinels", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .Cost = "I:1, W:1", .ShortName = "li"},
-        New UnitStats With {.Name = "Moonblade Guardians", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:2", .ShortName = "hi", .CanCharge = True},
-        New UnitStats With {.Name = "Moonbow Riders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 2, .DefencePoints = 1, .Cost = "I:1, W:1, M:1", .ShortName = "lc", .CanChase = True},
-        New UnitStats With {.Name = "Stormleaf Chargers", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:2, M:1", .ShortName = "hc", .CanCharge = True}
+        New UnitStats With {.Name = "Elven Archers", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .Cost = "W:1", .ShortName = "a"},
+        New UnitStats With {.Name = "Light Rangers", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .Cost = "I:1, W:1", .ShortName = "li"},
+        New UnitStats With {.Name = "Heavy Warblades", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:2", .ShortName = "hi", .CanCharge = True},
+        New UnitStats With {.Name = "Light Riders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 2, .DefencePoints = 1, .Cost = "I:1, W:1, M:1", .ShortName = "lc", .CanChase = True},
+        New UnitStats With {.Name = "Heavy Lancers", .Type = UnitType.HeavyCavalry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:2, M:1", .ShortName = "hc", .CanCharge = True}
         }
 }
         AllRaces.Add(elfUnits)
@@ -1200,10 +1259,10 @@ Public Class Form1
         Dim dwarfUnits As New RaceUnits With {
     .RaceName = "Dwarf",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Ironbolters", .Type = UnitType.Archer, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .Cost = "I:2, W:1", .ShortName = "a"},
-        New UnitStats With {.Name = "Ironshield", .Type = UnitType.LightInfantry, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2", .ShortName = "li"},
-        New UnitStats With {.Name = "Hammerguards", .Type = UnitType.HeavyInfantry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:3", .ShortName = "hi", .CanCharge = True},
-        New UnitStats With {.Name = "Ironhorn Riders", .Type = UnitType.LightCavalry, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:3, M:1", .ShortName = "lc", .CanChase = True},
+        New UnitStats With {.Name = "Dwarven Crossbows", .Type = UnitType.Archer, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .Cost = "I:2, W:1", .ShortName = "a"},
+        New UnitStats With {.Name = "Light Ironfoot", .Type = UnitType.LightInfantry, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2", .ShortName = "li"},
+        New UnitStats With {.Name = "Heavy Ironfoot", .Type = UnitType.HeavyInfantry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:3", .ShortName = "hi", .CanCharge = True},
+        New UnitStats With {.Name = "Light Ramriders", .Type = UnitType.LightCavalry, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:3, M:1", .ShortName = "lc", .CanChase = True},
         New UnitStats With {.Name = "War Chariots", .Type = UnitType.HeavyCavalry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:3, M:2", .ShortName = "hc", .CanCharge = True},
         New UnitStats With {.Name = "Mithril Guards", .Type = UnitType.HeavyInfantry, .HP = 25, .Melee = 3, .Ranged = 0, .DefencePoints = 10, .Cost = "I:1, X:1", .ShortName = "mg", .CanCharge = True}
     }
@@ -1214,11 +1273,11 @@ Public Class Form1
         Dim orcUnits As New RaceUnits With {
     .RaceName = "Orc",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Orc Shortbows", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .Cost = "I:1, W:1", .ShortName = "a"},
-        New UnitStats With {.Name = "War Grunts", .Type = UnitType.LightInfantry, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .Cost = "I:1", .ShortName = "li"},
-        New UnitStats With {.Name = "Orc Berserkers", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2", .ShortName = "hi", .CanCharge = True},
-        New UnitStats With {.Name = "Fangriders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:1, M:1", .ShortName = "lc", .CanChase = True},
-        New UnitStats With {.Name = "Bloodwolf Riders", .Type = UnitType.HeavyCavalry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:2, M:1", .ShortName = "hc", .CanCharge = True}
+        New UnitStats With {.Name = "Orc Warbows", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .Cost = "I:1, W:1", .ShortName = "a"},
+        New UnitStats With {.Name = "Light Grunts", .Type = UnitType.LightInfantry, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .Cost = "I:1", .ShortName = "li"},
+        New UnitStats With {.Name = "Heavy Grunts", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2", .ShortName = "hi", .CanCharge = True},
+        New UnitStats With {.Name = "Light Warg Riders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:1, M:1", .ShortName = "lc", .CanChase = True},
+        New UnitStats With {.Name = "Heavy Warg Riders", .Type = UnitType.HeavyCavalry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:2, M:1", .ShortName = "hc", .CanCharge = True}
     }
 }
         AllRaces.Add(orcUnits)
@@ -1227,36 +1286,96 @@ Public Class Form1
         Dim humanUnits As New RaceUnits With {
     .RaceName = "Human",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Silver Bowmen", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .Cost = "I:1, W:1", .ShortName = "a"},
-        New UnitStats With {.Name = "Guardian Spearmen", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:1", .ShortName = "li"},
-        New UnitStats With {.Name = "Ironstorm Infantry", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:3, W:1", .ShortName = "hi", .CanCharge = True},
-        New UnitStats With {.Name = "Swiftblade Riders", .Type = UnitType.LightCavalry, .HP = 8, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:1, M:1", .ShortName = "lc", .CanChase = True},
-        New UnitStats With {.Name = "Steel Vanguard", .Type = UnitType.HeavyCavalry, .HP = 20, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .Cost = "I:5, M:1", .ShortName = "hc", .CanCharge = True}
+        New UnitStats With {.Name = "Longbowmen", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .Cost = "I:1, W:1", .ShortName = "a"},
+        New UnitStats With {.Name = "Light Spearmen", .Type = UnitType.LightInfantry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:1", .ShortName = "li"},
+        New UnitStats With {.Name = "Heavy Footmen", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:3, W:1", .ShortName = "hi", .CanCharge = True},
+        New UnitStats With {.Name = "Light Horsemen", .Type = UnitType.LightCavalry, .HP = 8, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2, W:1, M:1", .ShortName = "lc", .CanChase = True},
+        New UnitStats With {.Name = "Armoured Knights", .Type = UnitType.HeavyCavalry, .HP = 20, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .Cost = "I:5, M:1", .ShortName = "hc", .CanCharge = True}
     }
 }
         AllRaces.Add(humanUnits)
 
 
+        Dim druidSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Faun Infantry", .Power = 3, .HP = 8, .Melee = 2, .DefencePoints = 2, .FoodCost = 1},
+            New UnitStats With {.Name = "Satyr Warriors", .Power = 4, .HP = 12, .Melee = 3, .DefencePoints = 2, .FoodCost = 1},
+            New UnitStats With {.Name = "Forest Wolves", .Power = 4, .HP = 8, .Melee = 2, .DefencePoints = 4, .FoodCost = 1, .CanChase = True},
+            New UnitStats With {.Name = "Giant Eagles", .Power = 15, .HP = 30, .Melee = 4, .Ranged = 2, .DefencePoints = 7, .CanChase = True, .Flying = True}
+        }
+        Dim druidRoster As New RaceUnits With {
+            .RaceName = "Druid",   ' << this string is the key your SummonerFaction must use
+            .Units = druidSummonerUnits
+        }
+        AllRaces.Add(druidRoster)
 
+        ' === Centaur Warchief Summoner Roster ===
+        Dim centaurSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Centaurs", .Power = 5, .HP = 5, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
+        }
+        Dim centaurRoster As New RaceUnits With {
+            .RaceName = "Centaur Warchief",   ' key used by SummonerFaction
+            .Units = centaurSummonerUnits
+        }
+        AllRaces.Add(centaurRoster)
 
-        ' === Summoner roster: wrap list in RaceUnits and add ===
-        Dim runesmithUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Gnome Infantry", .Power = 1, .HP = 5, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
+        ' === Archdruid Summoner Roster ===
+        Dim archdruidSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Fey Knights", .Power = 30, .HP = 40, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Unicorns", .Power = 100, .HP = 60, .Melee = 7, .DefencePoints = 10, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Ents", .Power = 200, .HP = 90, .Melee = 11, .DefencePoints = 14}
+        }
+
+        Dim archdruidRoster As New RaceUnits With {
+            .RaceName = "Archdruid",   ' key used by SummonerFaction
+            .Units = archdruidSummonerUnits
+        }
+
+        AllRaces.Add(archdruidRoster)
+
+        ' === Gnome Commander Summoner Roster ===
+        Dim gnomeCommanderUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Gnome Infantry", .Power = 1, .HP = 4, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
             New UnitStats With {.Name = "Gnome Crossbowmen", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
-            New UnitStats With {.Name = "Stone Construct", .Power = 3, .HP = 10, .Melee = 1, .DefencePoints = 5},
-            New UnitStats With {.Name = "Iron Construct", .Power = 6, .HP = 20, .Melee = 2, .DefencePoints = 8},
-            New UnitStats With {.Name = "Hill Giant", .Power = 10, .HP = 35, .Melee = 10, .DefencePoints = 6, .CanCharge = True},
-            New UnitStats With {.Name = "Gnome Gyrocopter", .Power = 15, .HP = 15, .Melee = 1, .Ranged = 2, .DefencePoints = 3, .Flying = True, .CanChase = True},
-            New UnitStats With {.Name = "Mithril Construct", .Power = 20, .HP = 50, .Melee = 3, .DefencePoints = 12},
-            New UnitStats With {.Name = "Frost Giant", .Power = 25, .HP = 50, .Melee = 8, .DefencePoints = 15, .CanCharge = True},
-            New UnitStats With {.Name = "Fire Giant", .Power = 30, .HP = 60, .Melee = 10, .DefencePoints = 15, .CanCharge = True},
-            New UnitStats With {.Name = "Storm Giant", .Power = 50, .HP = 100, .Melee = 20, .Ranged = 10, .DefencePoints = 15, .CanCharge = True}
+            New UnitStats With {.Name = "Gnome Gyrocopters", .Power = 10, .HP = 20, .Melee = 3, .Ranged = 2, .DefencePoints = 5, .CanChase = True, .Flying = True, .FoodCost = 1}
+        }
+
+        Dim gnomeRoster As New RaceUnits With {
+            .RaceName = "Gnome Commander",   ' key used by SummonerFaction
+            .Units = gnomeCommanderUnits
+        }
+
+        AllRaces.Add(gnomeRoster)
+
+        ' === Giant Overlord Summoner Roster ===
+        Dim giantOverlordUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Hill Giants", .Power = 50, .HP = 100, .Melee = 12, .DefencePoints = 10, .FoodCost = 3},
+            New UnitStats With {.Name = "Stone Giants", .Power = 60, .HP = 120, .Melee = 14, .DefencePoints = 12, .FoodCost = 3},
+            New UnitStats With {.Name = "Frost Giants", .Power = 70, .HP = 140, .Melee = 16, .Ranged = 4, .DefencePoints = 13, .FoodCost = 4, .CanChase = True},
+            New UnitStats With {.Name = "Fire Giants", .Power = 80, .HP = 160, .Melee = 18, .Ranged = 4, .DefencePoints = 14, .FoodCost = 4},
+            New UnitStats With {.Name = "Cloud Giants", .Power = 90, .HP = 180, .Melee = 20, .Ranged = 6, .DefencePoints = 15, .FoodCost = 5, .Flying = True},
+            New UnitStats With {.Name = "Storm Giants", .Power = 100, .HP = 200, .Melee = 22, .Ranged = 8, .DefencePoints = 16, .FoodCost = 5, .CanChase = True}
+        }
+
+        Dim giantOverlordRoster As New RaceUnits With {
+            .RaceName = "Giant Overlord",   ' key used by SummonerFaction
+            .Units = giantOverlordUnits
+        }
+
+        AllRaces.Add(giantOverlordRoster)
+
+        ' === Runesmith Summoner Roster ===
+        Dim runesmithSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Wood Construct", .Power = 5, .HP = 20, .Melee = 1, .DefencePoints = 5},
+            New UnitStats With {.Name = "Stone Construct", .Power = 10, .HP = 60, .Melee = 1, .DefencePoints = 8},
+            New UnitStats With {.Name = "Iron Construct", .Power = 20, .HP = 120, .Melee = 1, .DefencePoints = 12},
+            New UnitStats With {.Name = "Mithril Construct", .Power = 500, .HP = 1000, .Melee = 25, .DefencePoints = 25}
         }
 
         Dim runesmithRoster As New RaceUnits With {
-            .RaceName = "Runesmith",   ' << this string is the key your SummonerFaction must use
-            .Units = runesmithUnits
+            .RaceName = "Runesmith",   ' key used by SummonerFaction
+            .Units = runesmithSummonerUnits
         }
+
         AllRaces.Add(runesmithRoster)
 
         ' === Kobold War Chief Summoner Roster ===
@@ -1283,52 +1402,73 @@ Public Class Form1
         }
         AllRaces.Add(goblinRoster)
 
+        ' === Gnoll Packlord Summoner Roster ===
+        Dim gnollSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Gnoll Warriors", .Power = 5, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1.0, .Type = UnitType.LightInfantry}
+        }
+        Dim gnollRoster As New RaceUnits With {
+            .RaceName = "Gnoll Packlord",   ' key used by SummonerFaction
+            .Units = gnollSummonerUnits
+        }
+        AllRaces.Add(gnollRoster)
 
-        Dim warshamanSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Goblin Infantry", .Power = 3, .HP = 4, .Melee = 2, .DefencePoints = 2, .FoodCost = 0.25},
-            New UnitStats With {.Name = "Goblin Archers", .Power = 3, .HP = 3, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 0.25},
-            New UnitStats With {.Name = "Lizardman Warriors", .Power = 20, .HP = 15, .Melee = 3, .DefencePoints = 4, .FoodCost = 1},
-            New UnitStats With {.Name = "Lizardman Hunters", .Power = 25, .HP = 15, .Melee = 2, .Ranged = 1, .DefencePoints = 3, .FoodCost = 1, .CanChase = True},
-            New UnitStats With {.Name = "Ogre Brutes", .Power = 50, .HP = 40, .Melee = 8, .DefencePoints = 8, .CanCharge = True},
-            New UnitStats With {.Name = "Ogre Warhulks", .Power = 50, .HP = 50, .Melee = 12, .DefencePoints = 8, .CanCharge = True},
-            New UnitStats With {.Name = "Cave Trolls", .Power = 100, .HP = 100, .Melee = 25, .DefencePoints = 12, .CanCharge = True},
-            New UnitStats With {.Name = "War Troll", .Power = 200, .HP = 200, .Melee = 50, .DefencePoints = 15, .CanCharge = True}
+        ' === Lizardman High Priest Summoner Roster ===
+        Dim lizardmanSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Lizardman Warrior", .Power = 6, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "Lizardman Hunter", .Power = 7, .HP = 5, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
+            New UnitStats With {.Name = "Raptor Rider", .Power = 20, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry},
+            New UnitStats With {.Name = "Lizardman Priest", .Power = 50, .HP = 10, .Melee = 1, .Ranged = 10, .DefencePoints = 5, .FoodCost = 1, .Type = UnitType.Archer}
         }
-        Dim warshamanRoster As New RaceUnits With {
-            .RaceName = "War Shaman",   ' << this string is the key your SummonerFaction must use
-            .Units = warshamanSummonerUnits
+        Dim lizardmanRoster As New RaceUnits With {
+            .RaceName = "Lizardman High Priest",   ' key used by SummonerFaction
+            .Units = lizardmanSummonerUnits
         }
-        AllRaces.Add(warshamanRoster)
+        AllRaces.Add(lizardmanRoster)
 
-        Dim druidSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Fauns", .Power = 3, .HP = 8, .Melee = 2, .DefencePoints = 2, .FoodCost = 1},
-            New UnitStats With {.Name = "Satyrs", .Power = 4, .HP = 12, .Melee = 3, .DefencePoints = 3, .FoodCost = 1},
-            New UnitStats With {.Name = "Centaur Archers", .Power = 6, .HP = 15, .Melee = 1, .Ranged = 3, .DefencePoints = 3, .FoodCost = 1},
-            New UnitStats With {.Name = "Dryads", .Power = 8, .HP = 20, .Melee = 2, .DefencePoints = 6, .FoodCost = 1},
-            New UnitStats With {.Name = "Centaur Lancers", .Power = 12, .HP = 25, .Melee = 6, .DefencePoints = 6, .FoodCost = 1, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "Giant Eagles", .Power = 15, .HP = 30, .Melee = 4, .Ranged = 2, .DefencePoints = 7, .CanChase = True, .Flying = True},
-            New UnitStats With {.Name = "Fey Knights", .Power = 20, .HP = 40, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "Unicorns", .Power = 25, .HP = 60, .Melee = 7, .DefencePoints = 10, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "Ents", .Power = 35, .HP = 90, .Melee = 11, .DefencePoints = 14},
-            New UnitStats With {.Name = "Forest Dragon", .Power = 100, .HP = 100, .Melee = 100, .Ranged = 20, .DefencePoints = 15, .CanChase = True, .Flying = True}
+        ' === Ogre Warlord Summoner Roster ===
+        Dim ogreSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Ogre Brutes", .Power = 50, .HP = 25, .Melee = 7, .Ranged = 0, .DefencePoints = 5, .FoodCost = 1.5, .CanCharge = True, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "Ogre Warhulks", .Power = 100, .HP = 50, .Melee = 15, .Ranged = 0, .DefencePoints = 10, .FoodCost = 3.0, .CanCharge = True, .Type = UnitType.HeavyInfantry}
         }
-        Dim druidRoster As New RaceUnits With {
-            .RaceName = "Druid",   ' << this string is the key your SummonerFaction must use
-            .Units = druidSummonerUnits
+        Dim ogreRoster As New RaceUnits With {
+            .RaceName = "Ogre Warlord",   ' key used by SummonerFaction
+            .Units = ogreSummonerUnits
         }
-        AllRaces.Add(druidRoster)
+        AllRaces.Add(ogreRoster)
+
+        ' === Troll Caller Summoner Roster ===
+        Dim trollSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Hill Troll", .Power = 50, .HP = 30, .Melee = 8, .Ranged = 0, .DefencePoints = 5, .FoodCost = 1.5, .CanCharge = True, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "Cave Troll", .Power = 100, .HP = 60, .Melee = 12, .Ranged = 0, .DefencePoints = 8, .FoodCost = 2.5, .CanCharge = True, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "War Troll", .Power = 150, .HP = 100, .Melee = 18, .Ranged = 0, .DefencePoints = 12, .FoodCost = 4.0, .CanCharge = True, .Type = UnitType.HeavyInfantry}
+        }
+        Dim trollRoster As New RaceUnits With {
+            .RaceName = "Troll Tamer",   ' key used by SummonerFaction
+            .Units = trollSummonerUnits
+        }
+        AllRaces.Add(trollRoster)
+
+        ' === Orc Dragonbinder Summoner Roster ===
+        Dim dragonbinderSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "White Dragon", .Power = 200, .HP = 200, .Melee = 40, .Ranged = 40, .DefencePoints = 10, .FoodCost = 5.0, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Black Dragon", .Power = 300, .HP = 300, .Melee = 60, .Ranged = 60, .DefencePoints = 12, .FoodCost = 6.0, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Green Dragon", .Power = 400, .HP = 400, .Melee = 80, .Ranged = 80, .DefencePoints = 14, .FoodCost = 7.0, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Blue Dragon", .Power = 500, .HP = 500, .Melee = 100, .Ranged = 100, .DefencePoints = 16, .FoodCost = 8.0, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Red Dragon", .Power = 600, .HP = 600, .Melee = 120, .Ranged = 120, .DefencePoints = 18, .FoodCost = 10.0, .CanCharge = True, .CanChase = True, .Flying = True}
+        }
+        Dim dragonbinderRoster As New RaceUnits With {
+            .RaceName = "Orc Dragonbinder",   ' key used by SummonerFaction
+            .Units = dragonbinderSummonerUnits
+        }
+        AllRaces.Add(dragonbinderRoster)
+
+        ' === Human Summoners ===
+        ' === Cleric Summoner Roster ===
 
         Dim clericSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Peasant Levy", .Power = 1, .HP = 5, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
-            New UnitStats With {.Name = "Halfling Slingers", .Power = 2, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
-            New UnitStats With {.Name = "Militia Spearmen", .Power = 3, .HP = 12, .Melee = 2, .DefencePoints = 3, .FoodCost = 1},
-            New UnitStats With {.Name = "Crossbowmen", .Power = 4, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 3, .FoodCost = 1},
-            New UnitStats With {.Name = "Ballista Company", .Power = 6, .HP = 20, .Melee = 2, .Ranged = 10, .DefencePoints = 4},
-            New UnitStats With {.Name = "War Bears", .Power = 10, .HP = 30, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "Magic Knights", .Power = 15, .HP = 40, .Melee = 6, .Ranged = 3, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "War Elephants", .Power = 20, .HP = 50, .Melee = 8, .DefencePoints = 12, .CanCharge = True},
-            New UnitStats With {.Name = "Paladin Champions", .Power = 30, .HP = 70, .Melee = 15, .DefencePoints = 14, .CanCharge = True, .CanChase = True},
-            New UnitStats With {.Name = "Avatar of Light", .Power = 50, .HP = 100, .Melee = 25, .Ranged = 15, .DefencePoints = 15, .Flying = True, .CanCharge = True, .CanChase = True}
+            New UnitStats With {.Name = "Levy", .Power = 2, .HP = 5, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
+            New UnitStats With {.Name = "Militia Spearmen", .Power = 4, .HP = 5, .Melee = 2, .DefencePoints = 4, .FoodCost = 1},
+            New UnitStats With {.Name = "Crossbowmen", .Power = 5, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1}
         }
         Dim clericRoster As New RaceUnits With {
             .RaceName = "Cleric",   ' << this string is the key your SummonerFaction must use
@@ -1336,6 +1476,32 @@ Public Class Form1
         }
         AllRaces.Add(clericRoster)
 
+        ' === Beastmaster Summoner Roster ===
+        Dim beastmasterSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "War Dog", .Power = 3, .HP = 4, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0.2, .CanChase = True, .Type = UnitType.LightCavalry},
+            New UnitStats With {.Name = "War Bear", .Power = 10, .HP = 12, .Melee = 4, .Ranged = 0, .DefencePoints = 3, .FoodCost = 0.5, .CanCharge = True, .Type = UnitType.HeavyInfantry},
+            New UnitStats With {.Name = "War Rhino", .Power = 30, .HP = 25, .Melee = 6, .Ranged = 0, .DefencePoints = 6, .FoodCost = 1.0, .CanCharge = True, .Type = UnitType.HeavyCavalry},
+            New UnitStats With {.Name = "War Elephant", .Power = 50, .HP = 40, .Melee = 8, .Ranged = 0, .DefencePoints = 8, .FoodCost = 2.0, .CanCharge = True, .Type = UnitType.HeavyCavalry}
+        }
+        Dim beastmasterRoster As New RaceUnits With {
+            .RaceName = "Beastmaster",   ' key used by SummonerFaction
+            .Units = beastmasterSummonerUnits
+        }
+        AllRaces.Add(beastmasterRoster)
+
+        ' === Dragonlord Summoner Roster ===
+        Dim dragonlordSummonerUnits As New List(Of UnitStats) From {
+            New UnitStats With {.Name = "Brass Dragon", .Power = 200, .HP = 200, .Melee = 40, .Ranged = 40, .DefencePoints = 12, .FoodCost = 5.5, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Copper Dragon", .Power = 350, .HP = 350, .Melee = 70, .Ranged = 70, .DefencePoints = 14, .FoodCost = 6.5, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Bronze Dragon", .Power = 500, .HP = 500, .Melee = 100, .Ranged = 100, .DefencePoints = 16, .FoodCost = 7.5, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Silver Dragon", .Power = 650, .HP = 650, .Melee = 130, .Ranged = 130, .DefencePoints = 18, .FoodCost = 9.0, .CanCharge = True, .CanChase = True, .Flying = True},
+            New UnitStats With {.Name = "Gold Dragon", .Power = 800, .HP = 800, .Melee = 140, .Ranged = 140, .DefencePoints = 20, .FoodCost = 11.0, .CanCharge = True, .CanChase = True, .Flying = True}
+        }
+        Dim dragonlordRoster As New RaceUnits With {
+            .RaceName = "Dragonlord",   ' key used by SummonerFaction
+            .Units = dragonlordSummonerUnits
+        }
+        AllRaces.Add(dragonlordRoster)
 
 
         ' === Mercenary Factions ===
@@ -1396,17 +1562,6 @@ Public Class Form1
         AllRaces.Add(bandits)
 
 
-        ' Gnolls
-        Dim gnolls As New RaceUnits With {
-    .RaceName = "Gnolls",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Gnoll Spearthrower", .ShortName = "GnoSp", .Power = 2, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Gnoll Raider", .ShortName = "GnoRa", .Power = 3, .HP = 10, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightCavalry, .CanChase = True},
-        New UnitStats With {.Name = "Gnoll Warleader", .ShortName = "GnoWa", .Power = 4, .HP = 12, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True}
-    }
-}
-        AllRaces.Add(gnolls)
-
         ' === Werecreatures ===
         Dim werecreatures As New RaceUnits With {
     .RaceName = "Werecreatures",
@@ -1455,24 +1610,6 @@ Public Class Form1
     }
 }
         AllRaces.Add(demons)
-
-        Dim dragons As New RaceUnits With {
-    .RaceName = "Dragons",
-    .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "White Dragon", .ShortName = "WhiDra", .Power = 2000, .HP = 500, .Melee = 250, .Ranged = 125, .DefencePoints = 8, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Brass Dragon", .ShortName = "BraDra", .Power = 2200, .HP = 600, .Melee = 300, .Ranged = 150, .DefencePoints = 9, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Black Dragon", .ShortName = "BlaDra", .Power = 2400, .HP = 700, .Melee = 350, .Ranged = 175, .DefencePoints = 10, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Copper Dragon", .ShortName = "CopDra", .Power = 2600, .HP = 800, .Melee = 400, .Ranged = 200, .DefencePoints = 11, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Green Dragon", .ShortName = "GreDra", .Power = 2800, .HP = 900, .Melee = 450, .Ranged = 225, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Blue Dragon", .ShortName = "BluDra", .Power = 3000, .HP = 1000, .Melee = 500, .Ranged = 250, .DefencePoints = 12, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Red Dragon", .ShortName = "RedDra", .Power = 3500, .HP = 1500, .Melee = 750, .Ranged = 375, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Bronze Dragon", .ShortName = "BroDra", .Power = 4000, .HP = 2000, .Melee = 1000, .Ranged = 500, .DefencePoints = 14, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Silver Dragon", .ShortName = "SilDra", .Power = 5000, .HP = 3000, .Melee = 1500, .Ranged = 750, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Gold Dragon", .ShortName = "GolDra", .Power = 6000, .HP = 4000, .Melee = 2000, .Ranged = 1000, .DefencePoints = 15, .FoodCost = 2, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True},
-        New UnitStats With {.Name = "Ancient Dragon", .ShortName = "AncDra", .Power = 10000, .HP = 10000, .Melee = 5000, .Ranged = 5000, .DefencePoints = 16, .FoodCost = 3, .Type = UnitType.HeavyCavalry, .CanChase = True, .CanCharge = True, .Flying = True}
-    }
-}
-        AllRaces.Add(dragons)
 
         Dim Undead As New RaceUnits With {
     .RaceName = "Undead",
@@ -1854,7 +1991,7 @@ Public Class Form1
             Case "elf" : unitName = "Elf Recruits"
             Case "dwarf" : unitName = "Dwarf Militia"
             Case "orc" : unitName = "Orc Rabble"
-            Case "human" : unitName = "Human Peasants"
+            Case "human" : unitName = "Peasants"
             Case Else : unitName = "Militia"
         End Select
 
@@ -2400,16 +2537,24 @@ Public Class Form1
             Dim divisor As Double = 20.79 - (0.03167 * ownedSquares)
             divisor = Math.Max(1, Math.Min(100, divisor))  ' clamp for safety
 
-            ' === 6. Population growth ===
+            ' === 6. Population growth with diminishing returns ===
             Dim growth As Integer = 0
             If remainingFood > 0 Then
-                growth = CInt(remainingFood / divisor)
+                ' Natural diminishing returns: more food still helps, but less efficiently
+                ' Food ratio (how much food above requirement)
+                Dim foodRatio As Double = remainingFood / Math.Max(1, totalToFeed)
+
+                ' Growth fraction follows a sigmoid-like response (tapering off past 1.0)
+                Dim growthRate As Double = foodRatio / (1 + foodRatio)
+
+                ' Scale by a small constant so early growth is noticeable but not runaway
+                growth = CInt((p.Population * growthRate * 0.05) / divisor)
             End If
 
             ' === 7. Apply growth ===
             If growth > 0 Then
                 p.Population += growth
-                Debug.WriteLine($"[POP] {p.Race} grew by {growth} (owns {ownedSquares} tiles, divisor {divisor:F2}, surplus {remainingFood})")
+                'Debug.WriteLine($"[POP] {p.Race} grew by {growth} (owns {ownedSquares} tiles, divisor {divisor:F2}, surplus {remainingFood}, ratio {growthRate:F3})")
             End If
         Next
     End Sub
@@ -3153,203 +3298,206 @@ Public Class Form1
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
         If army Is Nothing OrElse player Is Nothing Then Exit Sub
 
-        ' --- Role by index (used for later bias or behavior tuning) ---
-        Dim role As String
-        Select Case armyIndex
-            Case 0 : role = "Offensive"
-            Case 1 : role = "Flexible"
-            Case 2 : role = "Defensive"
-            Case Else : role = "Flexible"
+        ' ---------- GLOBAL EARLY-GAME FREEZE ----------
+        ' Never recruit on turn 1 unless an enemy can already fight this army.
+        Dim turnN As Integer = currentTurnNumber
+        Dim enemyImminent As Boolean = False
+        Dim cg As List(Of Point) = GetCombatGrid(army) ' 5x5 around this army
+        Dim ix As Integer, iy As Integer
+
+        ' Check for any enemy inside combat grid and combat-capable (>=500)
+        For Each opp As Player In Players
+            If opp Is Nothing Then Continue For
+            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
+           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
+                Continue For
+            End If
+            If opp.Armies Is Nothing Then Continue For
+            For Each ea As Army In opp.Armies
+                If ea Is Nothing Then Continue For
+                If ea.TotalSoldiers < 500 Then Continue For
+                ' Inside our combat grid?
+                For Each pt As Point In cg
+                    If ea.X = pt.X AndAlso ea.Y = pt.Y Then
+                        enemyImminent = True
+                        Exit For
+                    End If
+                Next
+                If enemyImminent Then Exit For
+            Next
+            If enemyImminent Then Exit For
+        Next
+
+        If turnN <= 1 AndAlso Not enemyImminent Then
+            Debug.WriteLine("[AI] " & player.Race & " - Turn 1 calm; no recruitment.")
+            Exit Sub
+        End If
+
+        ' ---------- THREAT GATE ----------
+        ' Only consider recruiting if a meaningful threat is near.
+        Dim enemyNearby As Boolean = False
+        Dim nearDist As Integer = 6 ' “approaching” window
+        For Each opp As Player In Players
+            If opp Is Nothing Then Continue For
+            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
+           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
+                Continue For
+            End If
+            If opp.Armies Is Nothing Then Continue For
+            For Each ea As Army In opp.Armies
+                If ea Is Nothing Then Continue For
+                If ea.TotalSoldiers < 500 Then Continue For
+                If Math.Abs(ea.X - army.X) <= nearDist AndAlso Math.Abs(ea.Y - army.Y) <= nearDist Then
+                    enemyNearby = True
+                    Exit For
+                End If
+            Next
+            If enemyNearby Then Exit For
+        Next
+
+        If Not enemyNearby AndAlso Not enemyImminent Then
+            Debug.WriteLine("[AI] " & player.Race & " - No nearby threat; skipping recruitment.")
+            Exit Sub
+        End If
+
+        ' ---------- GLOBAL POWER CHECK ----------
+        ' Only recruit if we are clearly behind.
+        Dim ourStrength As Integer = 0
+        If player.Armies IsNot Nothing Then
+            For Each a In player.Armies
+                If a IsNot Nothing Then ourStrength += a.TotalSoldiers
+            Next
+        End If
+
+        Dim enemyStrongest As Integer = 0
+        For Each opp As Player In Players
+            If opp Is Nothing Then Continue For
+            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
+           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
+                Continue For
+            End If
+            Dim s As Integer = 0
+            If opp.Armies IsNot Nothing Then
+                For Each a In opp.Armies
+                    If a IsNot Nothing Then s += a.TotalSoldiers
+                Next
+            End If
+            If s > enemyStrongest Then enemyStrongest = s
+        Next
+
+        Dim badlyBehind As Boolean = (ourStrength < (enemyStrongest * 8 \ 10)) ' <80%
+
+        If Not badlyBehind AndAlso Not enemyImminent Then
+            Debug.WriteLine("[AI] " & player.Race & " - Strength OK (" & ourStrength & " vs " & enemyStrongest & "); no recruitment.")
+            Exit Sub
+        End If
+
+        ' ---------- ONE-RECRUIT CAP (calm); TWO if imminent ----------
+        Dim alreadyQueued As Integer = 0
+        If player.Armies IsNot Nothing Then
+            For Each a In player.Armies
+                If a Is Nothing OrElse a.MoveQueue Is Nothing Then Continue For
+                For Each cmd As ArmyCommand In a.MoveQueue
+                    If cmd Is Nothing OrElse cmd.Command Is Nothing Then Continue For
+                    If String.Compare(cmd.Command, "RECRUIT", True) = 0 Then
+                        alreadyQueued += 1
+                    End If
+                Next
+            Next
+        End If
+
+        If Not enemyImminent AndAlso alreadyQueued >= 1 Then
+            Debug.WriteLine("[AI] " & player.Race & " - Recruit quota met (calm).")
+            Exit Sub
+        End If
+        If enemyImminent AndAlso alreadyQueued >= 2 Then
+            Debug.WriteLine("[AI] " & player.Race & " - Recruit quota met (imminent=2).")
+            Exit Sub
+        End If
+
+        ' ---------- ONLY TOP-UP UNDER-500 ARMIES ----------
+        ' This is the big hammer that preserves growth:
+        ' we only ever top an army up toward ~500, never mass-recruit.
+        If army.TotalSoldiers >= 500 Then
+            Debug.WriteLine("[AI] " & player.Race & " - Army >=500; no top-up recruiting.")
+            Exit Sub
+        End If
+
+        ' Roster lookup
+        Dim roster As RaceUnits = Nothing
+        For Each ru As RaceUnits In AllRaces
+            If ru Is Nothing OrElse ru.RaceName Is Nothing Then Continue For
+            If ru.RaceName.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
+                roster = ru
+                Exit For
+            End If
+        Next
+        If roster Is Nothing OrElse roster.Units Is Nothing OrElse roster.Units.Count = 0 Then Exit Sub
+
+        ' Pick a sensible unit: Elves prefer Archer but add LI if too many archers;
+        ' others pick a solid core (LI/HI/HC by race).
+        Dim wantType As UnitType
+        Select Case LCase(Trim(player.Race))
+            Case "elf" : wantType = UnitType.Archer
+            Case "orc" : wantType = UnitType.LightInfantry
+            Case "dwarf" : wantType = UnitType.HeavyInfantry
+            Case "human" : wantType = UnitType.HeavyCavalry
+            Case Else : wantType = UnitType.LightInfantry
         End Select
 
-        ' --- Load race unit roster ---
-        Dim raceUnits As RaceUnits =
-        AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(player.Race, StringComparison.OrdinalIgnoreCase))
-        If raceUnits Is Nothing Then Exit Sub
-
-        ' ===========================================================
-        ' === DWARF ELITE RECRUIT PRIORITY (runs before anything) ===
-        ' ===========================================================
-        If player.Race.Equals("Dwarf", StringComparison.OrdinalIgnoreCase) AndAlso player.Mithril >= 50 Then
-            Dim mithrilUnit As UnitStats = raceUnits.Units.FirstOrDefault(Function(u) u.Cost.Contains("X:"))
-            If mithrilUnit IsNot Nothing Then
-                Dim maxUnits As Integer = MaxRecruitableUnits(player, mithrilUnit)
-                If maxUnits >= 50 Then
-                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = mithrilUnit.ShortName})
-                    Debug.WriteLine($"[Mithril] Dwarf elite recruit: queued {mithrilUnit.Name} (up to {maxUnits}). Mithril={player.Mithril}")
-                    Exit Sub
-                Else
-                    Debug.WriteLine($"[Mithril] Dwarf elite skipped: Mithril={player.Mithril}, can only make {maxUnits}.")
-                End If
-            End If
-        End If
-
-        ' ===========================================================
-        ' === EMPTY ARMY AUTO-REVIVE ================================
-        ' ===========================================================
-        If army.TotalSoldiers <= 0 AndAlso player.Population > 0 Then
-            Dim recruitUnit As UnitStats = GetCheapestAvailableUnit(player)
-            If recruitUnit IsNot Nothing Then
-                Dim maxUnits As Integer = MaxRecruitableUnits(player, recruitUnit)
-                If maxUnits > 0 Then
-                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = recruitUnit.ShortName})
-                    Debug.WriteLine($"[AI] {player.Race} revived empty army: queued {recruitUnit.Name} (up to {maxUnits}).")
-                    Exit Sub
-                Else
-                    Debug.WriteLine($"[AI] {player.Race} could not revive empty army — insufficient resources.")
-                End If
-            Else
-                Debug.WriteLine($"[AI] {player.Race} could not find any unit to revive empty army.")
-            End If
-        End If
-
-        ' ===========================================================
-        ' === STRENGTH COMPARISON ==================================
-        ' ===========================================================
-        Dim ourStrength As Integer = player.Armies.Sum(Function(a) a.TotalSoldiers)
-        Dim enemyStrongest As Integer =
-        Players.Where(Function(pp) Not pp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase)) _
-               .Select(Function(pp) pp.Armies.Sum(Function(a) a.TotalSoldiers)) _
-               .DefaultIfEmpty(0) _
-               .Max()
-
-        Dim panic As Boolean = (enemyStrongest >= ourStrength * 2) OrElse (ourStrength < enemyStrongest * 0.25)
-
-        ' ===========================================================
-        ' === BASELINE REVIVE =======================================
-        ' ===========================================================
-        If army.TotalSoldiers < 500 AndAlso player.Population > 0 Then
-            Dim recruitUnit As UnitStats = GetCheapestAvailableUnit(player)
-            If recruitUnit IsNot Nothing Then
-                Dim maxUnits As Integer = MaxRecruitableUnits(player, recruitUnit)
-                Dim target As Integer = Math.Min(500 - army.TotalSoldiers, maxUnits)
-                If target > 0 Then
-                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = recruitUnit.ShortName})
-                    Debug.WriteLine($"[AI] {player.Race} baseline revive: queued {recruitUnit.Name} (up to {target}).")
-                    Exit Sub
-                Else
-                    Debug.WriteLine($"[AI] {player.Race} baseline revive failed: insufficient resources/pop for {recruitUnit.Name}.")
-                End If
-            End If
-        End If
-
-        ' ===========================================================
-        ' === PANIC RECRUIT =========================================
-        ' ===========================================================
-        If panic AndAlso player.Population > 0 Then
-            Dim recruitUnit As UnitStats = GetCheapestAvailableUnit(player)
-            If recruitUnit IsNot Nothing Then
-                Dim maxUnits As Integer = MaxRecruitableUnits(player, recruitUnit)
-                If maxUnits > 0 Then
-                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = recruitUnit.ShortName})
-                    Debug.WriteLine($"[AI] {player.Race} panic recruit: queued {recruitUnit.Name} (up to {maxUnits}).")
-                    Exit Sub
-                Else
-                    Debug.WriteLine($"[AI] {player.Race} panic recruit failed: insufficient resources/pop for {recruitUnit.Name}.")
-                End If
-            End If
-        End If
-
-        ' ===========================================================
-        ' === EMERGENCY RECRUIT (army <500 fallback) ================
-        ' ===========================================================
-        If army.TotalSoldiers < 500 AndAlso player.Population > 0 Then
-            Dim favourite As UnitType
-            Select Case player.Race.ToLowerInvariant()
-                Case "elf" : favourite = UnitType.Archer
-                Case "orc" : favourite = UnitType.LightInfantry
-                Case "dwarf" : favourite = UnitType.HeavyInfantry
-                Case "human" : favourite = UnitType.HeavyCavalry
-                Case Else : favourite = UnitType.LightInfantry
-            End Select
-
-            Dim tryUnits As New List(Of UnitStats)
-            Dim favUnit As UnitStats = raceUnits.Units.FirstOrDefault(Function(u) u.Type = favourite)
-            If favUnit IsNot Nothing Then tryUnits.Add(favUnit)
-            For Each u In raceUnits.Units
-                If Not tryUnits.Contains(u) Then tryUnits.Add(u)
+        ' Simple composition nudge for Elves: if archers >60% of army, switch to LI as a shield.
+        If String.Compare(player.Race, "elf", True) = 0 AndAlso army.Units IsNot Nothing Then
+            Dim total As Integer = 0
+            Dim arch As Integer = 0
+            For Each u As Unit In army.Units
+                If u Is Nothing Then Continue For
+                total += u.Size
+                If u.Type = UnitType.Archer Then arch += u.Size
             Next
-
-            Dim recruited As Boolean = False
-            For Each candidate In tryUnits
-                If candidate Is Nothing Then Continue For
-                Dim maxAvail As Integer = MaxRecruitableUnits(player, candidate)
-                If maxAvail > 0 Then
-                    army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = candidate.ShortName})
-                    Debug.WriteLine($"[AI] {player.Race} emergency recruit: queued {candidate.Name} (up to {maxAvail}).")
-                    recruited = True
-                    Exit For
-                Else
-                    Debug.WriteLine($"[AI] {player.Race} tried {candidate.Name} but failed (Iron={player.Iron}, Wood={player.Wood}, Mounts={player.Mounts}, Pop={player.Population}).")
-                End If
-            Next
-
-            If recruited Then Exit Sub
-        End If
-
-        ' ===========================================================
-        ' === NORMAL RECRUITING =====================================
-        ' ===========================================================
-        Dim nearbyEnemies = Players.SelectMany(Function(pp) pp.Armies) _
-        .Where(Function(a) a.Race <> player.Race AndAlso Math.Abs(a.X - army.X) <= 5 AndAlso Math.Abs(a.Y - army.Y) <= 5) _
-        .ToList()
-
-        Dim underThreat As Boolean = nearbyEnemies.Any(Function(ea) ea.TotalSoldiers >= army.TotalSoldiers)
-        Dim hasOpportunity As Boolean = nearbyEnemies.Any(Function(ea) ea.TotalSoldiers < army.TotalSoldiers)
-        Dim randomRecruit As Boolean = (rnd.Next(0, 100) < 25)
-
-        ourStrength = player.Armies.Sum(Function(a) a.TotalSoldiers)
-        enemyStrongest =
-        Players.Where(Function(pp) Not pp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase)) _
-               .GroupBy(Function(pp) pp.Race, StringComparer.OrdinalIgnoreCase) _
-               .Select(Function(g) g.SelectMany(Function(pp) pp.Armies).Sum(Function(a) a.TotalSoldiers)) _
-               .DefaultIfEmpty(0) _
-               .Max()
-
-        Dim badlyBehind As Boolean = (enemyStrongest > 0 AndAlso ourStrength < CInt(Math.Floor(enemyStrongest * 0.75)))
-        Dim mayUseCatchUp As Boolean = (badlyBehind AndAlso player.CatchUpCooldown <= 0)
-
-        If Not randomRecruit AndAlso Not mayUseCatchUp Then Exit Sub
-        If mayUseCatchUp Then player.CatchUpCooldown = 2
-
-        Dim chosenUnit As UnitStats = Nothing
-
-        If mayUseCatchUp Then
-            chosenUnit = GetCheapestAvailableUnit(player)
-        Else
-            Dim preferred As UnitType
-            Select Case player.Race.ToLowerInvariant()
-                Case "elf" : preferred = UnitType.Archer
-                Case "orc" : preferred = UnitType.LightInfantry
-                Case "dwarf" : preferred = UnitType.HeavyInfantry
-                Case "human" : preferred = UnitType.HeavyCavalry
-                Case Else : preferred = UnitType.LightInfantry
-            End Select
-
-            If rnd.NextDouble() < 0.4 Then ' more variety, 40% chance to use favourite
-                chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = preferred)
-            Else
-                Dim allTypes As New List(Of UnitType)([Enum].GetValues(GetType(UnitType)).Cast(Of UnitType)())
-                allTypes.Remove(preferred)
-                Dim randomType As UnitType = allTypes(rnd.Next(allTypes.Count))
-                chosenUnit = raceUnits.Units.FirstOrDefault(Function(u) u.Type = randomType)
-            End If
-
-            If chosenUnit Is Nothing AndAlso raceUnits.Units.Count > 0 Then
-                chosenUnit = raceUnits.Units(rnd.Next(raceUnits.Units.Count))
+            If total > 0 Then
+                Dim pct As Double = CDbl(arch) / CDbl(total)
+                If pct >= 0.6 Then wantType = UnitType.LightInfantry
             End If
         End If
 
-        If chosenUnit IsNot Nothing Then
-            Dim maxByResources As Integer = MaxRecruitableUnits(player, chosenUnit)
-            If maxByResources > 0 AndAlso player.Population > 0 Then
-                army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = chosenUnit.ShortName})
-                Debug.WriteLine($"[AI] {player.Race} normal recruit: queued {chosenUnit.Name} (up to {maxByResources}).")
-            Else
-                Debug.WriteLine($"[AI] {player.Race} normal recruit failed: insufficient resources/pop for {chosenUnit.Name}.")
+        Dim pick As UnitStats = Nothing
+        For Each us As UnitStats In roster.Units
+            If us Is Nothing Then Continue For
+            If us.Type = wantType Then
+                pick = us
+                Exit For
             End If
+        Next
+        If pick Is Nothing Then
+            ' Fallback: cheapest available
+            pick = GetCheapestAvailableUnit(player)
+            If pick Is Nothing Then Exit Sub
         End If
+
+        ' Overshoot guard: if we could recruit an enormous number of this unit,
+        ' skip entirely (prevents draining huge population in one command).
+        Dim maxUnits As Integer = MaxRecruitableUnits(player, pick)
+        Dim roomTo500 As Integer = 500 - army.TotalSoldiers
+        If maxUnits > roomTo500 AndAlso Not enemyImminent Then
+            Debug.WriteLine("[AI] " & player.Race & " - Overshoot guard (" & maxUnits & " > " & roomTo500 & "); skip.")
+            Exit Sub
+        End If
+
+        ' Final safety: don’t recruit with trivial population
+        If player.Population < 1000 Then
+            Debug.WriteLine("[AI] " & player.Race & " - Population too low; skip.")
+            Exit Sub
+        End If
+
+        ' Queue exactly one RECRUIT command; executor will handle amounts.
+        If army.MoveQueue Is Nothing Then army.MoveQueue = New List(Of ArmyCommand)()
+        army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = pick.ShortName})
+
+        Debug.WriteLine("[AI] " & player.Race & " queued " & pick.Name &
+                    " (cap " & roomTo500 & ", max " & maxUnits &
+                    ", imminent=" & enemyImminent.ToString() & ").")
     End Sub
+
 
 
     Private Function MaxRecruitableUnits(player As Player, unit As UnitStats) As Integer
@@ -4265,8 +4413,8 @@ Public Class Form1
         Dim maxBudget As Integer = basePower + (MercPriceLevel * powerGrowth)
 
         Dim mercFactions As String() = {
-            "Skulkrin", "Barbarians", "Gnolls", "Werecreatures", "Harpies",
-            "Cultists", "Demons", "Dragons", "Undead", "Golems", "Elementals",
+            "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
+            "Cultists", "Demons", "Undead", "Golems", "Elementals",
             "Bandits", "Nomads", "Freeblades"
         }
 
