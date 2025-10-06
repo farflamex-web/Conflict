@@ -2,10 +2,6 @@
 Option Explicit On
 
 
-' TO DO - Mercenary gold?
-' If a summoner can't afford a single unit, they should level up instead.
-' Break summoners into seperate factions, e.g Kobolds, goblins, lizardmen, ogres/trolls.
-
 ' ===========================================================
 ' PROJECT: Conflict
 ' ===========================================================
@@ -683,7 +679,7 @@ Public Class Form1
             ' --- Refresh UI ---
             lblHud.Text = $"Game: {gameName}" & vbCrLf &
                       $"Turn: {currentTurnNumber}" & vbCrLf &
-                      $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+                      $"Next Merc Cost: {MercPriceLevel}"
 
             pnlMap.Invalidate()
             pnlMap.Update()
@@ -1207,6 +1203,7 @@ Public Class Form1
         rtbInfo.Clear()
         rtbGameInfo.Clear()
         currentTurnNumber = 1
+        MercPriceLevel = 50
 
         ' --- Initialize everything ---
         CreateTerrainCache()
@@ -1217,7 +1214,7 @@ Public Class Form1
         ' --- Update HUD ---
         lblHud.Text = $"Game: {gameName}" & vbCrLf &
                   $"Turn: {currentTurnNumber}" & vbCrLf &
-                  $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+                  $"Next Merc Cost: {MercPriceLevel}"
 
         ' --- Draw map ---
         pnlMap.Invalidate()
@@ -2504,7 +2501,6 @@ Public Class Form1
 #End Region
 
 
-
     Public Sub GrowPopulationAndFeedEverybody()
         For Each p In Players
             ' === 1. Calculate total food required for armies ===
@@ -2523,8 +2519,8 @@ Public Class Form1
 
             ' === 4. Count owned squares ===
             Dim ownedSquares As Integer = 0
-            For x = 0 To 24
-                For y = 0 To 24
+            For x As Integer = 0 To 24
+                For y As Integer = 0 To 24
                     If Map(x, y, 1) = p.PlayerNumber Then
                         ownedSquares += 1
                     End If
@@ -2532,32 +2528,23 @@ Public Class Form1
             Next
             If ownedSquares <= 0 Then ownedSquares = 1
 
-            ' === 5. Dynamic divisor ===
-            ' 1 square ≈ /100, 25 squares ≈ /20, 625 squares ≈ /1
-            Dim divisor As Double = 20.79 - (0.03167 * ownedSquares)
-            divisor = Math.Max(1, Math.Min(100, divisor))  ' clamp for safety
-
-            ' === 6. Population growth with diminishing returns ===
-            Dim growth As Integer = 0
+            ' === 5. Growth if surplus food ===
             If remainingFood > 0 Then
-                ' Natural diminishing returns: more food still helps, but less efficiently
-                ' Food ratio (how much food above requirement)
                 Dim foodRatio As Double = remainingFood / Math.Max(1, totalToFeed)
 
-                ' Growth fraction follows a sigmoid-like response (tapering off past 1.0)
-                Dim growthRate As Double = foodRatio / (1 + foodRatio)
+                ' --- Add territory-based growth bonus ---
+                Dim tileBoost As Double = 1.0 + (ownedSquares / 100.0)   ' +1% per owned tile
 
-                ' Scale by a small constant so early growth is noticeable but not runaway
-                growth = CInt((p.Population * growthRate * 0.05) / divisor)
-            End If
+                Dim growth As Integer = CInt(p.Population * foodRatio * 0.05 * tileBoost)
 
-            ' === 7. Apply growth ===
-            If growth > 0 Then
-                p.Population += growth
-                'Debug.WriteLine($"[POP] {p.Race} grew by {growth} (owns {ownedSquares} tiles, divisor {divisor:F2}, surplus {remainingFood}, ratio {growthRate:F3})")
+                If growth > 0 Then
+                    p.Population += growth
+                    Debug.WriteLine($"[POP] {p.Race} grew by {growth} (foodRatio={foodRatio:F2}, tiles={ownedSquares}, tileBoost={tileBoost:F2}, pop={p.Population})")
+                End If
             End If
         Next
     End Sub
+
 
 
 
@@ -2707,6 +2694,14 @@ Public Class Form1
         AIBuySummoners()
         ProcessSummoners()
 
+        ' --- 4b. AI Recruitment Phase ---
+        For Each p In Players
+            If p.AIControlled Then
+                AI_RunRecruitmentPhase_ForPlayer(p)
+            End If
+        Next
+
+
         ' --- 5. Execute army movements step by step ---
         ProcessTurn()
 
@@ -2736,7 +2731,7 @@ Public Class Form1
         ' --- 12. Update HUD text ---
         lblHud.Text =
         $"Turn: {currentTurnNumber}" & vbCrLf &
-        $"Next Merc Cost: {50 + (MercPriceLevel * 50)}"
+        $"Next Merc Cost: {MercPriceLevel}"
 
     End Sub
 
@@ -3295,249 +3290,249 @@ Public Class Form1
     End Function
 
 
-    Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
-        If army Is Nothing OrElse player Is Nothing Then Exit Sub
+#Region "=== AI Recruitment v2 ==="
 
-        ' ---------- GLOBAL EARLY-GAME FREEZE ----------
-        ' Never recruit on turn 1 unless an enemy can already fight this army.
-        Dim turnN As Integer = currentTurnNumber
-        Dim enemyImminent As Boolean = False
-        Dim cg As List(Of Point) = GetCombatGrid(army) ' 5x5 around this army
-        Dim ix As Integer, iy As Integer
+    ' Predictive power buffer per player (PlayerNumber -> projected gain this tick)
+    Private ReadOnly AIPowerQueuedGain As New Dictionary(Of Integer, Integer)()
 
-        ' Check for any enemy inside combat grid and combat-capable (>=500)
-        For Each opp As Player In Players
-            If opp Is Nothing Then Continue For
-            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
-           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
-                Continue For
-            End If
-            If opp.Armies Is Nothing Then Continue For
-            For Each ea As Army In opp.Armies
-                If ea Is Nothing Then Continue For
-                If ea.TotalSoldiers < 500 Then Continue For
-                ' Inside our combat grid?
-                For Each pt As Point In cg
-                    If ea.X = pt.X AndAlso ea.Y = pt.Y Then
-                        enemyImminent = True
-                        Exit For
-                    End If
-                Next
-                If enemyImminent Then Exit For
-            Next
-            If enemyImminent Then Exit For
-        Next
-
-        If turnN <= 1 AndAlso Not enemyImminent Then
-            Debug.WriteLine("[AI] " & player.Race & " - Turn 1 calm; no recruitment.")
-            Exit Sub
+    ' Reset the projection just for this player (call once at start of their pass)
+    Private Sub AIRecruit_ResetQueuedGain(forPlayerNumber As Integer)
+        If AIPowerQueuedGain.ContainsKey(forPlayerNumber) Then
+            AIPowerQueuedGain.Remove(forPlayerNumber)
         End If
+    End Sub
 
-        ' ---------- THREAT GATE ----------
-        ' Only consider recruiting if a meaningful threat is near.
-        Dim enemyNearby As Boolean = False
-        Dim nearDist As Integer = 6 ' “approaching” window
-        For Each opp As Player In Players
-            If opp Is Nothing Then Continue For
-            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
-           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
-                Continue For
-            End If
-            If opp.Armies Is Nothing Then Continue For
-            For Each ea As Army In opp.Armies
-                If ea Is Nothing Then Continue For
-                If ea.TotalSoldiers < 500 Then Continue For
-                If Math.Abs(ea.X - army.X) <= nearDist AndAlso Math.Abs(ea.Y - army.Y) <= nearDist Then
-                    enemyNearby = True
-                    Exit For
-                End If
-            Next
-            If enemyNearby Then Exit For
-        Next
-
-        If Not enemyNearby AndAlso Not enemyImminent Then
-            Debug.WriteLine("[AI] " & player.Race & " - No nearby threat; skipping recruitment.")
-            Exit Sub
+    ' Add predicted gain so later armies see the stronger projection
+    Private Sub AddPredictedGain(p As Player, gain As Integer)
+        Dim curr As Integer
+        If AIPowerQueuedGain.TryGetValue(p.PlayerNumber, curr) Then
+            AIPowerQueuedGain(p.PlayerNumber) = curr + gain
+        Else
+            AIPowerQueuedGain(p.PlayerNumber) = gain
         End If
+    End Sub
 
-        ' ---------- GLOBAL POWER CHECK ----------
-        ' Only recruit if we are clearly behind.
-        Dim ourStrength As Integer = 0
-        If player.Armies IsNot Nothing Then
-            For Each a In player.Armies
-                If a IsNot Nothing Then ourStrength += a.TotalSoldiers
+    ' Actual + queued (projected) combat power for this player
+    Private Function GetPredictedTotalPower(p As Player) As Integer
+        Dim actual As Integer = 0
+        If p IsNot Nothing AndAlso p.Armies IsNot Nothing Then
+            For Each a In p.Armies
+                If a IsNot Nothing Then actual += a.TotalSoldiers
             Next
         End If
+        Dim queued As Integer = 0
+        If AIPowerQueuedGain.ContainsKey(p.PlayerNumber) Then queued = AIPowerQueuedGain(p.PlayerNumber)
+        Return actual + queued
+    End Function
 
-        Dim enemyStrongest As Integer = 0
-        For Each opp As Player In Players
-            If opp Is Nothing Then Continue For
-            If opp.Race IsNot Nothing AndAlso player.Race IsNot Nothing _
-           AndAlso opp.Race.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
-                Continue For
-            End If
+    ' Strongest enemy total soldiers (empire-wide)
+    Private Function GetStrongestEnemyPower(p As Player) As Integer
+        Dim strongest As Integer = 0
+        For Each opp In Players
+            If opp Is Nothing OrElse opp Is p Then Continue For
             Dim s As Integer = 0
             If opp.Armies IsNot Nothing Then
                 For Each a In opp.Armies
                     If a IsNot Nothing Then s += a.TotalSoldiers
                 Next
             End If
-            If s > enemyStrongest Then enemyStrongest = s
+            If s > strongest Then strongest = s
         Next
+        Return strongest
+    End Function
 
-        Dim badlyBehind As Boolean = (ourStrength < (enemyStrongest * 8 \ 10)) ' <80%
+    ' --- Utility: simple "cost weight" to decide the cheapest template ---
+    Private Function CostWeight(u As UnitStats) As Integer
+        If u Is Nothing Then Return Integer.MaxValue
+        If String.IsNullOrWhiteSpace(u.Cost) Then Return 0
+        Dim total As Integer = 0
+        For Each part As String In u.Cost.Split(","c)
+            Dim t As String = part.Trim()
+            If t.Length = 0 Then Continue For
+            Dim n As Integer = 1
+            Dim idx As Integer = t.IndexOf(":"c)
+            If idx >= 0 Then
+                Dim raw As String = t.Substring(idx + 1).Trim()
+                Dim parsed As Integer
+                If Integer.TryParse(raw, parsed) Then n = Math.Max(0, parsed)
+            End If
+            total += n
+        Next
+        Return total
+    End Function
 
-        If Not badlyBehind AndAlso Not enemyImminent Then
-            Debug.WriteLine("[AI] " & player.Race & " - Strength OK (" & ourStrength & " vs " & enemyStrongest & "); no recruitment.")
-            Exit Sub
-        End If
-
-        ' ---------- ONE-RECRUIT CAP (calm); TWO if imminent ----------
-        Dim alreadyQueued As Integer = 0
-        If player.Armies IsNot Nothing Then
-            For Each a In player.Armies
-                If a Is Nothing OrElse a.MoveQueue Is Nothing Then Continue For
-                For Each cmd As ArmyCommand In a.MoveQueue
-                    If cmd Is Nothing OrElse cmd.Command Is Nothing Then Continue For
-                    If String.Compare(cmd.Command, "RECRUIT", True) = 0 Then
-                        alreadyQueued += 1
-                    End If
-                Next
-            Next
-        End If
-
-        If Not enemyImminent AndAlso alreadyQueued >= 1 Then
-            Debug.WriteLine("[AI] " & player.Race & " - Recruit quota met (calm).")
-            Exit Sub
-        End If
-        If enemyImminent AndAlso alreadyQueued >= 2 Then
-            Debug.WriteLine("[AI] " & player.Race & " - Recruit quota met (imminent=2).")
-            Exit Sub
-        End If
-
-        ' ---------- ONLY TOP-UP UNDER-500 ARMIES ----------
-        ' This is the big hammer that preserves growth:
-        ' we only ever top an army up toward ~500, never mass-recruit.
-        If army.TotalSoldiers >= 500 Then
-            Debug.WriteLine("[AI] " & player.Race & " - Army >=500; no top-up recruiting.")
-            Exit Sub
-        End If
-
-        ' Roster lookup
-        Dim roster As RaceUnits = Nothing
-        For Each ru As RaceUnits In AllRaces
-            If ru Is Nothing OrElse ru.RaceName Is Nothing Then Continue For
-            If ru.RaceName.Equals(player.Race, StringComparison.OrdinalIgnoreCase) Then
-                roster = ru
-                Exit For
+    Private Function FirstRecruitableOfType(ru As RaceUnits, t As UnitType) As UnitStats
+        If ru Is Nothing OrElse ru.Units Is Nothing Then Return Nothing
+        For Each u In ru.Units
+            If u IsNot Nothing AndAlso u.Type = t AndAlso Not String.IsNullOrWhiteSpace(u.ShortName) Then
+                Return u
             End If
         Next
-        If roster Is Nothing OrElse roster.Units Is Nothing OrElse roster.Units.Count = 0 Then Exit Sub
+        Return Nothing
+    End Function
 
-        ' Pick a sensible unit: Elves prefer Archer but add LI if too many archers;
-        ' others pick a solid core (LI/HI/HC by race).
-        Dim wantType As UnitType
+    Private Function CheapestRecruitable(ru As RaceUnits) As UnitStats
+        If ru Is Nothing OrElse ru.Units Is Nothing OrElse ru.Units.Count = 0 Then Return Nothing
+        Dim best As UnitStats = Nothing
+        Dim bestW As Integer = Integer.MaxValue
+        For Each u In ru.Units
+            If u Is Nothing OrElse String.IsNullOrWhiteSpace(u.ShortName) Then Continue For
+            Dim w As Integer = CostWeight(u)
+            If w < bestW Then
+                bestW = w
+                best = u
+            End If
+        Next
+        Return best
+    End Function
+
+    ' ==============================
+    ' PART 1: Should we recruit now?
+    ' ==============================
+    Private Function ShouldRecruitArmy(player As Player) As Boolean
+        If player Is Nothing Then Return False
+
+        ' Population gate (protects growth)
+        If player.Population < 1000 Then Return False
+
+        Dim myPredicted As Integer = GetPredictedTotalPower(player)
+        Dim enemyStrongest As Integer = GetStrongestEnemyPower(player)
+        If enemyStrongest <= 0 Then Return True ' no opposition yet
+
+        Dim ratio As Double = CDbl(myPredicted) / CDbl(enemyStrongest)
+
+        ' Recruit if we are below 80% of strongest enemy
+        Return ratio < 0.8R
+    End Function
+
+    ' ============================================
+    ' PART 2: What unit should this army recruit?
+    ' ============================================
+    Private Function DecideRecruitmentUnit(player As Player, army As Army) As UnitStats
+        If player Is Nothing OrElse army Is Nothing Then Return Nothing
+
+        Dim ru As RaceUnits = AllRaces.FirstOrDefault(Function(r) String.Equals(r.RaceName, player.Race, StringComparison.OrdinalIgnoreCase))
+        If ru Is Nothing Then Return Nothing
+
+        ' If crippled, pick cheapest recruitable body to top up quickly
+        If army.TotalSoldiers < 500 Then
+            Dim cheap As UnitStats = CheapestRecruitable(ru)
+            If cheap IsNot Nothing Then Return cheap
+        End If
+
+        ' Race preferences
+        Dim preferred As UnitType = UnitType.LightInfantry
         Select Case LCase(Trim(player.Race))
-            Case "elf" : wantType = UnitType.Archer
-            Case "orc" : wantType = UnitType.LightInfantry
-            Case "dwarf" : wantType = UnitType.HeavyInfantry
-            Case "human" : wantType = UnitType.HeavyCavalry
-            Case Else : wantType = UnitType.LightInfantry
+            Case "elf" : preferred = UnitType.Archer
+            Case "orc" : preferred = UnitType.LightInfantry
+            Case "dwarf" : preferred = UnitType.HeavyInfantry
+            Case "human" : preferred = UnitType.HeavyCavalry
         End Select
 
-        ' Simple composition nudge for Elves: if archers >60% of army, switch to LI as a shield.
-        If String.Compare(player.Race, "elf", True) = 0 AndAlso army.Units IsNot Nothing Then
+        ' Elven archer cap: if >60% archers, prefer LI as a shield
+        If String.Equals(player.Race, "Elf", StringComparison.OrdinalIgnoreCase) AndAlso army.Units IsNot Nothing Then
             Dim total As Integer = 0
             Dim arch As Integer = 0
-            For Each u As Unit In army.Units
+            For Each u In army.Units
                 If u Is Nothing Then Continue For
                 total += u.Size
                 If u.Type = UnitType.Archer Then arch += u.Size
             Next
             If total > 0 Then
-                Dim pct As Double = CDbl(arch) / CDbl(total)
-                If pct >= 0.6 Then wantType = UnitType.LightInfantry
+                Dim ar As Double = CDbl(arch) / CDbl(total)
+                If ar > 0.6R Then preferred = UnitType.LightInfantry
             End If
         End If
 
-        Dim pick As UnitStats = Nothing
-        For Each us As UnitStats In roster.Units
-            If us Is Nothing Then Continue For
-            If us.Type = wantType Then
-                pick = us
-                Exit For
-            End If
-        Next
+        ' Try preferred type with a valid ShortName (required by your RECRUIT executor)
+        Dim templ As UnitStats = FirstRecruitableOfType(ru, preferred)
+        If templ IsNot Nothing Then Return templ
+
+        ' Fallback: cheapest recruitable in roster
+        Return CheapestRecruitable(ru)
+    End Function
+
+    ' ======================================================
+    ' MAIN ENTRY: Enqueue one RECRUIT for this army if needed
+    ' (called from your ProcessTurn() special step)
+    ' ======================================================
+    Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
+        If army Is Nothing OrElse player Is Nothing Then Exit Sub
+        If Not player.AIControlled Then Exit Sub
+
+        ' One-time reset for this player (first army we touch this tick)
+        If armyIndex = 0 Then
+            AIRecruit_ResetQueuedGain(player.PlayerNumber)
+        End If
+
+        ' Empire-level decision
+        If Not ShouldRecruitArmy(player) Then
+            Debug.WriteLine($"[AI] {player.Race}: no recruitment (pred={GetPredictedTotalPower(player)}, enemyMax={GetStrongestEnemyPower(player)}).")
+            Exit Sub
+        End If
+
+        ' Choose a recruitable template
+        Dim pick As UnitStats = DecideRecruitmentUnit(player, army)
         If pick Is Nothing Then
-            ' Fallback: cheapest available
-            pick = GetCheapestAvailableUnit(player)
-            If pick Is Nothing Then Exit Sub
+            Debug.WriteLine($"[AI] {player.Race}: no valid unit template to recruit.")
+            Exit Sub
         End If
-
-        ' Overshoot guard: if we could recruit an enormous number of this unit,
-        ' skip entirely (prevents draining huge population in one command).
-        Dim maxUnits As Integer = MaxRecruitableUnits(player, pick)
-        Dim roomTo500 As Integer = 500 - army.TotalSoldiers
-        If maxUnits > roomTo500 AndAlso Not enemyImminent Then
-            Debug.WriteLine("[AI] " & player.Race & " - Overshoot guard (" & maxUnits & " > " & roomTo500 & "); skip.")
+        If String.IsNullOrWhiteSpace(pick.ShortName) Then
+            Debug.WriteLine($"[AI] {player.Race}: template '{pick.Name}' lacks ShortName; cannot enqueue RECRUIT.")
             Exit Sub
         End If
 
-        ' Final safety: don’t recruit with trivial population
-        If player.Population < 1000 Then
-            Debug.WriteLine("[AI] " & player.Race & " - Population too low; skip.")
-            Exit Sub
-        End If
-
-        ' Queue exactly one RECRUIT command; executor will handle amounts.
+        ' Ensure MoveQueue exists
         If army.MoveQueue Is Nothing Then army.MoveQueue = New List(Of ArmyCommand)()
+
+        ' Enqueue command; your ProcessTurn special step will perform RecruitArmyUnits
         army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = pick.ShortName})
 
-        Debug.WriteLine("[AI] " & player.Race & " queued " & pick.Name &
-                    " (cap " & roomTo500 & ", max " & maxUnits &
-                    ", imminent=" & enemyImminent.ToString() & ").")
+        ' Predict empire gain so later armies see a stronger projection (5% of current pop)
+        Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05R)))
+        AddPredictedGain(player, maxPerTurn)
+
+        Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} (short '{pick.ShortName}') for Army {armyIndex + 1}. PredPower now {GetPredictedTotalPower(player)}.")
     End Sub
 
+    ' ======================================================================
+    ' OPTIONAL: Run recruitment across all of a player's armies (call once).
+    ' If you prefer to keep recruitment inside your existing ProcessTurn() loop,
+    ' you can skip this helper.
+    ' ======================================================================
+    Public Sub AI_RunRecruitmentPhase_ForPlayer(p As Player)
+        If p Is Nothing OrElse Not p.AIControlled Then Exit Sub
+        AIRecruit_ResetQueuedGain(p.PlayerNumber)
 
+        ' Process under-500 armies first (they only need topping up)
+        Dim under500 As New List(Of Army)
+        Dim overEq500 As New List(Of Army)
 
-    Private Function MaxRecruitableUnits(player As Player, unit As UnitStats) As Integer
-        If player Is Nothing OrElse unit Is Nothing Then Return 0
-
-        ' --- 1) Base cap: 5% of population, minimum 1 ---
-        Dim desiredRecruit As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05)))
-
-        ' --- 2) Parse costs like "I:2, W:1, M:1, X:1" (X = Mithril) ---
-        Dim reqIron As Integer = 0
-        Dim reqWood As Integer = 0
-        Dim reqMounts As Integer = 0
-        Dim reqMithril As Integer = 0
-
-        If Not String.IsNullOrWhiteSpace(unit.Cost) Then
-            For Each part In unit.Cost.Split(","c)
-                Dim t As String = part.Trim().ToUpperInvariant()
-                If t.StartsWith("I:") Then reqIron += CInt(Val(t.Substring(2)))
-                If t.StartsWith("W:") Then reqWood += CInt(Val(t.Substring(2)))
-                If t.StartsWith("M:") Then reqMounts += CInt(Val(t.Substring(2)))
-                If t.StartsWith("X:") Then reqMithril += CInt(Val(t.Substring(2))) ' Mithril
+        If p.Armies IsNot Nothing Then
+            For Each a In p.Armies
+                If a Is Nothing Then Continue For
+                If a.TotalSoldiers < 500 Then
+                    under500.Add(a)
+                Else
+                    overEq500.Add(a)
+                End If
             Next
         End If
 
-        ' --- 3) Cap by resources (per-soldier costs) ---
-        Dim maxByPop As Integer = Math.Min(desiredRecruit, player.Population)
-        Dim maxByIron As Integer = If(reqIron > 0, player.Iron \ reqIron, maxByPop)
-        Dim maxByWood As Integer = If(reqWood > 0, player.Wood \ reqWood, maxByPop)
-        Dim maxByMounts As Integer = If(reqMounts > 0, player.Mounts \ reqMounts, maxByPop)
-        Dim maxByMithril As Integer = If(reqMithril > 0, player.Mithril \ reqMithril, maxByPop)
+        Dim idx As Integer = 0
+        For Each a In under500
+            AIRecruitArmy(a, p, idx)
+            idx += 1
+        Next
+        For Each a In overEq500
+            AIRecruitArmy(a, p, idx)
+            idx += 1
+        Next
+    End Sub
 
-        Dim actual As Integer = maxByPop
-        actual = Math.Min(actual, maxByIron)
-        actual = Math.Min(actual, maxByWood)
-        actual = Math.Min(actual, maxByMounts)
-        actual = Math.Min(actual, maxByMithril)
+#End Region
 
-        If actual < 0 Then actual = 0
-        Return actual
-    End Function
+
 
 
 
@@ -4407,24 +4402,23 @@ Public Class Form1
     Private Function GenerateMercenaryOffer(turnNumber As Integer) As MercenaryArmy
         Dim rnd As New Random()
 
-        ' === 1. Budget scales with turn ===
-        Dim basePower As Integer = 50
-        Dim powerGrowth As Integer = 50
-        Dim maxBudget As Integer = basePower + (MercPriceLevel * powerGrowth)
+        ' === 1. Budget scales directly with current market level ===
+        ' MercPriceLevel starts at 50 and increases by 50 each time an army is bought.
+        Dim maxBudget As Integer = MercPriceLevel
 
         Dim mercFactions As String() = {
-            "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
-            "Cultists", "Demons", "Undead", "Golems", "Elementals",
-            "Bandits", "Nomads", "Freeblades"
-        }
+        "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
+        "Cultists", "Demons", "Undead", "Golems", "Elementals",
+        "Bandits", "Nomads", "Freeblades"
+    }
 
         Dim mercArmyNormal As MercenaryArmy = Nothing
-
         Dim outerGuard As Integer = 1000 ' prevent infinite faction loop
+
         Do While outerGuard > 0
             outerGuard -= 1
 
-            ' === 2. Pick faction ===
+            ' === 2. Pick a random faction ===
             Dim faction As String = mercFactions(rnd.Next(mercFactions.Length))
             Dim roster As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(faction, StringComparison.OrdinalIgnoreCase))
             If roster Is Nothing OrElse roster.Units.Count = 0 Then Continue Do
@@ -4432,34 +4426,32 @@ Public Class Form1
             mercArmyNormal = New MercenaryArmy With {
             .Faction = faction,
             .Units = New List(Of MercenaryStack),
-            .MinBid = 1
+            .MinBid = MercPriceLevel        ' Minimum bid equals the current market level
         }
 
             Dim remaining As Integer = maxBudget
             Dim cheapestPower As Integer = roster.Units.Min(Function(u) u.Power)
-
-            ' === Normal factions ===
             Dim hasFodder As Boolean = roster.Units.Any(Function(u) u.Power <= 2)
 
-            ' --- Allowed block sizes
+            ' --- Allowed block sizes ---
             Dim blockSizes As Integer()
             If hasFodder Then
-                blockSizes = {10} ' Only groups of 10
+                blockSizes = {10} ' Only groups of 10 for fodder-based factions
             Else
-                blockSizes = {10, 5, 1} ' fallback allowed
+                blockSizes = {10, 5, 1} ' fallback allowed for elite units
             End If
 
             Dim pickedAnything As Boolean = False
             Dim innerGuard As Integer = 10000
 
+            ' === 3. Randomly assemble units up to the budget ===
             Do While remaining >= cheapestPower AndAlso innerGuard > 0
                 innerGuard -= 1
 
-                ' === Bias toward earlier units in the roster ===
+                ' Weighted bias toward earlier (usually weaker) units
                 Dim weighted As New List(Of UnitStats)
                 For i As Integer = 0 To roster.Units.Count - 1
                     Dim u = roster.Units(i)
-                    ' More weight for earlier units (weaker/scrubbier ones if ordered that way)
                     Dim weight As Integer = Math.Max(1, (roster.Units.Count - i) * 5)
                     For n As Integer = 1 To weight
                         weighted.Add(u)
@@ -4471,7 +4463,7 @@ Public Class Form1
                 ' Skip units that don't fit budget
                 If pick.Power <= 0 OrElse pick.Power > remaining Then Continue Do
 
-                ' Find biggest block that fits
+                ' Find largest block that fits
                 Dim count As Integer = 0
                 For Each b In blockSizes
                     If pick.Power * b <= remaining Then
@@ -4498,20 +4490,18 @@ Public Class Form1
                 Debug.WriteLine("Guard triggered in GenerateMercenaryOffer inner loop — possible bad roster config.")
             End If
 
-            ' Guarantee at least 1 unit if nothing was picked
+            ' === 4. Guarantee at least one unit ===
             If Not pickedAnything Then
-                ' If even the cheapest is too expensive → reroll faction
                 If cheapestPower > maxBudget Then
                     mercArmyNormal = Nothing
                     Continue Do
                 End If
 
-                ' Otherwise, add the cheapest affordable one
                 Dim cheapest = roster.Units.Where(Function(u) u.Power <= maxBudget).OrderBy(Function(u) u.Power).First()
                 mercArmyNormal.Units.Add(New MercenaryStack With {.Template = cheapest, .Count = 1})
             End If
 
-            ' === Return if valid ===
+            ' === 5. Return the completed mercenary army ===
             If mercArmyNormal.Units.Count > 0 Then Exit Do
         Loop
 
@@ -4523,30 +4513,31 @@ Public Class Form1
     End Function
 
 
-
     Private Sub ResolveMercenaryAuction(bids As Dictionary(Of Player, Integer))
-        ' No active offer?
+        ' === 1. Validate offer ===
         If CurrentMercOffer Is Nothing OrElse CurrentMercOffer.Units.Count = 0 Then Exit Sub
 
-        ' No bids at all -> discard the offer
+        ' === 2. Handle no bids ===
         If bids Is Nothing OrElse bids.Count = 0 Then
             Debug.WriteLine("No bids received; mercenary offer dismissed.")
             CurrentMercOffer = Nothing
             Exit Sub
         End If
 
-        ' === Filter invalid bids ===
+        ' === 3. Filter invalid bids ===
         Dim candidateBids = bids.
-        Where(Function(kv) kv.Value > 0 AndAlso kv.Key IsNot Nothing AndAlso kv.Key.Gold >= kv.Value).
+        Where(Function(kv) kv.Value >= CurrentMercOffer.MinBid AndAlso
+                         kv.Key IsNot Nothing AndAlso
+                         kv.Key.Gold >= kv.Value).
         ToList()
 
         If candidateBids.Count = 0 Then
-            Debug.WriteLine("No valid bids (must be >0 and within available gold); mercenary offer dismissed.")
+            Debug.WriteLine("No valid bids (must meet MinBid and be within available gold); mercenary offer dismissed.")
             CurrentMercOffer = Nothing
             Exit Sub
         End If
 
-        ' === Winner selection ===
+        ' === 4. Winner selection ===
         Dim topAmount = candidateBids.Max(Function(kv) kv.Value)
         Dim topBidders = candidateBids.Where(Function(kv) kv.Value = topAmount).ToList()
 
@@ -4555,23 +4546,27 @@ Public Class Form1
             winnerKV = topBidders(0)
         Else
             ' Tie-breaker: richest bidder, then lowest PlayerNumber
-            winnerKV = topBidders.OrderByDescending(Function(kv) kv.Key.Gold).
-                              ThenBy(Function(kv) kv.Key.PlayerNumber).
-                              First()
+            winnerKV = topBidders.
+            OrderByDescending(Function(kv) kv.Key.Gold).
+            ThenBy(Function(kv) kv.Key.PlayerNumber).
+            First()
         End If
 
         Dim winner As Player = winnerKV.Key
         Dim amount As Integer = winnerKV.Value
 
-        ' Deduct gold and award units
+        ' === 5. Deduct gold and award ===
         winner.Gold -= amount
         If winner.Gold < 0 Then winner.Gold = 0
 
         AwardMercenariesToPlayer(CurrentMercOffer, winner)
         Debug.WriteLine($"Mercenaries hired by Player {winner.PlayerNumber} ({winner.Race}) for {amount} gold!")
-        MercPriceLevel += 1
 
-        ' Clear current offer
+        ' === 6. Market inflation: raise price level by 50 ===
+        MercPriceLevel += 50
+        'If MercPriceLevel > 2000 Then MercPriceLevel = 2000  ' Don't want a cap.
+
+        ' === 7. Clear current offer ===
         CurrentMercOffer = Nothing
     End Sub
 
@@ -4635,28 +4630,39 @@ Public Class Form1
         Return projected <= income
     End Function
 
-
     Private Function GenerateAIBid(p As Player, offer As MercenaryArmy) As Integer
         If p Is Nothing OrElse offer Is Nothing OrElse offer.Units.Count = 0 Then
             Return 0
         End If
 
-        ' If the player has no gold, they can't bid
+        ' === 1. Skip if broke ===
         If p.Gold <= 0 Then Return 0
 
         Dim rnd As New Random()
 
-        ' AI will bid between 1 and all of its available gold
-        Dim minBid As Integer = Math.Max(1, offer.MinBid)
-        Dim maxBid As Integer = p.Gold
+        ' === 2. Enforce minimum bid requirement ===
+        Dim minBid As Integer = Math.Max(offer.MinBid, 1)
 
-        If minBid > maxBid Then Return 0
+        ' If AI cannot meet the minimum bid, skip bidding
+        If p.Gold < minBid Then
+            Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford MinBid {minBid}.")
+            Return 0
+        End If
 
-        Dim bid As Integer = rnd.Next(minBid, maxBid + 1)
+        ' === 3. Add a small random aggression multiplier (10–30%) ===
+        Dim aggression As Double = 1.0 + (rnd.NextDouble() * 0.3)  ' between 1.0 and 1.3
+        Dim desiredBid As Integer = CInt(minBid * aggression)
 
-        Return bid
+        ' === 4. Cap at available gold ===
+        Dim finalBid As Integer = Math.Min(desiredBid, p.Gold)
+
+        ' Ensure at least the MinBid
+        If finalBid < minBid Then finalBid = minBid
+
+        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bids {finalBid} gold (MinBid {minBid}, aggression {aggression:F2}).")
+
+        Return finalBid
     End Function
-
 
 
 #End Region
