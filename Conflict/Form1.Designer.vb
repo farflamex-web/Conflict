@@ -32,6 +32,7 @@ Partial Class Form1
         lblHud = New Label()
         btnNewGame = New Button()
         btnLoadGame = New Button()
+        btnKillPlayer = New Button()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -120,11 +121,21 @@ Partial Class Form1
         btnLoadGame.Text = "Load Game"
         btnLoadGame.UseVisualStyleBackColor = True
         ' 
+        ' btnKillPlayer
+        ' 
+        btnKillPlayer.Location = New Point(794, 881)
+        btnKillPlayer.Name = "btnKillPlayer"
+        btnKillPlayer.Size = New Size(150, 23)
+        btnKillPlayer.TabIndex = 12
+        btnKillPlayer.Text = "Kill Player"
+        btnKillPlayer.UseVisualStyleBackColor = True
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(btnKillPlayer)
         Controls.Add(btnLoadGame)
         Controls.Add(btnNewGame)
         Controls.Add(lblHud)
@@ -151,5 +162,6 @@ Partial Class Form1
     Friend WithEvents lblHud As Label
     Friend WithEvents btnNewGame As Button
     Friend WithEvents btnLoadGame As Button
+    Friend WithEvents btnKillPlayer As Button
 
 End Class

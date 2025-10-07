@@ -152,6 +152,8 @@ Public Class Form1
         HeavyCavalry = 4
     End Enum
 
+
+
 #End Region
 
 #Region "=== Nested Classes ==="
@@ -423,14 +425,15 @@ Public Class Form1
 
     Private Sub AIBuySummoners()
         For Each p In Players
-            If p Is Nothing OrElse Not p.AIControlled Then Continue For
+            ' Skip null, human, or eliminated players
+            If p Is Nothing OrElse Not p.AIControlled OrElse p.IsEliminated Then Continue For
             BuySummoner(p) ' BuySummoner will handle cost and random choice
         Next
     End Sub
 
 
     Private Sub BuySummoner(p As Player)
-        If p Is Nothing Then Exit Sub
+        If p Is Nothing OrElse p.IsEliminated Then Exit Sub
 
         ' === 1) Find all summoners this race can hire ===
         Dim allowed = SummonerDefinitions.
@@ -610,6 +613,8 @@ Public Class Form1
         Public Property ElfSlaves As Integer = 0
         Public Property DwarfSlaves As Integer = 0
         Public Property HumanSlaves As Integer = 0
+        Public Property IsEliminated As Boolean = False
+
 
         Public Sub New()
             ' required for JSON deserialization
@@ -618,6 +623,7 @@ Public Class Form1
 
     End Class
 
+#End Region
 
 #Region "=== Save / Load ==="
 
@@ -743,7 +749,7 @@ Public Class Form1
         Private Const FeeRate As Double = 0.1 ' 10% fee on trades
 
         Public Sub BuyGoods(p As Player, good As String, amount As Integer)
-            If p Is Nothing OrElse amount <= 0 Then Exit Sub
+            If p Is Nothing OrElse amount <= 0 OrElse p.IsEliminated Then Exit Sub
 
             Dim price As Double = GetPrice(good)
             Dim cost As Double = price * amount
@@ -878,7 +884,7 @@ Public Class Form1
 
     Private Sub AIHandleMarketTurn()
         For Each p In Players
-            If p Is Nothing OrElse Not p.AIControlled Then Continue For
+            If p Is Nothing OrElse Not p.AIControlled OrElse p.IsEliminated Then Continue For
 
             Dim log As String = $"{p.Race} (Player {p.PlayerNumber + 1}):" & vbCrLf
             Dim transactionDone As Boolean = False
@@ -1173,6 +1179,13 @@ Public Class Form1
 
     Private Shared rnd As New Random()
 
+    Private capitals As New Dictionary(Of Integer, Point) From {
+        {0, New Point(2, 2)},     ' Elf
+        {1, New Point(22, 2)},    ' Dwarf
+        {2, New Point(2, 22)},    ' Orc
+        {3, New Point(22, 22)}    ' Human
+    }
+
 
 #End Region
 
@@ -1226,7 +1239,7 @@ Public Class Form1
         ' Clear existing cache (in case called multiple times)
         terrainCache.Clear()
 
-        Dim terrainNames As String() = {"plains.png", "forest.png", "hills.png", "mountain.png"}
+        Dim terrainNames As String() = {"plains.png", "forest.png", "hills.png", "mountain.png", "elfcitadel.png", "dwarfcitadel.png", "orccitadel.png", "humancitadel.png"}
         For Each terrainName In terrainNames
             Dim img As Image = GetEmbeddedImage(terrainName)
             If img IsNot Nothing Then
@@ -1975,6 +1988,7 @@ Public Class Form1
     End Sub
 
     Private Sub TryRecruitMilitia(player As Player, army As Army)
+        If player Is Nothing OrElse player.IsEliminated OrElse army Is Nothing Then Exit Sub
         If player Is Nothing OrElse army Is Nothing Then Exit Sub
         If player.Population < 10 Then Exit Sub
 
@@ -2026,6 +2040,10 @@ Public Class Form1
 
 
     Private Function GenerateAIMoves(army As Army, player As Player, maxSteps As Integer) As List(Of ArmyCommand)
+        If player Is Nothing OrElse player.IsEliminated Then
+            Return New List(Of ArmyCommand)
+        End If
+
         Dim moves As New List(Of ArmyCommand)()
         Dim mapSize As Integer = Map.GetLength(0)
 
@@ -2189,163 +2207,6 @@ Public Class Form1
     End Function
 
 
-    Public Sub ResolveCombat()
-        Dim armiesAlreadyInBattle As New HashSet(Of Army)()
-        Dim processedLocations As New HashSet(Of Point)()
-
-        ' Loop through each player
-        For Each p As Player In Players
-            If p.Armies Is Nothing Then Continue For
-
-            For Each a As Army In p.Armies
-                ' Skip armies that cannot fight or already battled
-                If a.TotalSoldiers < 500 OrElse armiesAlreadyInBattle.Contains(a) Then Continue For
-
-                Dim grid As List(Of Point) = GetCombatGrid(a)
-
-                For Each pt As Point In grid
-                    If processedLocations.Contains(pt) Then Continue For
-
-                    ' Gather all armies on this tile that can fight
-                    Dim allArmiesHere As New List(Of Army)
-                    For Each pl As Player In Players
-                        If pl.Armies IsNot Nothing Then
-                            For Each ar As Army In pl.Armies
-                                If ar.TotalSoldiers >= 500 AndAlso GetCombatGrid(ar).Contains(pt) AndAlso Not armiesAlreadyInBattle.Contains(ar) Then
-                                    allArmiesHere.Add(ar)
-                                End If
-                            Next
-                        End If
-                    Next
-
-                    ' Skip if less than 2 distinct players are present
-                    Dim distinctPlayers As New HashSet(Of String)(allArmiesHere.Select(Function(ar) ar.Race), StringComparer.OrdinalIgnoreCase)
-                    If distinctPlayers.Count < 2 Then Continue For
-
-                    processedLocations.Add(pt)
-
-                    ' --- Merge armies per player temporarily for battle ---
-                    Dim mergedArmies As New List(Of Army)
-                    Dim mergedToOriginal As New Dictionary(Of Army, List(Of Army))
-
-                    For Each race As String In distinctPlayers
-                        Dim playerArmies As List(Of Army) = allArmiesHere.Where(Function(ar) ar.Race.Equals(race, StringComparison.OrdinalIgnoreCase)).ToList()
-
-                        Dim mergedArmy As New Army With {
-                        .Race = race,
-                        .X = playerArmies(0).X,
-                        .Y = playerArmies(0).Y
-                    }
-
-                        ' Copy units from each source army into the merged army
-                        For Each ua As Army In playerArmies
-                            For Each u As Unit In ua.Units
-                                mergedArmy.Units.Add(New Unit(u)) ' use clone constructor
-                            Next
-                        Next
-
-                        mergedArmies.Add(mergedArmy)
-                        mergedToOriginal(mergedArmy) = playerArmies
-                    Next
-
-                    ' --- Immutable pre-battle snapshot (deep copy) BEFORE Battle() mutates anything ---
-                    Dim startSnapshot As List(Of Army) = CloneArmiesForSnapshot(mergedArmies)
-
-                    ' --- Conduct battle ---
-                    Dim battleLog As BattleLog = Battle(mergedArmies)
-                    If battleLog Is Nothing Then Continue For
-
-                    ' --- Distribute casualties back proportionally to original armies ---
-                    For Each mergedArmy As Army In mergedArmies
-                        Dim originalArmies As List(Of Army) = mergedToOriginal(mergedArmy)
-
-                        For Each mergedUnit As Unit In mergedArmy.Units
-                            ' Total size of this unit across all original armies (pre-battle)
-                            Dim totalOriginalSize As Integer =
-                            originalArmies.Sum(Function(origArmy) origArmy.Units.
-                                Where(Function(u) u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type).
-                                Sum(Function(u) u.Size))
-
-                            If totalOriginalSize = 0 Then Continue For
-
-                            ' Sum casualties this unit took across all phases in the merged battle
-                            Dim mergedCasualties As Integer =
-                            battleLog.PhaseEntries.Values.
-                                Sum(Function(phaseList) phaseList.
-                                    Where(Function(e) e.Defender.Name = mergedUnit.Name AndAlso e.Defender.Type = mergedUnit.Type).
-                                    Sum(Function(e) e.Casualties))
-
-                            ' Apply back to each original army proportionally
-                            For Each origArmy As Army In originalArmies
-                                For Each u As Unit In origArmy.Units
-                                    If u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type Then
-                                        Dim proportion As Double = If(totalOriginalSize > 0, CDbl(u.Size) / CDbl(totalOriginalSize), 0.0)
-                                        Dim casualtiesToApply As Integer = CInt(Math.Round(mergedCasualties * proportion))
-                                        u.Size -= casualtiesToApply
-                                        If u.Size < 0 Then u.Size = 0
-                                    End If
-                                Next
-                            Next
-                        Next
-                    Next
-
-                    ' --- Retreat handling for the real armies on the map ---
-                    ' Determine the WINNING SIDE (race) from the post-battle merged totals.
-                    Dim winningRace As String = Nothing
-
-                    Dim raceTotals = mergedArmies _
-                    .GroupBy(Function(ma) ma.Race, StringComparer.OrdinalIgnoreCase) _
-                    .Select(Function(g) New With {
-                        .Race = g.Key,
-                        .Total = g.Sum(Function(ma) ma.TotalSoldiers)
-                    }) _
-                    .OrderByDescending(Function(x) x.Total) _
-                    .ToList()
-
-                    If raceTotals.Count > 0 Then
-                        Dim top = raceTotals(0)
-                        ' Unique winner only if strictly greater than second place (if it exists)
-                        If raceTotals.Count = 1 OrElse top.Total > raceTotals(1).Total Then
-                            winningRace = top.Race
-                        End If
-                    End If
-
-                    If Not String.IsNullOrEmpty(winningRace) Then
-                        ' Send home ONLY the armies not on the winning side
-                        For Each army As Army In allArmiesHere
-                            If Not army.Race.Equals(winningRace, StringComparison.OrdinalIgnoreCase) Then
-                                SendArmyBackToSpawn(army)
-                                battleLog.RecordRetreat(army)
-                            End If
-                        Next
-                    Else
-                        ' Tie or unresolved → no retreats this tick
-                    End If
-
-                    ' --- Mark these armies as having battled this tick ---
-                    For Each army As Army In allArmiesHere
-                        armiesAlreadyInBattle.Add(army)
-                    Next
-
-                    ' --- Generate and display compact report ---
-                    rtbInfo.Clear()
-                    Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot)
-                    rtbInfo.AppendText(compactReport)
-
-                    ' --- Cleanup: purge dead stacks after reporting ---
-                    For Each army As Army In allArmiesHere
-                        army.Units.RemoveAll(Function(u) u.Size <= 0)
-                    Next
-
-                    ' Done with this hotspot
-                    Exit For
-                Next
-            Next
-        Next
-    End Sub
-
-
-
     Private Function GetStartingCornerCenter(playerNumber As Integer) As Point
         Select Case playerNumber
             Case 0 : Return New Point(2, 2)          ' Elf, top-left 5x5 block (1..5)
@@ -2376,133 +2237,260 @@ Public Class Form1
 
 #End Region
 
+    ' ===========================================================
+    ' === DEFEAT & ELIMINATION SYSTEM ===========================
+    ' ===========================================================
+    Private Sub RecomputeEliminationForAllPlayers()
+        If Players Is Nothing Then Exit Sub
+        For Each p In Players
+            CheckAndApplyDefeat(p)
+        Next
+    End Sub
+
+    Private Sub CheckAndApplyDefeat(p As Player)
+        If p Is Nothing Then Exit Sub
+        If p.IsEliminated Then
+            ' Already eliminated — just ensure map stays clean.
+            NeutralizePlayerMap(p)
+            Exit Sub
+        End If
+
+        If capitals Is Nothing OrElse Not capitals.ContainsKey(p.PlayerNumber) Then Exit Sub
+
+        Dim citadel As Point = capitals(p.PlayerNumber)
+        Dim cx As Integer = citadel.X
+        Dim cy As Integer = citadel.Y
+
+        ' === Check if enemy sits on citadel ===
+        Dim enemyPresent As Boolean = False
+        For Each q In Players
+            If q Is Nothing OrElse q.PlayerNumber = p.PlayerNumber Then Continue For
+            If q.Armies Is Nothing Then Continue For
+            For Each a In q.Armies
+                If a Is Nothing Then Continue For
+                If a.X = cx AndAlso a.Y = cy AndAlso a.TotalSoldiers > 0 Then
+                    enemyPresent = True
+                    Exit For
+                End If
+            Next
+            If enemyPresent Then Exit For
+        Next
+
+        ' === Check garrison ===
+        Dim garrison As Integer = 0
+        If p.Armies IsNot Nothing Then
+            For Each a In p.Armies
+                If a Is Nothing Then Continue For
+                If a.X = cx AndAlso a.Y = cy Then garrison += a.TotalSoldiers
+            Next
+        End If
+
+        ' === Defeat condition ===
+        If enemyPresent AndAlso garrison <= 0 Then
+            p.IsEliminated = True
+            rtbGameInfo.AppendText($"[DEFEAT] {p.Race} (Player {p.PlayerNumber + 1}) eliminated. Citadel captured at ({cx},{cy})." & vbCrLf)
+
+            ' --- Clean up map and armies ---
+            NeutralizePlayerMap(p)
+            NeutralizePlayerArmies(p)
+
+            ' --- Reset stats ---
+            p.Population = 0
+            p.FoodCollectedThisTurn = 0
+            p.WoodCollectedThisTurn = 0
+            p.IronCollectedThisTurn = 0
+            p.MountsCollectedThisTurn = 0
+            p.MithrilCollectedThisTurn = 0
+        End If
+    End Sub
+
+    Private Sub NeutralizePlayerMap(p As Player)
+        If p Is Nothing Then Exit Sub
+        Dim rows As Integer = Map.GetLength(0)
+        Dim cols As Integer = Map.GetLength(1)
+        For x As Integer = 0 To rows - 1
+            For y As Integer = 0 To cols - 1
+                If Map(x, y, 1) = p.PlayerNumber Then
+                    Map(x, y, 1) = -1
+                End If
+            Next
+        Next
+        ' Force a redraw after clearing ownership
+        pnlMap.Invalidate()
+    End Sub
+
+    Private Sub NeutralizePlayerArmies(p As Player)
+        If p Is Nothing OrElse p.Armies Is Nothing Then Exit Sub
+
+        ' --- Safely delete all armies for this player ---
+        For Each a In p.Armies.ToList()
+            If a Is Nothing Then Continue For
+            If a.MoveQueue IsNot Nothing Then a.MoveQueue.Clear()
+            a.Units.Clear()
+        Next
+
+        p.Armies.Clear()
+    End Sub
+
+
+
+
+    ' convenience guard
+    Private Function CanAct(p As Player) As Boolean
+        Return (p IsNot Nothing AndAlso Not p.IsEliminated)
+    End Function
+
+
 
 #Region "=== Gameplay Logic ==="
+
+
     Public Sub CollectResources()
         Dim rows As Integer = Map.GetLength(0)
         Dim cols As Integer = Map.GetLength(1)
 
         For Each p In Players
-            ' --- Reset per-turn collection ---
+            If Not CanAct(p) Then Continue For
+            ' === Reset ===
             p.FoodCollectedThisTurn = 0
-            p.IronCollectedThisTurn = 0
             p.WoodCollectedThisTurn = 0
+            p.IronCollectedThisTurn = 0
             p.MountsCollectedThisTurn = 0
-            p.MithrilCollectedThisTurn = 0   ' new dwarf-only resource
+            p.MithrilCollectedThisTurn = 0
 
-            ' We'll accumulate mounts in floating point, then floor AFTER bonus
             Dim mountsCollectedRaw As Double = 0.0
 
-            ' --- Count owned squares ---
+            ' === Count owned squares ===
             Dim ownedSquares As Integer = 0
-            For x As Integer = 0 To rows - 1
-                For y As Integer = 0 To cols - 1
-                    If Map(x, y, 1) = p.PlayerNumber Then
-                        ownedSquares += 1
-                    End If
+            For x = 0 To rows - 1
+                For y = 0 To cols - 1
+                    If Map(x, y, 1) = p.PlayerNumber Then ownedSquares += 1
                 Next
             Next
+            If ownedSquares <= 0 Then ownedSquares = 1
 
-            ' Avoid division by zero
-            Dim popPerSquare As Integer = 0
-            If ownedSquares > 0 Then
-                popPerSquare = p.Population \ ownedSquares
-            End If
+            ' Each square gets an even share of population
+            Dim popPerSquare As Integer = Math.Max(1, p.Population \ ownedSquares)
 
-            ' --- Determine preferred terrain ---
-            Dim preferredTerrain As Integer
+            ' === Define terrain yields per race ===
+            ' Arrays ordered as: Plains(0), Forest(1), Hills(2), Mountains(3)
+            Dim foodYield(3) As Integer
+            Dim woodYield(3) As Integer
+            Dim ironYield(3) As Integer
+
             Select Case p.Race.ToLower()
-                Case "elf" : preferredTerrain = 1
-                Case "dwarf" : preferredTerrain = 3
-                Case "orc" : preferredTerrain = 2
-                Case "human" : preferredTerrain = 0
-                Case Else : preferredTerrain = -1
+                Case "elf"
+                    ' Forest specialists – high wood, decent food
+                    foodYield = {1, 2, 1, 1}   ' Plains, Forest, Hills, Mountains
+                    woodYield = {0, 2, 1, 0}
+                    ironYield = {0, 0, 1, 1}
+
+                Case "dwarf"
+                    ' Mountain specialists – high iron & food on mountains
+                    foodYield = {1, 1, 1, 2}   ' Plains, Forest, Hills, Mountains
+                    woodYield = {0, 1, 1, 0}
+                    ironYield = {0, 0, 1, 2}
+
+                Case "orc"
+                    ' Hills specialists – good iron and food
+                    foodYield = {1, 1, 2, 1}   ' Plains, Forest, Hills, Mountains
+                    woodYield = {0, 1, 1, 0}
+                    ironYield = {0, 0, 2, 1}
+
+                Case "human"
+                    ' Plains specialists – strong food, balanced otherwise
+                    foodYield = {2, 1, 1, 1}   ' Plains, Forest, Hills, Mountains
+                    woodYield = {0, 2, 0, 0}
+                    ironYield = {0, 0, 1, 2}
+
+                Case Else
+                    ' Default fallback
+                    foodYield = {1, 1, 1, 1}
+                    woodYield = {1, 1, 1, 1}
+                    ironYield = {1, 1, 1, 1}
             End Select
 
-            ' --- Loop through owned squares only ---
-            For x As Integer = 0 To rows - 1
-                For y As Integer = 0 To cols - 1
-                    If Map(x, y, 1) = p.PlayerNumber Then
-                        Dim terrain As Integer = Map(x, y, 0)
+            ' === Loop through owned tiles ===
+            For x = 0 To rows - 1
+                For y = 0 To cols - 1
+                    If Map(x, y, 1) <> p.PlayerNumber Then Continue For
 
-                        ' Base resources per square
-                        Dim foodPerSquare As Integer = 1
-                        Dim ironPerSquare As Integer = 1
-                        Dim woodPerSquare As Integer = 1
-                        Dim mountPerSquare As Double = 0.0
+                    Dim terrain As Integer = Map(x, y, 0)
+                    Dim f As Integer = foodYield(terrain)
+                    Dim w As Integer = woodYield(terrain)
+                    Dim i As Integer = ironYield(terrain)
 
-                        ' Racial terrain bonus (extra food + mounts only on favoured)
-                        If terrain = preferredTerrain Then
-                            foodPerSquare += 1
-                            mountPerSquare = 0.5
-                        End If
+                    ' Mounts scale with food yield (favoured terrain advantage)
+                    Dim m As Double = f * 0.2
 
-                        ' Accumulate (note: mounts go to a raw double)
-                        p.FoodCollectedThisTurn += foodPerSquare * popPerSquare
-                        p.IronCollectedThisTurn += ironPerSquare * popPerSquare
-                        p.WoodCollectedThisTurn += woodPerSquare * popPerSquare
-                        mountsCollectedRaw += mountPerSquare * popPerSquare
+                    ' === Accumulate per square ===
+                    p.FoodCollectedThisTurn += f * popPerSquare
+                    p.WoodCollectedThisTurn += w * popPerSquare
+                    p.IronCollectedThisTurn += i * popPerSquare
+                    mountsCollectedRaw += m * popPerSquare
+
+                    ' Dwarves: trace Mithril from mountains
+                    If p.Race.Equals("dwarf", StringComparison.OrdinalIgnoreCase) AndAlso terrain = 3 Then
+                        p.MithrilCollectedThisTurn += 1
                     End If
                 Next
             Next
 
-            ' --- Apply territory bonus (0.5% per owned tile) ---
-            Dim territoryBonus As Double = ownedSquares * 0.005
-            p.FoodCollectedThisTurn = CInt(p.FoodCollectedThisTurn * (1 + territoryBonus))
-            p.IronCollectedThisTurn = CInt(p.IronCollectedThisTurn * (1 + territoryBonus))
-            p.WoodCollectedThisTurn = CInt(p.WoodCollectedThisTurn * (1 + territoryBonus))
+            ' === Apply small territory bonus (0.5% per tile) ===
+            Dim territoryBonus As Double = 1 + ownedSquares * 0.005
 
-            ' Apply divisors to iron/wood/mounts AFTER bonus
-            Const IRON_DIVISOR As Integer = 40
-            Const WOOD_DIVISOR As Integer = 40
+            ' === Apply resource scaling ===
+            ' Food stays full (used for population & upkeep)
+            ' Non-food resources are scaled by NONFOOD_MULTIPLIER
+            ' ---------------------------------------------------------
+            Const NONFOOD_MULTIPLIER As Double = 0.05  ' <<<<<< adjust this later (0.1 = 10% normal yield)
+            ' ---------------------------------------------------------
+
+            p.FoodCollectedThisTurn = CInt(p.FoodCollectedThisTurn * territoryBonus)
+            p.WoodCollectedThisTurn = CInt(p.WoodCollectedThisTurn * territoryBonus * NONFOOD_MULTIPLIER)
+            p.IronCollectedThisTurn = CInt(p.IronCollectedThisTurn * territoryBonus * NONFOOD_MULTIPLIER)
+            p.MithrilCollectedThisTurn = CInt(p.MithrilCollectedThisTurn * territoryBonus * NONFOOD_MULTIPLIER)
+            'mountsCollectedRaw *= territoryBonus * NONFOOD_MULTIPLIER
+
+            ' === Convert mounts ===
             Const MOUNTS_DIVISOR As Integer = 60
+            p.MountsCollectedThisTurn = CInt(Math.Floor(mountsCollectedRaw / MOUNTS_DIVISOR))
 
-            p.IronCollectedThisTurn = CInt(Math.Floor(p.IronCollectedThisTurn / IRON_DIVISOR))
-            p.WoodCollectedThisTurn = CInt(Math.Floor(p.WoodCollectedThisTurn / WOOD_DIVISOR))
-            p.MountsCollectedThisTurn = CInt(Math.Floor((mountsCollectedRaw * (1 + territoryBonus)) / MOUNTS_DIVISOR))
-
-            ' --- Add to cumulative totals ---
-            p.Iron += p.IronCollectedThisTurn
+            ' === Add to stockpiles (except food) ===
             p.Wood += p.WoodCollectedThisTurn
+            p.Iron += p.IronCollectedThisTurn
             p.Mounts += p.MountsCollectedThisTurn
+            p.Mithril += p.MithrilCollectedThisTurn
 
-            ' === Dwarf-only Mithril trickle ===
-            If p.Race.Equals("Dwarf", StringComparison.OrdinalIgnoreCase) Then
-                ' 1 Mithril per full 100 Iron collected
-                p.MithrilCollectedThisTurn = p.IronCollectedThisTurn \ 100
-                p.Mithril += p.MithrilCollectedThisTurn
-            Else
-                p.MithrilCollectedThisTurn = 0
-            End If
-
-            ' === Orc-only Slave Output ===
-            If p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase) Then
+            ' === Orc slave output ===
+            If p.Race.Equals("orc", StringComparison.OrdinalIgnoreCase) Then
                 Dim woodFromSlaves As Integer = p.ElfSlaves
                 Dim ironFromSlaves As Integer = p.DwarfSlaves
                 Dim foodFromSlaves As Integer = p.HumanSlaves
 
-                ' Add to this turn’s collection
                 p.WoodCollectedThisTurn += woodFromSlaves
                 p.IronCollectedThisTurn += ironFromSlaves
                 p.FoodCollectedThisTurn += foodFromSlaves
 
-                ' Add to stockpiles
                 p.Wood += woodFromSlaves
                 p.Iron += ironFromSlaves
 
                 Debug.WriteLine($"[SLAVE OUTPUT] Orc slaves produced +{woodFromSlaves} wood, +{ironFromSlaves} iron, +{foodFromSlaves} food.")
             End If
 
-            ' === Gold based on population ===
+            ' === Gold from population ===
             p.GoldCollectedThisTurn = p.Population \ 10
             p.Gold += p.GoldCollectedThisTurn
+
+            ' === Debug output ===
+            Debug.WriteLine($"[RESOURCE] {p.Race}: +{p.FoodCollectedThisTurn} food, +{p.WoodCollectedThisTurn} wood, +{p.IronCollectedThisTurn} iron, +{p.MountsCollectedThisTurn} mounts, +{p.MithrilCollectedThisTurn} mithril (tiles={ownedSquares})")
         Next
     End Sub
-#End Region
 
 
     Public Sub GrowPopulationAndFeedEverybody()
         For Each p In Players
+            If Not CanAct(p) Then Continue For
             ' === 1. Calculate total food required for armies ===
             Dim armyFoodRequirement As Integer = 0
             If p.Armies IsNot Nothing Then
@@ -2678,6 +2666,8 @@ Public Class Form1
     End Function
 
     Private Sub btnProcessTurn_Click(sender As Object, e As EventArgs) Handles btnProcessTurn.Click
+        ' BEFORE ANYTHING THIS TURN
+        RecomputeEliminationForAllPlayers()
 
         ResolveBiddingPhase()
 
@@ -2697,7 +2687,7 @@ Public Class Form1
         ' --- 4b. AI Recruitment Phase ---
         For Each p In Players
             If p.AIControlled Then
-                AI_RunRecruitmentPhase_ForPlayer(p)
+                'AI_RunRecruitmentPhase_ForPlayer(p)
             End If
         Next
 
@@ -2828,6 +2818,28 @@ Public Class Form1
 
 #End Region
 
+    ' === Detect if this tile is one of the four capitals ===
+    Private Function IsCapital(x As Integer, y As Integer) As Boolean
+        Return capitals.Values.Any(Function(pt) pt.X = x AndAlso pt.Y = y)
+    End Function
+
+    Private Sub DrawCapitalForOwner(g As Graphics, ownerIndex As Integer, xPos As Single, yPos As Single, tileSize As Single)
+        Dim spriteName As String = Nothing
+
+        Select Case ownerIndex
+            Case 0 : spriteName = "elfcitadel.png"
+            Case 1 : spriteName = "dwarfcitadel.png"
+            Case 2 : spriteName = "orccitadel.png"
+            Case 3 : spriteName = "humancitadel.png"
+        End Select
+
+        If spriteName Is Nothing Then Exit Sub
+        If Not terrainCache.ContainsKey(spriteName) Then Exit Sub
+
+        Dim img As Image = terrainCache(spriteName)
+        g.DrawImage(img, xPos, yPos, tileSize, tileSize)
+    End Sub
+
     Private Sub DrawMap(g As Graphics,
                      Optional width As Single = -1,
                      Optional height As Single = -1,
@@ -2901,9 +2913,24 @@ Public Class Form1
                     g.FillRectangle(brush, xPos, yPos, w, h)
                 End Using
 
-                If terrainImage IsNot Nothing Then
+                ' === Draw either terrain or citadel, depending on capital and owner status ===
+                Dim drewSomething As Boolean = False
+
+                If IsCapital(x, y) Then
+                    If ownerIndex >= 0 AndAlso ownerIndex < Players.Count Then
+                        Dim ownerPlayer As Player = Players(ownerIndex)
+                        If ownerPlayer IsNot Nothing AndAlso Not ownerPlayer.IsEliminated Then
+                            DrawCapitalForOwner(g, ownerIndex, xPos, yPos, tileSize)
+                            drewSomething = True
+                        End If
+                    End If
+                End If
+
+                ' Only draw terrain if no citadel was drawn
+                If Not drewSomething AndAlso terrainImage IsNot Nothing Then
                     g.DrawImage(terrainImage, xPos, yPos, w, h)
                 End If
+
             Next
         Next
 
@@ -2949,18 +2976,17 @@ Public Class Form1
         Dim tileOwner As New Dictionary(Of Point, Integer)
 
         For Each p In Players
-            If p.Armies IsNot Nothing Then
-                For Each a In p.Armies
-                    Dim pt As New Point(a.X, a.Y)
-                    If tileTotals.ContainsKey(pt) Then
-                        tileTotals(pt) += a.TotalSoldiers
-                    Else
-                        tileTotals(pt) = a.TotalSoldiers
-                        tileOwner(pt) = p.PlayerNumber
-                    End If
-                Next
-            End If
-        Next 'D
+            If p Is Nothing OrElse p.IsEliminated OrElse p.Armies Is Nothing Then Continue For
+            For Each a In p.Armies
+                Dim pt As New Point(a.X, a.Y)
+                If tileTotals.ContainsKey(pt) Then
+                    tileTotals(pt) += a.TotalSoldiers
+                Else
+                    tileTotals(pt) = a.TotalSoldiers
+                    tileOwner(pt) = p.PlayerNumber
+                End If
+            Next
+        Next
 
         For Each kvp In tileTotals
             Dim x = kvp.Key.X
@@ -3059,6 +3085,214 @@ Public Class Form1
         Return prefix & suffix
     End Function
 
+
+    Public Sub ResolveCombat()
+        Dim armiesAlreadyInBattle As New HashSet(Of Army)()
+        Dim processedLocations As New HashSet(Of Point)()
+
+        ' Loop through each player
+        For Each p As Player In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+            If p.Armies Is Nothing Then Continue For
+
+            For Each a As Army In p.Armies
+                ' Skip armies that cannot fight or already battled
+                If a.TotalSoldiers < 500 OrElse armiesAlreadyInBattle.Contains(a) Then Continue For
+
+                Dim grid As List(Of Point) = GetCombatGrid(a)
+
+                For Each pt As Point In grid
+                    If processedLocations.Contains(pt) Then Continue For
+
+                    ' Gather all armies on this tile that can fight
+                    Dim allArmiesHere As New List(Of Army)
+                    For Each pl As Player In Players
+                        If pl.Armies IsNot Nothing Then
+                            For Each ar As Army In pl.Armies
+                                If ar.TotalSoldiers >= 500 AndAlso GetCombatGrid(ar).Contains(pt) AndAlso Not armiesAlreadyInBattle.Contains(ar) Then
+                                    allArmiesHere.Add(ar)
+                                End If
+                            Next
+                        End If
+                    Next
+
+                    ' Skip if less than 2 distinct players are present
+                    Dim distinctPlayers As New HashSet(Of String)(allArmiesHere.Select(Function(ar) ar.Race), StringComparer.OrdinalIgnoreCase)
+                    If distinctPlayers.Count < 2 Then Continue For
+
+                    processedLocations.Add(pt)
+
+                    ' --- Merge armies per player temporarily for battle ---
+                    Dim mergedArmies As New List(Of Army)
+                    Dim mergedToOriginal As New Dictionary(Of Army, List(Of Army))
+
+                    For Each race As String In distinctPlayers
+                        Dim playerArmies As List(Of Army) = allArmiesHere.Where(Function(ar) ar.Race.Equals(race, StringComparison.OrdinalIgnoreCase)).ToList()
+
+                        Dim mergedArmy As New Army With {
+                        .Race = race,
+                        .X = playerArmies(0).X,
+                        .Y = playerArmies(0).Y
+                    }
+
+                        ' Copy units from each source army into the merged army
+                        For Each ua As Army In playerArmies
+                            For Each u As Unit In ua.Units
+                                mergedArmy.Units.Add(New Unit(u)) ' use clone constructor
+                            Next
+                        Next
+
+                        mergedArmies.Add(mergedArmy)
+                        mergedToOriginal(mergedArmy) = playerArmies
+                    Next
+
+                    ' --- Immutable pre-battle snapshot (deep copy) BEFORE Battle() mutates anything ---
+                    Dim startSnapshot As List(Of Army) = CloneArmiesForSnapshot(mergedArmies)
+
+                    ' --- Conduct battle ---
+                    Dim battleLog As BattleLog = Battle(mergedArmies)
+                    If battleLog Is Nothing Then Continue For
+
+                    ' --- Distribute casualties back proportionally to original armies ---
+                    For Each mergedArmy As Army In mergedArmies
+                        Dim originalArmies As List(Of Army) = mergedToOriginal(mergedArmy)
+
+                        For Each mergedUnit As Unit In mergedArmy.Units
+                            ' Total size of this unit across all original armies (pre-battle)
+                            Dim totalOriginalSize As Integer =
+                            originalArmies.Sum(Function(origArmy) origArmy.Units.
+                                Where(Function(u) u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type).
+                                Sum(Function(u) u.Size))
+
+                            If totalOriginalSize = 0 Then Continue For
+
+                            ' Sum casualties this specific merged unit took across all phases (by reference)
+                            Dim mergedCasualties As Integer = 0
+                            For Each phaseList In battleLog.PhaseEntries.Values
+                                For Each e In phaseList
+                                    If Object.ReferenceEquals(e.Defender, mergedUnit) Then
+                                        mergedCasualties += e.Casualties
+                                    End If
+                                Next
+                            Next
+                            If mergedCasualties <= 0 Then Continue For
+
+                            ' === EXACT ALLOCATION (floor + largest remainder) ===
+                            ' Build a flat list of all matching original stacks with their pre-battle sizes
+                            Dim targets As New List(Of Tuple(Of Unit, Integer))() ' (unitRef, preSize)
+                            For Each origArmy In originalArmies
+                                For Each u In origArmy.Units
+                                    If u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type Then
+                                        targets.Add(Tuple.Create(u, u.Size))
+                                    End If
+                                Next
+                            Next
+                            If targets.Count = 0 Then Continue For
+
+                            ' First pass: floors of proportional shares
+                            Dim shares(targets.Count - 1) As Integer
+                            Dim remainders As New List(Of Tuple(Of Integer, Double))() ' (idx, fractional)
+                            Dim assigned As Integer = 0
+
+                            For i As Integer = 0 To targets.Count - 1
+                                Dim pre As Integer = targets(i).Item2
+                                Dim exact As Double = mergedCasualties * (pre / CDbl(totalOriginalSize))
+                                Dim flo As Integer = CInt(Math.Floor(exact))
+
+                                ' Clamp floor to available men in case of weird edge cases
+                                flo = Math.Min(flo, pre)
+
+                                shares(i) = flo
+                                assigned += flo
+                                remainders.Add(Tuple.Create(i, exact - flo))
+                            Next
+
+                            ' Distribute remainder by largest fractional parts, without exceeding available
+                            Dim remainder As Integer = mergedCasualties - assigned
+                            If remainder > 0 Then
+                                remainders = remainders.OrderByDescending(Function(t) t.Item2).ThenBy(Function(t) t.Item1).ToList()
+                                Dim k As Integer = 0
+                                While remainder > 0 AndAlso remainders.Count > 0
+                                    Dim idx As Integer = remainders(k Mod remainders.Count).Item1
+                                    Dim pre As Integer = targets(idx).Item2
+                                    If shares(idx) < pre Then
+                                        shares(idx) += 1
+                                        remainder -= 1
+                                        k += 1
+                                    Else
+                                        ' This target is capped; drop it from rotation
+                                        remainders.RemoveAt(k Mod remainders.Count)
+                                    End If
+                                End While
+                            End If
+
+                            ' Apply shares
+                            For i As Integer = 0 To targets.Count - 1
+                                Dim uRef As Unit = targets(i).Item1
+                                Dim take As Integer = shares(i)
+
+                                ' Final clamp to prevent negatives if anything shifted
+                                If take > uRef.Size Then take = uRef.Size
+                                uRef.Size -= take
+                            Next
+                            ' === END EXACT ALLOCATION ===
+                        Next
+                    Next
+
+                    ' --- Retreat handling for the real armies on the map ---
+                    ' Determine the WINNING SIDE (race) from the post-battle merged totals.
+                    Dim winningRace As String = Nothing
+
+                    Dim raceTotals = mergedArmies _
+                    .GroupBy(Function(ma) ma.Race, StringComparer.OrdinalIgnoreCase) _
+                    .Select(Function(g) New With {
+                        .Race = g.Key,
+                        .Total = g.Sum(Function(ma) ma.TotalSoldiers)
+                    }) _
+                    .OrderByDescending(Function(x) x.Total) _
+                    .ToList()
+
+                    If raceTotals.Count > 0 Then
+                        Dim top = raceTotals(0)
+                        ' Unique winner only if strictly greater than second place (if it exists)
+                        If raceTotals.Count = 1 OrElse top.Total > raceTotals(1).Total Then
+                            winningRace = top.Race
+                        End If
+                    End If
+
+                    If Not String.IsNullOrEmpty(winningRace) Then
+                        ' Send home ONLY the armies not on the winning side
+                        For Each army As Army In allArmiesHere
+                            If Not army.Race.Equals(winningRace, StringComparison.OrdinalIgnoreCase) Then
+                                SendArmyBackToSpawn(army)
+                                battleLog.RecordRetreat(army)
+                            End If
+                        Next
+                    End If
+
+                    ' --- Mark these armies as having battled this tick ---
+                    For Each army As Army In allArmiesHere
+                        armiesAlreadyInBattle.Add(army)
+                    Next
+
+                    ' --- Generate and display compact report ---
+                    rtbInfo.Clear()
+                    Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot)
+                    rtbInfo.AppendText(compactReport)
+
+                    ' --- Cleanup: purge dead stacks after reporting ---
+                    For Each army As Army In allArmiesHere
+                        army.Units.RemoveAll(Function(u) u.Size <= 0)
+                    Next
+
+                    RecomputeEliminationForAllPlayers()
+
+                    ' Done with this hotspot
+                    Exit For
+                Next
+            Next
+        Next
+    End Sub
 
 
     Public Function Battle(battleArmies As List(Of Army)) As BattleLog
@@ -3457,6 +3691,7 @@ Public Class Form1
     ' (called from your ProcessTurn() special step)
     ' ======================================================
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
+        If player Is Nothing OrElse player.IsEliminated Then Exit Sub
         If army Is Nothing OrElse player Is Nothing Then Exit Sub
         If Not player.AIControlled Then Exit Sub
 
@@ -3493,41 +3728,6 @@ Public Class Form1
         AddPredictedGain(player, maxPerTurn)
 
         Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} (short '{pick.ShortName}') for Army {armyIndex + 1}. PredPower now {GetPredictedTotalPower(player)}.")
-    End Sub
-
-    ' ======================================================================
-    ' OPTIONAL: Run recruitment across all of a player's armies (call once).
-    ' If you prefer to keep recruitment inside your existing ProcessTurn() loop,
-    ' you can skip this helper.
-    ' ======================================================================
-    Public Sub AI_RunRecruitmentPhase_ForPlayer(p As Player)
-        If p Is Nothing OrElse Not p.AIControlled Then Exit Sub
-        AIRecruit_ResetQueuedGain(p.PlayerNumber)
-
-        ' Process under-500 armies first (they only need topping up)
-        Dim under500 As New List(Of Army)
-        Dim overEq500 As New List(Of Army)
-
-        If p.Armies IsNot Nothing Then
-            For Each a In p.Armies
-                If a Is Nothing Then Continue For
-                If a.TotalSoldiers < 500 Then
-                    under500.Add(a)
-                Else
-                    overEq500.Add(a)
-                End If
-            Next
-        End If
-
-        Dim idx As Integer = 0
-        For Each a In under500
-            AIRecruitArmy(a, p, idx)
-            idx += 1
-        Next
-        For Each a In overEq500
-            AIRecruitArmy(a, p, idx)
-            idx += 1
-        Next
     End Sub
 
 #End Region
@@ -3573,24 +3773,27 @@ Public Class Form1
         Next
 
         ' Build stable unit order + starting sizes from the immutable snapshot.
+        ' Also build a reference-index map per army so we can update sizes by *unit instance*.
         Dim unitOrderByArmy As New Dictionary(Of Army, List(Of Unit))()
         Dim startSizesByArmy As New Dictionary(Of Army, List(Of Integer))()
-        Dim indexByKey As New Dictionary(Of Army, Dictionary(Of String, Integer))()
+        Dim indexByUnitRef As New Dictionary(Of Army, Dictionary(Of Unit, Integer))()
 
         For i As Integer = 0 To startSnapshot.Count - 1
             Dim snapA = startSnapshot(i)
             Dim liveA = mergedArmies(i)
 
+            ' Names/order for reporting come from the snapshot (pre-battle)
             unitOrderByArmy(liveA) = New List(Of Unit)(
             snapA.Units.Select(Function(u) New Unit(u) With {.Size = u.Size})
         )
             startSizesByArmy(liveA) = New List(Of Integer)(snapA.Units.Select(Function(u) u.Size))
 
-            Dim idxMap As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase)
-            For j As Integer = 0 To snapA.Units.Count - 1
-                idxMap(KeyOf(snapA.Units(j))) = j
+            ' Map *live* unit object references -> their index (aligned with snapshot order)
+            Dim idxMapRef As New Dictionary(Of Unit, Integer)()
+            For j As Integer = 0 To liveA.Units.Count - 1
+                idxMapRef(liveA.Units(j)) = j
             Next
-            indexByKey(liveA) = idxMap
+            indexByUnitRef(liveA) = idxMapRef
         Next
 
         ' ---------- Start of Battle ----------
@@ -3607,10 +3810,7 @@ Public Class Form1
             Dim total0 As Integer = snapA.Units.Sum(Function(u) u.Size)
             sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {total0}")
 
-            ' Add a blank line between armies, except after the last one
-            If i < startSnapshot.Count - 1 Then
-                sb.AppendLine()
-            End If
+            If i < startSnapshot.Count - 1 Then sb.AppendLine()
         Next
         sb.AppendLine(New String("-"c, 60))
 
@@ -3623,9 +3823,7 @@ Public Class Form1
         Dim phases As String() = {"Ranged", "Charge", "Melee", "Chase"}
 
         For Each phase In phases
-            If Not PhaseHadCasualties(battleLog, phase) Then
-                Continue For
-            End If
+            If Not PhaseHadCasualties(battleLog, phase) Then Continue For
 
             sb.AppendLine($"{phase} Phase")
 
@@ -3667,19 +3865,16 @@ Public Class Form1
                 Where(Function(e) e.Defender.IsHero AndAlso e.Casualties > 0).
                 Select(Function(e)
                            Dim race = ownerByUnit(e.Defender).Race
-                           Dim level = e.Defender.Level
-                           Dim killed = False
+                           Dim owningArmy As Army = ownerByUnit(e.Defender)
+                           Dim idx As Integer = -1
+                           Dim killed As Boolean = False
 
-                           ' Check if hero size is 0 after this phase
-                           Dim owningArmy As Army = Nothing
-                           If ownerByUnit.TryGetValue(e.Defender, owningArmy) Then
-                               Dim key As String = e.Defender.Name & "|" & CInt(e.Defender.Type).ToString()
-                               Dim idx As Integer
-                               If indexByKey(owningArmy).TryGetValue(key, idx) Then
-                                   Dim arr = currentSizesByArmy(owningArmy)
-                                   If arr(idx) = 0 Then
-                                       killed = True
-                                   End If
+                           ' Resolve by Unit reference -> index
+                           If indexByUnitRef.ContainsKey(owningArmy) AndAlso
+                              indexByUnitRef(owningArmy).TryGetValue(e.Defender, idx) Then
+                               Dim arr = currentSizesByArmy(owningArmy)
+                               If idx >= 0 AndAlso idx < arr.Length AndAlso arr(idx) = 0 Then
+                                   killed = True
                                End If
                            End If
 
@@ -3688,7 +3883,7 @@ Public Class Form1
                                .Race = race,
                                .Casualties = e.Casualties,
                                .IsHero = True,
-                               .Level = level,
+                               .Level = e.Defender.Level,
                                .Killed = killed
                            }
                        End Function).ToList()
@@ -3712,21 +3907,34 @@ Public Class Form1
                             sb.AppendLine($" - {g.Name} ({g.Race}) lost {g.Casualties}")
                         End If
                     Next
-                    ' Add separator line after casualties
                     sb.AppendLine("------------")
                     sb.AppendLine()
                 End If
             End If
 
-            ' === Apply casualties to working copy ===
+            ' === Apply casualties to working copy (by Unit reference) ===
             If battleLog IsNot Nothing AndAlso battleLog.PhaseEntries.ContainsKey(phase) Then
                 For Each entry In battleLog.PhaseEntries(phase)
                     Dim owningArmy As Army = Nothing
                     If ownerByUnit.TryGetValue(entry.Defender, owningArmy) Then
-                        Dim key As String = entry.Defender.Name & "|" & CInt(entry.Defender.Type).ToString()
-                        Dim idx As Integer
-                        If indexByKey(owningArmy).TryGetValue(key, idx) Then
-                            Dim arr = currentSizesByArmy(owningArmy)
+                        Dim arr = currentSizesByArmy(owningArmy)
+
+                        ' Prefer fast dictionary lookup; fall back to a reference scan if needed
+                        Dim idx As Integer = -1
+                        If indexByUnitRef.ContainsKey(owningArmy) AndAlso
+                       indexByUnitRef(owningArmy).TryGetValue(entry.Defender, idx) Then
+                            ' found
+                        Else
+                            ' Fallback: reference-based scan
+                            For j As Integer = 0 To owningArmy.Units.Count - 1
+                                If Object.ReferenceEquals(owningArmy.Units(j), entry.Defender) Then
+                                    idx = j
+                                    Exit For
+                                End If
+                            Next
+                        End If
+
+                        If idx >= 0 AndAlso idx < arr.Length Then
                             Dim before As Integer = arr(idx)
                             Dim after As Integer = Math.Max(0, before - entry.Casualties)
                             arr(idx) = after
@@ -3762,10 +3970,7 @@ Public Class Form1
             Dim totalNow As Integer = sizes.Sum()
             sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {totalNow}")
 
-            ' Add a blank line between armies, except after the last one
-            If i < startSnapshot.Count - 1 Then
-                sb.AppendLine()
-            End If
+            If i < startSnapshot.Count - 1 Then sb.AppendLine()
         Next
         sb.AppendLine(New String("-"c, 60))
 
@@ -4099,6 +4304,7 @@ Public Class Form1
         Dim sb As New System.Text.StringBuilder()
 
         For Each p In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
             ' --- Header ---
             sb.AppendLine($"{p.Race} Player (Player {p.PlayerNumber + 1})")
             sb.AppendLine($"Population: {p.Population}")
@@ -4258,6 +4464,7 @@ Public Class Form1
     ' === Trade Goods Production ===
     Public Sub ProduceTradeGoods()
         For Each p In Players
+            If Not CanAct(p) Then Continue For
             Select Case p.Race.ToLowerInvariant()
                 Case "dwarf"
                     Dim produced As Integer = Math.Max(1, p.Population \ 2000)
@@ -4672,6 +4879,7 @@ Public Class Form1
         rtbArmies.Clear()
 
         For Each p As Player In Players
+            If Not CanAct(p) Then Continue For
             If p.Armies Is Nothing OrElse p.Armies.Count = 0 Then Continue For
 
             For Each a As Army In p.Armies
@@ -4717,6 +4925,7 @@ Public Class Form1
 
     Private Sub PayMercenaryWages()
         For Each p In Players
+            If Not CanAct(p) Then Continue For
             Dim wages As Integer = CalculateMercenaryWages(p)
             p.LastMercWages = wages
 
@@ -4748,5 +4957,43 @@ Public Class Form1
     End Function
 
 
+    Private Sub btnKillPlayer_Click(sender As Object, e As EventArgs) Handles btnKillPlayer.Click
+        ' === DEBUG ONLY ===
+        Dim input As String = InputBox("Enter player number to eliminate (1–4):", "Eliminate Player", "1")
+        Dim idx As Integer
+        If Not Integer.TryParse(input, idx) Then
+            MessageBox.Show("Invalid number.")
+            Exit Sub
+        End If
+        idx -= 1 ' convert to zero-based index
+
+        If idx < 0 OrElse idx >= Players.Count Then
+            MessageBox.Show("That player number doesn't exist.")
+            Exit Sub
+        End If
+
+        Dim p As Player = Players(idx)
+        If p Is Nothing Then
+            MessageBox.Show("Player not found.")
+            Exit Sub
+        End If
+
+        ' === Force elimination ===
+        p.IsEliminated = True
+        rtbGameInfo.AppendText($"[DEBUG] Forcibly eliminating {p.Race} (Player {p.PlayerNumber + 1})..." & vbCrLf)
+
+        ' === Full cleanup (neutralize tiles + wipe armies) ===
+        NeutralizePlayerMap(p)
+        NeutralizePlayerArmies(p)
+
+        ' === Run normal defeat logic just in case ===
+        CheckAndApplyDefeat(p)
+
+        ' === Refresh visuals ===
+        pnlMap.Invalidate()       ' Redraw map
+        UpdateArmiesReport()      ' Refresh army list
+
+        MessageBox.Show($"{p.Race} eliminated for testing. Check map and panels.")
+    End Sub
 
 End Class

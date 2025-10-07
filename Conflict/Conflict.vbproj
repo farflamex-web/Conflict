@@ -9,12 +9,20 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Resources\dwarfcitadel.png" />
+    <None Remove="Resources\elfcitadel.png" />
     <None Remove="Resources\hills.png" />
+    <None Remove="Resources\humancitadel.png" />
     <None Remove="Resources\mountain.png" />
+    <None Remove="Resources\orccitadel.png" />
     <None Remove="Resources\plains.png" />
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Resources\dwarfcitadel.png" />
+	<EmbeddedResource Include="Resources\humancitadel.png" />
+	<EmbeddedResource Include="Resources\orccitadel.png" />
+	<EmbeddedResource Include="Resources\elfcitadel.png" />
     <EmbeddedResource Include="Resources\forest.png" />
     <EmbeddedResource Include="Resources\hills.png" />
     <EmbeddedResource Include="Resources\mountain.png" />
