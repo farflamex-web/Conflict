@@ -2973,7 +2973,8 @@ Public Class Form1
                 Dim tileBoost As Double = 1.0 + (ownedSquares / 100.0)   ' +1% per owned tile
 
                 ' --- Logistic slow-down factor ---
-                Dim capacityFactor As Double = 1.0 - (p.Population / POP_CAP)
+                ' --- Logistic / exponential slow-down factor ---
+                Dim capacityFactor As Double = 1.0 / (1.0 + Math.Exp((p.Population - POP_CAP) / (POP_CAP / 4.0)))
                 If capacityFactor < 0 Then capacityFactor = 0
 
                 ' --- Final growth calculation ---
@@ -3584,7 +3585,7 @@ Public Class Form1
             For Each a As Army In armiesOfP
                 If a Is Nothing Then Continue For
                 ' Skip armies that cannot fight or already battled
-                If a.TotalSoldiers < 500 OrElse armiesAlreadyInBattle.Contains(a) Then Continue For
+                If a.TotalSoldiers <= 0 OrElse armiesAlreadyInBattle.Contains(a) Then Continue For
 
                 Dim grid As List(Of Point) = GetCombatGrid(a)
                 If grid Is Nothing OrElse grid.Count = 0 Then Continue For
@@ -3600,7 +3601,7 @@ Public Class Form1
                         Dim plArmies As List(Of Army) = If(pl.Armies, New List(Of Army)()).ToList()
                         For Each ar As Army In plArmies
                             If ar Is Nothing Then Continue For
-                            If ar.TotalSoldiers < 500 Then Continue For
+                            If ar.TotalSoldiers <= 0 Then Continue For
                             If armiesAlreadyInBattle.Contains(ar) Then Continue For
 
                             Dim arGrid As List(Of Point) = GetCombatGrid(ar)
