@@ -5801,8 +5801,18 @@ Public Class Form1
 #End Region
     ' === Army Orders System =====================================
 
-    Private ReadOnly directions As String() =
-    {"Stay", "N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+    ' Directions only (no "Stay")
+    Private ReadOnly moveChoicesCommon As List(Of String) =
+    New List(Of String) From {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+
+    ' Directions + special RECRUIT for Move5
+    Private ReadOnly moveChoicesSpecial As List(Of String) =
+    New List(Of String) From {"N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT"}
+    Private Function IsMoveComboColumn(col As DataGridViewColumn) As Boolean
+        If col Is Nothing OrElse Not TypeOf col Is DataGridViewComboBoxColumn Then Return False
+        Dim n As String = col.Name
+        Return n = "Move1" OrElse n = "Move2" OrElse n = "Move3" OrElse n = "Move4" OrElse n = "Move5"
+    End Function
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         LoadCustomerGrid()
@@ -5954,29 +5964,54 @@ Public Class Form1
 
     Private Sub InitialiseMoveColumns()
         For Each col As DataGridViewColumn In dgvOrders.Columns
-            If TypeOf col Is DataGridViewComboBoxColumn Then
-                Dim comboCol As DataGridViewComboBoxColumn =
-                DirectCast(col, DataGridViewComboBoxColumn)
+            If Not IsMoveComboColumn(col) Then Continue For
 
-                comboCol.Items.Clear()
-                comboCol.Items.AddRange(directions)
-                comboCol.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
-                comboCol.FlatStyle = FlatStyle.Standard
+            Dim comboCol As DataGridViewComboBoxColumn = DirectCast(col, DataGridViewComboBoxColumn)
+            comboCol.Items.Clear()
+
+            If col.Name = "Move5" Then
+                comboCol.Items.AddRange(moveChoicesSpecial.ToArray())
+            Else
+                comboCol.Items.AddRange(moveChoicesCommon.ToArray())
             End If
+
+            comboCol.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
+            comboCol.FlatStyle = FlatStyle.Standard
+            comboCol.Sorted = False
         Next
     End Sub
+
 
     Private Sub FinaliseMoveColumns()
-        Dim dirs As New List(Of String) From {"Stay", "N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-
         For Each col As DataGridViewColumn In dgvOrders.Columns
-            If TypeOf col Is DataGridViewComboBoxColumn Then
-                Dim comboCol = DirectCast(col, DataGridViewComboBoxColumn)
-                comboCol.DataSource = Nothing
-                comboCol.DataSource = dirs.ToList() ' clone per column
+            If Not IsMoveComboColumn(col) Then Continue For
+
+            Dim comboCol = DirectCast(col, DataGridViewComboBoxColumn)
+            comboCol.DataSource = Nothing
+            comboCol.Sorted = False
+
+            If col.Name = "Move5" Then
+                comboCol.DataSource = New List(Of String)(moveChoicesSpecial) ' clone
+            Else
+                comboCol.DataSource = New List(Of String)(moveChoicesCommon)  ' clone
             End If
         Next
+
+        ' Optional: scrub any existing "Stay" values from already-populated cells
+        For Each row As DataGridViewRow In dgvOrders.Rows
+            If row.IsNewRow Then Continue For
+            For i = 1 To 5
+                Dim cell = row.Cells("Move" & i)
+                If cell IsNot Nothing Then
+                    Dim v As String = If(cell.Value, "").ToString()
+                    If v.Equals("Stay", StringComparison.OrdinalIgnoreCase) Then
+                        cell.Value = Nothing ' blank is treated as no move
+                    End If
+                End If
+            Next
+        Next
     End Sub
+
 
     Private Sub EnableMoveColumns()
         With dgvOrders
@@ -5986,14 +6021,14 @@ Public Class Form1
         End With
 
         For Each col As DataGridViewColumn In dgvOrders.Columns
-            If TypeOf col Is DataGridViewComboBoxColumn Then
-                Dim c = DirectCast(col, DataGridViewComboBoxColumn)
-                c.ReadOnly = False                  ' <-- critical
-                c.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
-                c.FlatStyle = FlatStyle.Standard
-            End If
+            If Not IsMoveComboColumn(col) Then Continue For
+            Dim c = DirectCast(col, DataGridViewComboBoxColumn)
+            c.ReadOnly = False
+            c.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
+            c.FlatStyle = FlatStyle.Standard
         Next
     End Sub
+
 
 
     ' ----------------------------------------------------------------
