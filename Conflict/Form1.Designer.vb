@@ -45,13 +45,24 @@ Partial Class Form1
         cmbElf = New ComboBox()
         lblElf = New Label()
         btnSave = New Button()
+        dgvOrders = New DataGridView()
+        colPlayer = New DataGridViewTextBoxColumn()
+        colArmy = New DataGridViewTextBoxColumn()
+        Move1 = New DataGridViewComboBoxColumn()
+        Move2 = New DataGridViewComboBoxColumn()
+        Move3 = New DataGridViewComboBoxColumn()
+        Move4 = New DataGridViewComboBoxColumn()
+        Move5 = New DataGridViewComboBoxColumn()
+        colRecruitUnit = New DataGridViewComboBoxColumn()
+        colRecruitAmount = New DataGridViewTextBoxColumn()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
+        CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
         SuspendLayout()
         ' 
         ' btnPrint
         ' 
-        btnPrint.Location = New Point(1168, 812)
+        btnPrint.Location = New Point(542, 869)
         btnPrint.Name = "btnPrint"
         btnPrint.Size = New Size(124, 23)
         btnPrint.TabIndex = 0
@@ -67,7 +78,7 @@ Partial Class Form1
         ' 
         ' btnProcessTurn
         ' 
-        btnProcessTurn.Location = New Point(1038, 812)
+        btnProcessTurn.Location = New Point(412, 869)
         btnProcessTurn.Name = "btnProcessTurn"
         btnProcessTurn.Size = New Size(124, 23)
         btnProcessTurn.TabIndex = 4
@@ -88,7 +99,7 @@ Partial Class Form1
         ' 
         rtbPlayerSummary.Location = New Point(15, 451)
         rtbPlayerSummary.Name = "rtbPlayerSummary"
-        rtbPlayerSummary.Size = New Size(391, 508)
+        rtbPlayerSummary.Size = New Size(391, 408)
         rtbPlayerSummary.TabIndex = 7
         rtbPlayerSummary.Text = ""
         ' 
@@ -96,14 +107,14 @@ Partial Class Form1
         ' 
         rtbArmies.Location = New Point(412, 451)
         rtbArmies.Name = "rtbArmies"
-        rtbArmies.Size = New Size(369, 508)
+        rtbArmies.Size = New Size(369, 408)
         rtbArmies.TabIndex = 8
         rtbArmies.Text = ""
         ' 
         ' lblHud
         ' 
         lblHud.AutoSize = True
-        lblHud.Location = New Point(1038, 874)
+        lblHud.Location = New Point(15, 869)
         lblHud.Name = "lblHud"
         lblHud.Size = New Size(41, 15)
         lblHud.TabIndex = 9
@@ -111,7 +122,7 @@ Partial Class Form1
         ' 
         ' btnNewGame
         ' 
-        btnNewGame.Location = New Point(1381, 836)
+        btnNewGame.Location = New Point(795, 869)
         btnNewGame.Name = "btnNewGame"
         btnNewGame.Size = New Size(119, 23)
         btnNewGame.TabIndex = 10
@@ -120,7 +131,7 @@ Partial Class Form1
         ' 
         ' btnLoadGame
         ' 
-        btnLoadGame.Location = New Point(1381, 865)
+        btnLoadGame.Location = New Point(795, 898)
         btnLoadGame.Name = "btnLoadGame"
         btnLoadGame.Size = New Size(119, 23)
         btnLoadGame.TabIndex = 11
@@ -129,9 +140,9 @@ Partial Class Form1
         ' 
         ' btnKillPlayer
         ' 
-        btnKillPlayer.Location = New Point(1091, 913)
+        btnKillPlayer.Location = New Point(672, 869)
         btnKillPlayer.Name = "btnKillPlayer"
-        btnKillPlayer.Size = New Size(150, 23)
+        btnKillPlayer.Size = New Size(109, 23)
         btnKillPlayer.TabIndex = 12
         btnKillPlayer.Text = "Kill Player"
         btnKillPlayer.UseVisualStyleBackColor = True
@@ -141,12 +152,12 @@ Partial Class Form1
         dgvCustomers.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
         dgvCustomers.Location = New Point(795, 13)
         dgvCustomers.Name = "dgvCustomers"
-        dgvCustomers.Size = New Size(787, 432)
+        dgvCustomers.Size = New Size(743, 432)
         dgvCustomers.TabIndex = 13
         ' 
         ' btnSaveCustomers
         ' 
-        btnSaveCustomers.Location = New Point(795, 451)
+        btnSaveCustomers.Location = New Point(1588, 13)
         btnSaveCustomers.Name = "btnSaveCustomers"
         btnSaveCustomers.Size = New Size(130, 23)
         btnSaveCustomers.TabIndex = 14
@@ -164,16 +175,16 @@ Partial Class Form1
         grp.Controls.Add(lblDwarf)
         grp.Controls.Add(cmbElf)
         grp.Controls.Add(lblElf)
-        grp.Location = New Point(1381, 495)
+        grp.Location = New Point(1548, 64)
         grp.Name = "grp"
-        grp.Size = New Size(312, 325)
+        grp.Size = New Size(199, 234)
         grp.TabIndex = 15
         grp.TabStop = False
         grp.Text = "Player Assignments"
         ' 
         ' btnApplyAssignments
         ' 
-        btnApplyAssignments.Location = New Point(96, 193)
+        btnApplyAssignments.Location = New Point(40, 193)
         btnApplyAssignments.Name = "btnApplyAssignments"
         btnApplyAssignments.Size = New Size(121, 23)
         btnApplyAssignments.TabIndex = 8
@@ -183,7 +194,7 @@ Partial Class Form1
         ' cmbHuman
         ' 
         cmbHuman.FormattingEnabled = True
-        cmbHuman.Location = New Point(96, 147)
+        cmbHuman.Location = New Point(59, 147)
         cmbHuman.Name = "cmbHuman"
         cmbHuman.Size = New Size(121, 23)
         cmbHuman.TabIndex = 7
@@ -191,7 +202,7 @@ Partial Class Form1
         ' lblHuman
         ' 
         lblHuman.AutoSize = True
-        lblHuman.Location = New Point(48, 150)
+        lblHuman.Location = New Point(6, 150)
         lblHuman.Name = "lblHuman"
         lblHuman.Size = New Size(47, 15)
         lblHuman.TabIndex = 6
@@ -200,7 +211,7 @@ Partial Class Form1
         ' cmbOrc
         ' 
         cmbOrc.FormattingEnabled = True
-        cmbOrc.Location = New Point(96, 104)
+        cmbOrc.Location = New Point(59, 104)
         cmbOrc.Name = "cmbOrc"
         cmbOrc.Size = New Size(121, 23)
         cmbOrc.TabIndex = 5
@@ -208,7 +219,7 @@ Partial Class Form1
         ' lblOrc
         ' 
         lblOrc.AutoSize = True
-        lblOrc.Location = New Point(48, 107)
+        lblOrc.Location = New Point(6, 107)
         lblOrc.Name = "lblOrc"
         lblOrc.Size = New Size(26, 15)
         lblOrc.TabIndex = 4
@@ -217,7 +228,7 @@ Partial Class Form1
         ' cmbDwarf
         ' 
         cmbDwarf.FormattingEnabled = True
-        cmbDwarf.Location = New Point(96, 62)
+        cmbDwarf.Location = New Point(59, 62)
         cmbDwarf.Name = "cmbDwarf"
         cmbDwarf.Size = New Size(121, 23)
         cmbDwarf.TabIndex = 3
@@ -225,7 +236,7 @@ Partial Class Form1
         ' lblDwarf
         ' 
         lblDwarf.AutoSize = True
-        lblDwarf.Location = New Point(48, 65)
+        lblDwarf.Location = New Point(6, 65)
         lblDwarf.Name = "lblDwarf"
         lblDwarf.Size = New Size(38, 15)
         lblDwarf.TabIndex = 2
@@ -234,7 +245,7 @@ Partial Class Form1
         ' cmbElf
         ' 
         cmbElf.FormattingEnabled = True
-        cmbElf.Location = New Point(96, 22)
+        cmbElf.Location = New Point(59, 22)
         cmbElf.Name = "cmbElf"
         cmbElf.Size = New Size(121, 23)
         cmbElf.TabIndex = 1
@@ -242,7 +253,7 @@ Partial Class Form1
         ' lblElf
         ' 
         lblElf.AutoSize = True
-        lblElf.Location = New Point(48, 25)
+        lblElf.Location = New Point(6, 25)
         lblElf.Name = "lblElf"
         lblElf.Size = New Size(20, 15)
         lblElf.TabIndex = 0
@@ -250,18 +261,84 @@ Partial Class Form1
         ' 
         ' btnSave
         ' 
-        btnSave.Location = New Point(1381, 894)
+        btnSave.Location = New Point(795, 927)
         btnSave.Name = "btnSave"
         btnSave.Size = New Size(119, 22)
         btnSave.TabIndex = 16
         btnSave.Text = "Save Game"
         btnSave.UseVisualStyleBackColor = True
         ' 
+        ' dgvOrders
+        ' 
+        dgvOrders.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
+        dgvOrders.Columns.AddRange(New DataGridViewColumn() {colPlayer, colArmy, Move1, Move2, Move3, Move4, Move5, colRecruitUnit, colRecruitAmount})
+        dgvOrders.Location = New Point(795, 455)
+        dgvOrders.Name = "dgvOrders"
+        dgvOrders.Size = New Size(940, 404)
+        dgvOrders.TabIndex = 17
+        ' 
+        ' colPlayer
+        ' 
+        colPlayer.HeaderText = "Player"
+        colPlayer.Name = "colPlayer"
+        colPlayer.ReadOnly = True
+        ' 
+        ' colArmy
+        ' 
+        colArmy.HeaderText = "Army"
+        colArmy.Name = "colArmy"
+        ' 
+        ' Move1
+        ' 
+        Move1.HeaderText = "Move1"
+        Move1.Name = "Move1"
+        Move1.Resizable = DataGridViewTriState.True
+        Move1.SortMode = DataGridViewColumnSortMode.Automatic
+        ' 
+        ' Move2
+        ' 
+        Move2.HeaderText = "Move2"
+        Move2.Name = "Move2"
+        Move2.Resizable = DataGridViewTriState.True
+        Move2.SortMode = DataGridViewColumnSortMode.Automatic
+        ' 
+        ' Move3
+        ' 
+        Move3.HeaderText = "Move3"
+        Move3.Name = "Move3"
+        Move3.Resizable = DataGridViewTriState.True
+        Move3.SortMode = DataGridViewColumnSortMode.Automatic
+        ' 
+        ' Move4
+        ' 
+        Move4.HeaderText = "Move4"
+        Move4.Name = "Move4"
+        Move4.Resizable = DataGridViewTriState.True
+        Move4.SortMode = DataGridViewColumnSortMode.Automatic
+        ' 
+        ' Move5
+        ' 
+        Move5.HeaderText = "Move5"
+        Move5.Name = "Move5"
+        Move5.Resizable = DataGridViewTriState.True
+        Move5.SortMode = DataGridViewColumnSortMode.Automatic
+        ' 
+        ' colRecruitUnit
+        ' 
+        colRecruitUnit.HeaderText = "Unit Type"
+        colRecruitUnit.Name = "colRecruitUnit"
+        ' 
+        ' colRecruitAmount
+        ' 
+        colRecruitAmount.HeaderText = "Amount"
+        colRecruitAmount.Name = "colRecruitAmount"
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(dgvOrders)
         Controls.Add(btnSave)
         Controls.Add(grp)
         Controls.Add(btnSaveCustomers)
@@ -281,6 +358,7 @@ Partial Class Form1
         CType(dgvCustomers, ComponentModel.ISupportInitialize).EndInit()
         grp.ResumeLayout(False)
         grp.PerformLayout()
+        CType(dgvOrders, ComponentModel.ISupportInitialize).EndInit()
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -308,5 +386,15 @@ Partial Class Form1
     Friend WithEvents cmbElf As ComboBox
     Friend WithEvents lblElf As Label
     Friend WithEvents btnSave As Button
+    Friend WithEvents dgvOrders As DataGridView
+    Friend WithEvents colPlayer As DataGridViewTextBoxColumn
+    Friend WithEvents colArmy As DataGridViewTextBoxColumn
+    Friend WithEvents Move1 As DataGridViewComboBoxColumn
+    Friend WithEvents Move2 As DataGridViewComboBoxColumn
+    Friend WithEvents Move3 As DataGridViewComboBoxColumn
+    Friend WithEvents Move4 As DataGridViewComboBoxColumn
+    Friend WithEvents Move5 As DataGridViewComboBoxColumn
+    Friend WithEvents colRecruitUnit As DataGridViewComboBoxColumn
+    Friend WithEvents colRecruitAmount As DataGridViewTextBoxColumn
 
 End Class
