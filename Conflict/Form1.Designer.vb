@@ -55,6 +55,22 @@ Partial Class Form1
         Move5 = New DataGridViewComboBoxColumn()
         colRecruitUnit = New DataGridViewComboBoxColumn()
         colRecruitAmount = New DataGridViewTextBoxColumn()
+        lblElf2 = New Label()
+        chkBuySummonerElf = New CheckBox()
+        cmbSummonerElf = New ComboBox()
+        cmbArmyElf = New ComboBox()
+        cmbArmyDwarf = New ComboBox()
+        cmbSummonerDwarf = New ComboBox()
+        chkBuySummonerDwarf = New CheckBox()
+        lblDwarf2 = New Label()
+        cmbArmyOrc = New ComboBox()
+        cmbSummonerOrc = New ComboBox()
+        chkBuySummonerOrc = New CheckBox()
+        lblOrc2 = New Label()
+        cmbArmyHuman = New ComboBox()
+        cmbSummonerHuman = New ComboBox()
+        chkBuySummonerHuman = New CheckBox()
+        lblHuman2 = New Label()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -122,18 +138,18 @@ Partial Class Form1
         ' 
         ' btnNewGame
         ' 
-        btnNewGame.Location = New Point(795, 869)
+        btnNewGame.Location = New Point(412, 898)
         btnNewGame.Name = "btnNewGame"
-        btnNewGame.Size = New Size(119, 23)
+        btnNewGame.Size = New Size(124, 23)
         btnNewGame.TabIndex = 10
         btnNewGame.Text = "Create Game"
         btnNewGame.UseVisualStyleBackColor = True
         ' 
         ' btnLoadGame
         ' 
-        btnLoadGame.Location = New Point(795, 898)
+        btnLoadGame.Location = New Point(542, 898)
         btnLoadGame.Name = "btnLoadGame"
-        btnLoadGame.Size = New Size(119, 23)
+        btnLoadGame.Size = New Size(124, 23)
         btnLoadGame.TabIndex = 11
         btnLoadGame.Text = "Load Game"
         btnLoadGame.UseVisualStyleBackColor = True
@@ -261,9 +277,9 @@ Partial Class Form1
         ' 
         ' btnSave
         ' 
-        btnSave.Location = New Point(795, 927)
+        btnSave.Location = New Point(672, 898)
         btnSave.Name = "btnSave"
-        btnSave.Size = New Size(119, 22)
+        btnSave.Size = New Size(109, 22)
         btnSave.TabIndex = 16
         btnSave.Text = "Save Game"
         btnSave.UseVisualStyleBackColor = True
@@ -333,11 +349,175 @@ Partial Class Form1
         colRecruitAmount.HeaderText = "Amount"
         colRecruitAmount.Name = "colRecruitAmount"
         ' 
+        ' lblElf2
+        ' 
+        lblElf2.AutoSize = True
+        lblElf2.Location = New Point(795, 824)
+        lblElf2.Name = "lblElf2"
+        lblElf2.Size = New Size(20, 15)
+        lblElf2.TabIndex = 18
+        lblElf2.Text = "Elf"
+        ' 
+        ' chkBuySummonerElf
+        ' 
+        chkBuySummonerElf.AutoSize = True
+        chkBuySummonerElf.Location = New Point(836, 823)
+        chkBuySummonerElf.Name = "chkBuySummonerElf"
+        chkBuySummonerElf.Size = New Size(108, 19)
+        chkBuySummonerElf.TabIndex = 19
+        chkBuySummonerElf.Text = "Buy Summoner"
+        chkBuySummonerElf.UseVisualStyleBackColor = True
+        ' 
+        ' cmbSummonerElf
+        ' 
+        cmbSummonerElf.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbSummonerElf.FormattingEnabled = True
+        cmbSummonerElf.Location = New Point(950, 819)
+        cmbSummonerElf.Name = "cmbSummonerElf"
+        cmbSummonerElf.Size = New Size(121, 23)
+        cmbSummonerElf.TabIndex = 20
+        ' 
+        ' cmbArmyElf
+        ' 
+        cmbArmyElf.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyElf.FormattingEnabled = True
+        cmbArmyElf.Location = New Point(1077, 819)
+        cmbArmyElf.Name = "cmbArmyElf"
+        cmbArmyElf.Size = New Size(121, 23)
+        cmbArmyElf.TabIndex = 21
+        ' 
+        ' cmbArmyDwarf
+        ' 
+        cmbArmyDwarf.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyDwarf.FormattingEnabled = True
+        cmbArmyDwarf.Location = New Point(1077, 844)
+        cmbArmyDwarf.Name = "cmbArmyDwarf"
+        cmbArmyDwarf.Size = New Size(121, 23)
+        cmbArmyDwarf.TabIndex = 25
+        ' 
+        ' cmbSummonerDwarf
+        ' 
+        cmbSummonerDwarf.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbSummonerDwarf.FormattingEnabled = True
+        cmbSummonerDwarf.Location = New Point(950, 844)
+        cmbSummonerDwarf.Name = "cmbSummonerDwarf"
+        cmbSummonerDwarf.Size = New Size(121, 23)
+        cmbSummonerDwarf.TabIndex = 24
+        ' 
+        ' chkBuySummonerDwarf
+        ' 
+        chkBuySummonerDwarf.AutoSize = True
+        chkBuySummonerDwarf.Location = New Point(836, 848)
+        chkBuySummonerDwarf.Name = "chkBuySummonerDwarf"
+        chkBuySummonerDwarf.Size = New Size(108, 19)
+        chkBuySummonerDwarf.TabIndex = 23
+        chkBuySummonerDwarf.Text = "Buy Summoner"
+        chkBuySummonerDwarf.UseVisualStyleBackColor = True
+        ' 
+        ' lblDwarf2
+        ' 
+        lblDwarf2.AutoSize = True
+        lblDwarf2.Location = New Point(795, 849)
+        lblDwarf2.Name = "lblDwarf2"
+        lblDwarf2.Size = New Size(38, 15)
+        lblDwarf2.TabIndex = 22
+        lblDwarf2.Text = "Dwarf"
+        ' 
+        ' cmbArmyOrc
+        ' 
+        cmbArmyOrc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyOrc.FormattingEnabled = True
+        cmbArmyOrc.Location = New Point(1077, 869)
+        cmbArmyOrc.Name = "cmbArmyOrc"
+        cmbArmyOrc.Size = New Size(121, 23)
+        cmbArmyOrc.TabIndex = 29
+        ' 
+        ' cmbSummonerOrc
+        ' 
+        cmbSummonerOrc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbSummonerOrc.FormattingEnabled = True
+        cmbSummonerOrc.Location = New Point(950, 869)
+        cmbSummonerOrc.Name = "cmbSummonerOrc"
+        cmbSummonerOrc.Size = New Size(121, 23)
+        cmbSummonerOrc.TabIndex = 28
+        ' 
+        ' chkBuySummonerOrc
+        ' 
+        chkBuySummonerOrc.AutoSize = True
+        chkBuySummonerOrc.Location = New Point(836, 873)
+        chkBuySummonerOrc.Name = "chkBuySummonerOrc"
+        chkBuySummonerOrc.Size = New Size(108, 19)
+        chkBuySummonerOrc.TabIndex = 27
+        chkBuySummonerOrc.Text = "Buy Summoner"
+        chkBuySummonerOrc.UseVisualStyleBackColor = True
+        ' 
+        ' lblOrc2
+        ' 
+        lblOrc2.AutoSize = True
+        lblOrc2.Location = New Point(795, 874)
+        lblOrc2.Name = "lblOrc2"
+        lblOrc2.Size = New Size(26, 15)
+        lblOrc2.TabIndex = 26
+        lblOrc2.Text = "Orc"
+        ' 
+        ' cmbArmyHuman
+        ' 
+        cmbArmyHuman.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyHuman.FormattingEnabled = True
+        cmbArmyHuman.Location = New Point(1077, 894)
+        cmbArmyHuman.Name = "cmbArmyHuman"
+        cmbArmyHuman.Size = New Size(121, 23)
+        cmbArmyHuman.TabIndex = 33
+        ' 
+        ' cmbSummonerHuman
+        ' 
+        cmbSummonerHuman.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbSummonerHuman.FormattingEnabled = True
+        cmbSummonerHuman.Location = New Point(950, 894)
+        cmbSummonerHuman.Name = "cmbSummonerHuman"
+        cmbSummonerHuman.Size = New Size(121, 23)
+        cmbSummonerHuman.TabIndex = 32
+        ' 
+        ' chkBuySummonerHuman
+        ' 
+        chkBuySummonerHuman.AutoSize = True
+        chkBuySummonerHuman.Location = New Point(836, 898)
+        chkBuySummonerHuman.Name = "chkBuySummonerHuman"
+        chkBuySummonerHuman.Size = New Size(108, 19)
+        chkBuySummonerHuman.TabIndex = 31
+        chkBuySummonerHuman.Text = "Buy Summoner"
+        chkBuySummonerHuman.UseVisualStyleBackColor = True
+        ' 
+        ' lblHuman2
+        ' 
+        lblHuman2.AutoSize = True
+        lblHuman2.Location = New Point(795, 899)
+        lblHuman2.Name = "lblHuman2"
+        lblHuman2.Size = New Size(47, 15)
+        lblHuman2.TabIndex = 30
+        lblHuman2.Text = "Human"
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(cmbArmyHuman)
+        Controls.Add(cmbSummonerHuman)
+        Controls.Add(chkBuySummonerHuman)
+        Controls.Add(lblHuman2)
+        Controls.Add(cmbArmyOrc)
+        Controls.Add(cmbSummonerOrc)
+        Controls.Add(chkBuySummonerOrc)
+        Controls.Add(lblOrc2)
+        Controls.Add(cmbArmyDwarf)
+        Controls.Add(cmbSummonerDwarf)
+        Controls.Add(chkBuySummonerDwarf)
+        Controls.Add(lblDwarf2)
+        Controls.Add(cmbArmyElf)
+        Controls.Add(cmbSummonerElf)
+        Controls.Add(chkBuySummonerElf)
+        Controls.Add(lblElf2)
         Controls.Add(dgvOrders)
         Controls.Add(btnSave)
         Controls.Add(grp)
@@ -396,5 +576,21 @@ Partial Class Form1
     Friend WithEvents Move5 As DataGridViewComboBoxColumn
     Friend WithEvents colRecruitUnit As DataGridViewComboBoxColumn
     Friend WithEvents colRecruitAmount As DataGridViewTextBoxColumn
+    Friend WithEvents lblElf2 As Label
+    Friend WithEvents chkBuySummonerElf As CheckBox
+    Friend WithEvents cmbSummonerElf As ComboBox
+    Friend WithEvents cmbArmyElf As ComboBox
+    Friend WithEvents cmbArmyDwarf As ComboBox
+    Friend WithEvents cmbSummonerDwarf As ComboBox
+    Friend WithEvents chkBuySummonerDwarf As CheckBox
+    Friend WithEvents lblDwarf2 As Label
+    Friend WithEvents cmbArmyOrc As ComboBox
+    Friend WithEvents cmbSummonerOrc As ComboBox
+    Friend WithEvents chkBuySummonerOrc As CheckBox
+    Friend WithEvents lblOrc2 As Label
+    Friend WithEvents cmbArmyHuman As ComboBox
+    Friend WithEvents cmbSummonerHuman As ComboBox
+    Friend WithEvents chkBuySummonerHuman As CheckBox
+    Friend WithEvents lblHuman2 As Label
 
 End Class

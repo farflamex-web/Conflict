@@ -190,6 +190,14 @@ Public Class Form1
         Public Property Amount As String        ' e.g. "MAX" or "250"  (new)
     End Class
 
+    Private Class ArmyListItem
+        Public Property Display As String
+        Public Property Index As Integer
+        Public Overrides Function ToString() As String
+            Return Display
+        End Function
+    End Class
+
 
     Public Class Unit
         ' === Properties ===
@@ -497,7 +505,132 @@ Public Class Form1
         Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
     End Sub
 
+    ' ------------------------------------------------------------
+    ' Manual (player) version of BuySummoner — uses selected values
+    ' ------------------------------------------------------------
+    Private Sub AttemptBuySummoner(p As Player, def As SummonerInfo, targetArmy As Army)
+        Debug.WriteLine($"[SUMMONER] AttemptBuySummoner started for {p.Race} -> {def.Name}")
+        If p Is Nothing OrElse def Is Nothing OrElse targetArmy Is Nothing Then Exit Sub
 
+        Debug.WriteLine($"[SUMMONER] Gold={p.Gold}")
+        ' === 1) Calculate cost based on existing heroes ===
+        Dim ownedHeroes As Integer =
+        p.Armies.SelectMany(Function(a) a.Units).
+                 Count(Function(u) u IsNot Nothing AndAlso u.IsHero)
+
+        Dim cost As Integer = CInt(1000 * Math.Pow(3, ownedHeroes))
+
+        ' === 2) Check affordability ===
+        If p.Gold < cost Then
+            Debug.WriteLine($"[SUMMONER] {p.Race} cannot afford {def.Name}. Needs {cost}, has {p.Gold}.")
+            Exit Sub
+        End If
+
+        Debug.WriteLine($"[SUMMONER] Deducting {cost} gold; heroes owned={ownedHeroes}")
+        ' === 3) Pay ===
+        p.Gold -= cost
+
+        ' === 4) Create unit ===
+        Dim fullName As String = GenerateSummonerName(p.Race, def.Name)
+        Dim summonerUnit As New Unit("Summoner", fullName, p.Race)
+        summonerUnit.SummonerFaction = def.RosterKey
+        summonerUnit.IsHero = True
+        summonerUnit.HeroType = "Summoner"
+        summonerUnit.Level = 1
+
+        ' === 5) Add to target army ===
+        If targetArmy.Units Is Nothing Then targetArmy.Units = New List(Of Unit)
+        targetArmy.Units.Add(summonerUnit)
+        Debug.WriteLine($"[SUMMONER] Added {def.Name} to {targetArmy.Name}. Units now: {targetArmy.Units.Count}")
+        Debug.WriteLine($"[SUMMONER] {p.Race} bought {fullName} for {targetArmy.Name} at {cost} gold. Remaining: {p.Gold}.")
+    End Sub
+
+    ' ------------------------------------------------------------
+    ' Read the Buy Summoner UI and apply it to each player
+    ' ------------------------------------------------------------
+    Private Sub ApplySummonerPurchases()
+        'Debug.WriteLine("=== ApplySummonerPurchases starting ===")
+        If Players Is Nothing Then Exit Sub
+
+        For Each p In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+
+            Dim race As String = p.Race.ToLowerInvariant()
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            Dim chk As CheckBox = TryCast(Me.Controls("chkBuySummoner" & suffix), CheckBox)
+            Dim cmbSummoner As ComboBox = TryCast(Me.Controls("cmbSummoner" & suffix), ComboBox)
+            Dim cmbArmy As ComboBox = TryCast(Me.Controls("cmbArmy" & suffix), ComboBox)
+
+            If chk Is Nothing OrElse cmbSummoner Is Nothing OrElse cmbArmy Is Nothing Then
+                Debug.WriteLine($"[{p.Race}] Missing one or more controls — skipping.")
+                Continue For
+            End If
+
+            Debug.WriteLine($"Checking {p.Race}  |  Checked={chk.Checked}")
+
+            ' Skip if not ticked
+            If Not chk.Checked Then Continue For
+
+            ' Read visible text safely
+            Dim chosenSummoner As String = cmbSummoner.Text?.Trim()
+            Dim chosenArmyText As String = cmbArmy.Text?.Trim()
+
+            If String.IsNullOrWhiteSpace(chosenSummoner) OrElse String.IsNullOrWhiteSpace(chosenArmyText) Then
+                Debug.WriteLine($"[{p.Race}] Summoner or Army text blank — skipping (Summoner='{chosenSummoner}', Army='{chosenArmyText}')")
+                Continue For
+            End If
+
+            ' Try to resolve the target army
+            Dim targetArmy As Army = Nothing
+            Dim selectedArmyItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
+            If selectedArmyItem IsNot Nothing Then
+                Dim armyIndex As Integer = selectedArmyItem.Index
+                If armyIndex >= 0 AndAlso armyIndex < p.Armies.Count Then
+                    targetArmy = p.Armies(armyIndex)
+                End If
+            End If
+
+            ' Fallback by name if not an ArmyListItem
+            If targetArmy Is Nothing Then
+                targetArmy = p.Armies.FirstOrDefault(Function(a) a.Name.Equals(chosenArmyText, StringComparison.OrdinalIgnoreCase))
+            End If
+
+            If targetArmy Is Nothing Then
+                Debug.WriteLine($"[{p.Race}] Could not resolve army from combo text '{chosenArmyText}' — skipping.")
+                Continue For
+            End If
+
+            'Debug.WriteLine($"  [{p.Race}] Summoner combo text: {cmbSummoner.Text}")
+            'Debug.WriteLine($"  [{p.Race}] Army combo text: {cmbArmy.Text}")
+
+            ' Find definition for this summoner
+            Dim def As SummonerInfo = SummonerDefinitions.FirstOrDefault(
+            Function(s) s.Name.Equals(chosenSummoner, StringComparison.OrdinalIgnoreCase) AndAlso
+                        s.AllowedRace.Equals(p.Race, StringComparison.OrdinalIgnoreCase))
+
+            If def Is Nothing Then
+                'Debug.WriteLine($"  [WARN] No SummonerInfo found for {p.Race} / {chosenSummoner}")
+                Continue For
+            Else
+                'Debug.WriteLine($"  [OK] Found {def.Name} for {p.Race}, sending to {targetArmy.Name}")
+            End If
+
+            ' Apply purchase
+            'Debug.WriteLine($"  [{p.Race}] SummonerInfo found: {def.Name}")
+            'Debug.WriteLine($"  [{p.Race}] Target army found: {targetArmy.Name}")
+
+            AttemptBuySummoner(p, def, targetArmy)
+
+            ' Reset checkbox for next turn
+            chk.Checked = False
+            cmbSummoner.SelectedIndex = -1
+            cmbArmy.SelectedIndex = -1
+
+        Next
+
+        'Debug.WriteLine("=== ApplySummonerPurchases finished ===")
+    End Sub
 
     Private Sub ProcessSummoners()
         For Each p In Players
@@ -3293,6 +3426,7 @@ Public Class Form1
         ProduceTradeGoods()
 
         ' --- 4. Summoners act ---
+        ApplySummonerPurchases()
         AIBuySummoners()
         ProcessSummoners()
 
@@ -3302,7 +3436,6 @@ Public Class Form1
                 'AI_RunRecruitmentPhase_ForPlayer(p)
             End If
         Next
-
 
         ' --- 5. Execute army movements step by step ---
         ProcessTurn()
@@ -6257,7 +6390,59 @@ Public Class Form1
         InitialiseMoveColumns()     ' refill directions
         dgvOrders.AllowUserToAddRows = False
         dgvOrders.EditMode = DataGridViewEditMode.EditOnEnter
+        RefreshBuySummonerControls()
     End Sub
+
+    Private Sub RefreshBuySummonerControls()
+        If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub
+
+        For Each p In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+
+            Dim race As String = p.Race.ToLowerInvariant()
+
+            ' --- Build the control name suffix (Elf, Dwarf, Orc, Human) ---
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            ' --- Find the combo boxes dynamically by name ---
+            Dim cmbSummoner = TryCast(Me.Controls("cmbSummoner" & suffix), ComboBox)
+            Dim cmbArmy = TryCast(Me.Controls("cmbArmy" & suffix), ComboBox)
+
+            If cmbSummoner Is Nothing OrElse cmbArmy Is Nothing Then Continue For
+
+            ' === Fill Summoner Type Combo ===
+            cmbSummoner.Items.Clear()
+            Dim list As List(Of String) = GetSummonerListForRace(race)
+            If list IsNot Nothing Then cmbSummoner.Items.AddRange(list.ToArray())
+
+            ' === Fill Army Combo ===
+            cmbArmy.Items.Clear()
+            For i As Integer = 0 To p.Armies.Count - 1
+                Dim a = p.Armies(i)
+                If a IsNot Nothing Then
+                    Dim item As New ArmyListItem With {
+                        .Display = $"{i + 1} - {a.Name}",
+                        .Index = i
+                    }
+                    cmbArmy.Items.Add(item)
+                End If
+            Next
+
+        Next
+    End Sub
+
+    Private Function GetSummonerListForRace(race As String) As List(Of String)
+        Dim list As New List(Of String)
+
+        For Each s In SummonerDefinitions
+            If s IsNot Nothing AndAlso s.AllowedRace.Equals(race, StringComparison.OrdinalIgnoreCase) Then
+                list.Add(s.Name)
+            End If
+        Next
+
+        Return list
+    End Function
+
 
 
 
