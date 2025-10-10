@@ -3470,7 +3470,7 @@ Public Class Form1
         SafetyCaptureReconciliation()
 
         RefreshArmyOrdersGrid()
-
+        ''klk
         UpdateSeenMonstersForAllPlayers(Players)
     End Sub
 
