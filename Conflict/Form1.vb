@@ -547,9 +547,8 @@ Public Class Form1
 
     ' ------------------------------------------------------------
     ' Read the Buy Summoner UI and apply it to each player
-    ' ------------------------------------------------------------
+
     Private Sub ApplySummonerPurchases()
-        'Debug.WriteLine("=== ApplySummonerPurchases starting ===")
         If Players Is Nothing Then Exit Sub
 
         For Each p In Players
@@ -567,70 +566,62 @@ Public Class Form1
                 Continue For
             End If
 
-            Debug.WriteLine($"Checking {p.Race}  |  Checked={chk.Checked}")
-
             ' Skip if not ticked
             If Not chk.Checked Then Continue For
 
-            ' Read visible text safely
+            ' --- Read inputs ---
             Dim chosenSummoner As String = cmbSummoner.Text?.Trim()
             Dim chosenArmyText As String = cmbArmy.Text?.Trim()
 
-            If String.IsNullOrWhiteSpace(chosenSummoner) OrElse String.IsNullOrWhiteSpace(chosenArmyText) Then
-                Debug.WriteLine($"[{p.Race}] Summoner or Army text blank — skipping (Summoner='{chosenSummoner}', Army='{chosenArmyText}')")
+            ' Must have a summoner chosen
+            If String.IsNullOrWhiteSpace(chosenSummoner) Then
+                Debug.WriteLine($"[{p.Race}] Summoner blank — skipping.")
                 Continue For
             End If
 
-            ' Try to resolve the target army
+            ' --- Resolve the target army (or default to Army(0)) ---
             Dim targetArmy As Army = Nothing
-            Dim selectedArmyItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
-            If selectedArmyItem IsNot Nothing Then
-                Dim armyIndex As Integer = selectedArmyItem.Index
-                If armyIndex >= 0 AndAlso armyIndex < p.Armies.Count Then
-                    targetArmy = p.Armies(armyIndex)
-                End If
-            End If
 
-            ' Fallback by name if not an ArmyListItem
-            If targetArmy Is Nothing Then
+            ' Try from combo selection
+            Dim selectedArmyItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
+            If selectedArmyItem IsNot Nothing AndAlso selectedArmyItem.Index >= 0 AndAlso selectedArmyItem.Index < p.Armies.Count Then
+                targetArmy = p.Armies(selectedArmyItem.Index)
+            ElseIf Not String.IsNullOrWhiteSpace(chosenArmyText) Then
                 targetArmy = p.Armies.FirstOrDefault(Function(a) a.Name.Equals(chosenArmyText, StringComparison.OrdinalIgnoreCase))
             End If
 
+            ' Default to first army if none chosen or found
+            If targetArmy Is Nothing AndAlso p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
+                targetArmy = p.Armies(0)
+                Debug.WriteLine($"[{p.Race}] No army selected — defaulting to Army #1 '{targetArmy.Name}'.")
+            End If
+
+            ' Still no army (player has none)
             If targetArmy Is Nothing Then
-                Debug.WriteLine($"[{p.Race}] Could not resolve army from combo text '{chosenArmyText}' — skipping.")
+                Debug.WriteLine($"[{p.Race}] No available armies to receive summoner — skipping.")
                 Continue For
             End If
 
-            'Debug.WriteLine($"  [{p.Race}] Summoner combo text: {cmbSummoner.Text}")
-            'Debug.WriteLine($"  [{p.Race}] Army combo text: {cmbArmy.Text}")
-
-            ' Find definition for this summoner
+            ' --- Find definition for the chosen summoner ---
             Dim def As SummonerInfo = SummonerDefinitions.FirstOrDefault(
             Function(s) s.Name.Equals(chosenSummoner, StringComparison.OrdinalIgnoreCase) AndAlso
                         s.AllowedRace.Equals(p.Race, StringComparison.OrdinalIgnoreCase))
 
             If def Is Nothing Then
-                'Debug.WriteLine($"  [WARN] No SummonerInfo found for {p.Race} / {chosenSummoner}")
+                Debug.WriteLine($"[{p.Race}] Invalid summoner name '{chosenSummoner}' — skipping.")
                 Continue For
-            Else
-                'Debug.WriteLine($"  [OK] Found {def.Name} for {p.Race}, sending to {targetArmy.Name}")
             End If
 
-            ' Apply purchase
-            'Debug.WriteLine($"  [{p.Race}] SummonerInfo found: {def.Name}")
-            'Debug.WriteLine($"  [{p.Race}] Target army found: {targetArmy.Name}")
-
+            ' --- Apply purchase ---
             AttemptBuySummoner(p, def, targetArmy)
 
-            ' Reset checkbox for next turn
+            ' --- Reset UI for next turn ---
             chk.Checked = False
             cmbSummoner.SelectedIndex = -1
             cmbArmy.SelectedIndex = -1
-
         Next
-
-        'Debug.WriteLine("=== ApplySummonerPurchases finished ===")
     End Sub
+
 
     Private Sub ProcessSummoners()
         For Each p In Players
@@ -747,7 +738,7 @@ Public Class Form1
         Public Property Amber As Integer
         Public Property Wine As Integer
         Public Property Furs As Integer
-        Public Property CurrentBid As Integer
+        Public Property CurrentBid As Integer ' Mercenary bid for this turn
         Public Property LastMercWages As Integer = 0
         Public Property Xorns As Integer = 0
         ' === Slave tracking (Orcs only, but stored for all players) ===
@@ -755,6 +746,7 @@ Public Class Form1
         Public Property DwarfSlaves As Integer = 0
         Public Property HumanSlaves As Integer = 0
         Public Property IsEliminated As Boolean = False
+        Public Property TargetArmyForMercs As Army
 
 
         Public Sub New()
@@ -3414,6 +3406,7 @@ Public Class Form1
         Dim orders As List(Of ArmyOrder) = GetArmyOrders() ' Apply orders from UI
         ApplyOrdersToArmies(orders) ' Apply orders
 
+        ApplyMercBids()
         ResolveBiddingPhase()
 
         ' --- 1. Collect resources for all players ---
@@ -5347,11 +5340,85 @@ Public Class Form1
         End Function
     End Class
 
+    Private Sub ApplyMercBids()
+        If Players Is Nothing Then Exit Sub
+
+        For Each p In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+
+            Dim race As String = p.Race.ToLowerInvariant()
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            ' --- Find controls for this player ---
+            Dim numBid As NumericUpDown = TryCast(Me.Controls("numMercBid" & suffix), NumericUpDown)
+            Dim cmbArmy As ComboBox = TryCast(Me.Controls("cmbArmy" & suffix & "Merc"), ComboBox)
+
+            If numBid Is Nothing OrElse cmbArmy Is Nothing Then Continue For
+
+            ' --- Read the numeric bid ---
+            Dim bidAmount As Integer = CInt(numBid.Value)
+
+            ' --- Clamp to available gold ---
+            If bidAmount > p.Gold Then
+                bidAmount = p.Gold
+                numBid.Value = bidAmount  ' optional: visually update
+                Debug.WriteLine($"[MERC] {p.Race} bid reduced to {bidAmount} (max gold available).")
+            End If
+
+            p.CurrentBid = bidAmount
+
+            ' --- Skip if no bid ---
+            If bidAmount <= 0 Then
+                p.TargetArmyForMercs = Nothing
+                Continue For
+            End If
+
+            ' --- Resolve the target army ---
+            Dim targetArmy As Army = Nothing
+            Dim selectedItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
+
+            If selectedItem IsNot Nothing AndAlso selectedItem.Index >= 0 AndAlso selectedItem.Index < p.Armies.Count Then
+                targetArmy = p.Armies(selectedItem.Index)
+            ElseIf Not String.IsNullOrWhiteSpace(cmbArmy.Text) Then
+                targetArmy = p.Armies.FirstOrDefault(Function(a) a.Name.Equals(cmbArmy.Text, StringComparison.OrdinalIgnoreCase))
+            End If
+
+            ' --- Store the chosen army ---
+            p.TargetArmyForMercs = targetArmy
+
+            ' --- Reset UI for next turn ---
+            numBid.Value = 0
+            cmbArmy.SelectedIndex = -1
+        Next
+    End Sub
+
+
     Private Sub AwardMercenariesToPlayer(offer As MercenaryArmy, winner As Player)
         If offer Is Nothing OrElse winner Is Nothing Then Exit Sub
         If winner.Armies Is Nothing OrElse winner.Armies.Count = 0 Then Exit Sub
 
-        Dim target As Army = winner.Armies(0) ' For now, always Army 1
+        ' === Determine target army ===
+        Dim target As Army = Nothing
+
+        ' Human players: use the army chosen via ApplyMercBids (if still valid)
+        If Not winner.AIControlled AndAlso winner.TargetArmyForMercs IsNot Nothing Then
+            Dim idx As Integer = winner.Armies.IndexOf(winner.TargetArmyForMercs)
+            If idx >= 0 Then target = winner.Armies(idx)
+        End If
+
+        ' AI players: random army 0..2 (safe if fewer than 3 armies)
+        If target Is Nothing AndAlso winner.AIControlled Then
+            Dim rnd As New Random()
+            Dim upper As Integer = Math.Min(3, winner.Armies.Count) ' Next upper bound is exclusive
+            Dim randIndex As Integer = rnd.Next(0, upper)           ' 0..2 if 3+, otherwise 0..Count-1
+            target = winner.Armies(randIndex)
+        End If
+
+        ' Fallback
+        If target Is Nothing Then target = winner.Armies(0)
+
+        ' Ensure Units list exists
+        If target.Units Is Nothing Then target.Units = New List(Of Unit)()
 
         ' Build a concise composition string as we add/merge
         Dim parts As New List(Of String)
@@ -5361,6 +5428,7 @@ Public Class Form1
 
             If s.Hero IsNot Nothing Then
                 ' === Hero mercenary ===
+                s.Hero.IsMercenary = True
                 target.Units.Add(s.Hero)
                 parts.Add($"{s.Hero.Name} (Lvl {s.Hero.Level})")
 
@@ -5384,8 +5452,13 @@ Public Class Form1
         Next
 
         ' === Debug: where it went and what it was ===
-        Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #1 at ({target.X},{target.Y}). Faction: {offer.Faction}")
+        Dim armyIndex As Integer = winner.Armies.IndexOf(target)
+        If armyIndex < 0 Then armyIndex = 0
+        Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
         Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
+
+        ' Cleanup selection for next turn
+        winner.TargetArmyForMercs = Nothing
     End Sub
 
 
@@ -6391,7 +6464,42 @@ Public Class Form1
         dgvOrders.AllowUserToAddRows = False
         dgvOrders.EditMode = DataGridViewEditMode.EditOnEnter
         RefreshBuySummonerControls()
+        RefreshMercBidControls()
     End Sub
+
+    Private Sub RefreshMercBidControls()
+        If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub
+
+        For Each p In Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+
+            Dim race As String = p.Race.ToLowerInvariant()
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            ' === Reset numeric box ===
+            Dim numBox = TryCast(Me.Controls("numMercBid" & suffix), NumericUpDown)
+            If numBox IsNot Nothing Then numBox.Value = 0
+
+            ' === Populate target army combo ===
+            Dim cmbArmy = TryCast(Me.Controls("cmbArmy" & suffix & "Merc"), ComboBox)
+            If cmbArmy Is Nothing Then Continue For
+
+            cmbArmy.Items.Clear()
+            For i As Integer = 0 To p.Armies.Count - 1
+                Dim a = p.Armies(i)
+                If a IsNot Nothing Then
+                    Dim item As New ArmyListItem With {
+                    .Display = $"{i + 1} - {a.Name}",
+                    .Index = i
+                }
+                    cmbArmy.Items.Add(item)
+                End If
+            Next
+
+            cmbArmy.SelectedIndex = -1
+        Next
+    End Sub
+
 
     Private Sub RefreshBuySummonerControls()
         If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub

@@ -71,9 +71,22 @@ Partial Class Form1
         cmbSummonerHuman = New ComboBox()
         chkBuySummonerHuman = New CheckBox()
         lblHuman2 = New Label()
+        lblMercenaryBids = New Label()
+        numMercBidElf = New NumericUpDown()
+        numMercBidDwarf = New NumericUpDown()
+        numMercBidOrc = New NumericUpDown()
+        numMercBidHuman = New NumericUpDown()
+        cmbArmyElfMerc = New ComboBox()
+        cmbArmyDwarfMerc = New ComboBox()
+        cmbArmyOrcMerc = New ComboBox()
+        cmbArmyHumanMerc = New ComboBox()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMercBidElf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMercBidDwarf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMercBidOrc, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMercBidHuman, ComponentModel.ISupportInitialize).BeginInit()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -497,11 +510,109 @@ Partial Class Form1
         lblHuman2.TabIndex = 30
         lblHuman2.Text = "Human"
         ' 
+        ' lblMercenaryBids
+        ' 
+        lblMercenaryBids.AutoSize = True
+        lblMercenaryBids.Location = New Point(1294, 799)
+        lblMercenaryBids.Name = "lblMercenaryBids"
+        lblMercenaryBids.Size = New Size(88, 15)
+        lblMercenaryBids.TabIndex = 34
+        lblMercenaryBids.Text = "Mercenary Bids"
+        ' 
+        ' numMercBidElf
+        ' 
+        numMercBidElf.Increment = New Decimal(New Integer() {100, 0, 0, 0})
+        numMercBidElf.Location = New Point(1215, 819)
+        numMercBidElf.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
+        numMercBidElf.Name = "numMercBidElf"
+        numMercBidElf.Size = New Size(120, 23)
+        numMercBidElf.TabIndex = 35
+        numMercBidElf.TextAlign = HorizontalAlignment.Right
+        numMercBidElf.ThousandsSeparator = True
+        ' 
+        ' numMercBidDwarf
+        ' 
+        numMercBidDwarf.Increment = New Decimal(New Integer() {100, 0, 0, 0})
+        numMercBidDwarf.Location = New Point(1215, 844)
+        numMercBidDwarf.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
+        numMercBidDwarf.Name = "numMercBidDwarf"
+        numMercBidDwarf.Size = New Size(120, 23)
+        numMercBidDwarf.TabIndex = 36
+        numMercBidDwarf.TextAlign = HorizontalAlignment.Right
+        numMercBidDwarf.ThousandsSeparator = True
+        ' 
+        ' numMercBidOrc
+        ' 
+        numMercBidOrc.Increment = New Decimal(New Integer() {100, 0, 0, 0})
+        numMercBidOrc.Location = New Point(1215, 869)
+        numMercBidOrc.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
+        numMercBidOrc.Name = "numMercBidOrc"
+        numMercBidOrc.Size = New Size(120, 23)
+        numMercBidOrc.TabIndex = 37
+        numMercBidOrc.TextAlign = HorizontalAlignment.Right
+        numMercBidOrc.ThousandsSeparator = True
+        ' 
+        ' numMercBidHuman
+        ' 
+        numMercBidHuman.Increment = New Decimal(New Integer() {100, 0, 0, 0})
+        numMercBidHuman.Location = New Point(1215, 895)
+        numMercBidHuman.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
+        numMercBidHuman.Name = "numMercBidHuman"
+        numMercBidHuman.Size = New Size(120, 23)
+        numMercBidHuman.TabIndex = 38
+        numMercBidHuman.TextAlign = HorizontalAlignment.Right
+        numMercBidHuman.ThousandsSeparator = True
+        ' 
+        ' cmbArmyElfMerc
+        ' 
+        cmbArmyElfMerc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyElfMerc.FormattingEnabled = True
+        cmbArmyElfMerc.Location = New Point(1341, 819)
+        cmbArmyElfMerc.Name = "cmbArmyElfMerc"
+        cmbArmyElfMerc.Size = New Size(121, 23)
+        cmbArmyElfMerc.TabIndex = 39
+        ' 
+        ' cmbArmyDwarfMerc
+        ' 
+        cmbArmyDwarfMerc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyDwarfMerc.FormattingEnabled = True
+        cmbArmyDwarfMerc.Location = New Point(1341, 843)
+        cmbArmyDwarfMerc.Name = "cmbArmyDwarfMerc"
+        cmbArmyDwarfMerc.Size = New Size(121, 23)
+        cmbArmyDwarfMerc.TabIndex = 40
+        ' 
+        ' cmbArmyOrcMerc
+        ' 
+        cmbArmyOrcMerc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyOrcMerc.FormattingEnabled = True
+        cmbArmyOrcMerc.Location = New Point(1341, 869)
+        cmbArmyOrcMerc.Name = "cmbArmyOrcMerc"
+        cmbArmyOrcMerc.Size = New Size(121, 23)
+        cmbArmyOrcMerc.TabIndex = 41
+        ' 
+        ' cmbArmyHumanMerc
+        ' 
+        cmbArmyHumanMerc.DropDownStyle = ComboBoxStyle.DropDownList
+        cmbArmyHumanMerc.FormattingEnabled = True
+        cmbArmyHumanMerc.Location = New Point(1341, 895)
+        cmbArmyHumanMerc.Name = "cmbArmyHumanMerc"
+        cmbArmyHumanMerc.Size = New Size(121, 23)
+        cmbArmyHumanMerc.TabIndex = 42
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(cmbArmyHumanMerc)
+        Controls.Add(cmbArmyOrcMerc)
+        Controls.Add(cmbArmyDwarfMerc)
+        Controls.Add(cmbArmyElfMerc)
+        Controls.Add(numMercBidHuman)
+        Controls.Add(numMercBidOrc)
+        Controls.Add(numMercBidDwarf)
+        Controls.Add(numMercBidElf)
+        Controls.Add(lblMercenaryBids)
         Controls.Add(cmbArmyHuman)
         Controls.Add(cmbSummonerHuman)
         Controls.Add(chkBuySummonerHuman)
@@ -539,6 +650,10 @@ Partial Class Form1
         grp.ResumeLayout(False)
         grp.PerformLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMercBidElf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMercBidDwarf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMercBidOrc, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMercBidHuman, ComponentModel.ISupportInitialize).EndInit()
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -592,5 +707,14 @@ Partial Class Form1
     Friend WithEvents cmbSummonerHuman As ComboBox
     Friend WithEvents chkBuySummonerHuman As CheckBox
     Friend WithEvents lblHuman2 As Label
+    Friend WithEvents lblMercenaryBids As Label
+    Friend WithEvents numMercBidElf As NumericUpDown
+    Friend WithEvents numMercBidDwarf As NumericUpDown
+    Friend WithEvents numMercBidOrc As NumericUpDown
+    Friend WithEvents numMercBidHuman As NumericUpDown
+    Friend WithEvents cmbArmyElfMerc As ComboBox
+    Friend WithEvents cmbArmyDwarfMerc As ComboBox
+    Friend WithEvents cmbArmyOrcMerc As ComboBox
+    Friend WithEvents cmbArmyHumanMerc As ComboBox
 
 End Class
