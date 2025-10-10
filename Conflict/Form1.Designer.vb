@@ -274,7 +274,7 @@ Partial Class Form1
         dgvOrders.Columns.AddRange(New DataGridViewColumn() {colPlayer, colArmy, Move1, Move2, Move3, Move4, Move5, colRecruitUnit, colRecruitAmount})
         dgvOrders.Location = New Point(795, 455)
         dgvOrders.Name = "dgvOrders"
-        dgvOrders.Size = New Size(940, 404)
+        dgvOrders.Size = New Size(940, 341)
         dgvOrders.TabIndex = 17
         ' 
         ' colPlayer

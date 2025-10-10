@@ -1386,7 +1386,7 @@ Public Class Form1
 
         ' === Centaur Warchief Summoner Roster ===
         Dim centaurSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Centaurs", .Power = 5, .HP = 5, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
+            New UnitStats With {.Name = "Centaurs", .Power = 4, .HP = 8, .Melee = 1, .Ranged = 2, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
         }
         Dim centaurRoster As New RaceUnits With {
             .RaceName = "Centaur Warchief",   ' key used by SummonerFaction
@@ -1396,7 +1396,7 @@ Public Class Form1
 
         ' === Archdruid Summoner Roster ===
         Dim archdruidSummonerUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Fey Knights", .Power = 30, .HP = 40, .Melee = 6, .DefencePoints = 8, .CanCharge = True, .CanChase = True},
+            New UnitStats With {.Name = "Fey Knights", .Power = 30, .HP = 40, .Melee = 6, .DefencePoints = 8, .FoodCost = 1, .CanCharge = True, .CanChase = True},
             New UnitStats With {.Name = "Unicorns", .Power = 100, .HP = 60, .Melee = 7, .DefencePoints = 10, .CanCharge = True, .CanChase = True},
             New UnitStats With {.Name = "Ents", .Power = 200, .HP = 90, .Melee = 11, .DefencePoints = 14}
         }
@@ -1410,9 +1410,9 @@ Public Class Form1
 
         ' === Gnome Commander Summoner Roster ===
         Dim gnomeCommanderUnits As New List(Of UnitStats) From {
-            New UnitStats With {.Name = "Gnome Infantry", .Power = 1, .HP = 4, .Melee = 1, .DefencePoints = 1, .FoodCost = 1},
-            New UnitStats With {.Name = "Gnome Crossbowmen", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 1},
-            New UnitStats With {.Name = "Gnome Gyrocopters", .Power = 10, .HP = 20, .Melee = 3, .Ranged = 2, .DefencePoints = 5, .CanChase = True, .Flying = True, .FoodCost = 1}
+            New UnitStats With {.Name = "Gnome Infantry", .Power = 1, .HP = 4, .Melee = 1, .DefencePoints = 1, .FoodCost = 0.8},
+            New UnitStats With {.Name = "Gnome Crossbowmen", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 1, .FoodCost = 0.8},
+            New UnitStats With {.Name = "Gnome Gyrocopters", .Power = 10, .HP = 20, .Melee = 3, .Ranged = 2, .DefencePoints = 5, .CanChase = True, .Flying = True, .FoodCost = 0.8}
         }
 
         Dim gnomeRoster As New RaceUnits With {
@@ -1587,8 +1587,8 @@ Public Class Form1
         Dim skulkrin As New RaceUnits With {
     .RaceName = "Skulkrin",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Skulkrin Scrapper", .ShortName = "SkuScr", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Skulkrin Slinger", .ShortName = "SkuSli", .Power = 2, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer}
+        New UnitStats With {.Name = "Skulkrin Scrapper", .ShortName = "SkuScr", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0.1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Skulkrin Slinger", .ShortName = "SkuSli", .Power = 2, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 0.1, .Type = UnitType.Archer}
     }
 }
         AllRaces.Add(skulkrin)
@@ -1615,14 +1615,22 @@ Public Class Form1
 }
         AllRaces.Add(freeblades)
 
+        ' Sellswords
+        Dim sellswords As New RaceUnits With {
+    .RaceName = "Sellswords",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Sellsword", .ShortName = "SelSwo", .Power = 5, .HP = 8, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry}
+    }
+}
+        AllRaces.Add(sellswords)
 
         ' Nomads
         Dim nomads As New RaceUnits With {
     .RaceName = "Nomads",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Nomad Rider", .ShortName = "NomRid", .Power = 3, .HP = 7, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 2, .CanChase = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Nomad Horse Archer", .ShortName = "NomArc", .Power = 3, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 2, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Nomad Heavy Rider", .ShortName = "NomHev", .Power = 10, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 3, .CanCharge = True, .Type = UnitType.HeavyCavalry}
+        New UnitStats With {.Name = "Nomad Rider", .ShortName = "NomRid", .Power = 3, .HP = 7, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry},
+        New UnitStats With {.Name = "Nomad Horse Archer", .ShortName = "NomArc", .Power = 3, .HP = 6, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Nomad Heavy Rider", .ShortName = "NomHev", .Power = 10, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .CanCharge = True, .Type = UnitType.HeavyCavalry}
     }
 }
         AllRaces.Add(nomads)
@@ -1633,7 +1641,7 @@ Public Class Form1
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Bandit", .ShortName = "Bandit", .Power = 2, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
         New UnitStats With {.Name = "Bandit Archer", .ShortName = "BanArc", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Bandit Rider", .ShortName = "BanRai", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 2, .CanChase = True, .Type = UnitType.LightCavalry}
+        New UnitStats With {.Name = "Bandit Rider", .ShortName = "BanRai", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry}
     }
 }
         AllRaces.Add(bandits)
@@ -1643,9 +1651,9 @@ Public Class Form1
     .RaceName = "Werecreatures",
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Wererat", .ShortName = "WerRat", .Power = 50, .HP = 12, .Melee = 4, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Werewolf", .ShortName = "WerWlf", .Power = 100, .HP = 25, .Melee = 6, .Ranged = 0, .DefencePoints = 0, .FoodCost = 2, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Weretiger", .ShortName = "WerTig", .Power = 150, .HP = 30, .Melee = 13, .Ranged = 0, .DefencePoints = 0, .FoodCost = 3, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
-        New UnitStats With {.Name = "Werebear", .ShortName = "WerBer", .Power = 200, .HP = 80, .Melee = 8, .Ranged = 0, .DefencePoints = 4, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True}
+        New UnitStats With {.Name = "Werewolf", .ShortName = "WerWlf", .Power = 100, .HP = 25, .Melee = 6, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True},
+        New UnitStats With {.Name = "Weretiger", .ShortName = "WerTig", .Power = 150, .HP = 30, .Melee = 13, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Werebear", .ShortName = "WerBer", .Power = 200, .HP = 80, .Melee = 8, .Ranged = 0, .DefencePoints = 4, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True}
     }
 }
         AllRaces.Add(werecreatures)
@@ -1656,7 +1664,7 @@ Public Class Form1
     .RaceName = "Harpies",
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Harpy", .ShortName = "Har", .Power = 2, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry, .Flying = True, .CanChase = True},
-        New UnitStats With {.Name = "Hydra", .ShortName = "Hyd", .Power = 700, .HP = 500, .Melee = 90, .Ranged = 0, .DefencePoints = 9, .FoodCost = 8.0, .Type = UnitType.HeavyInfantry, .CanCharge = True}
+        New UnitStats With {.Name = "Hydra", .ShortName = "Hyd", .Power = 700, .HP = 500, .Melee = 90, .Ranged = 0, .DefencePoints = 9, .FoodCost = 8, .Type = UnitType.HeavyInfantry, .CanCharge = True}
     }
 }
         AllRaces.Add(harpies)
@@ -1667,8 +1675,8 @@ Public Class Form1
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Cultist", .ShortName = "Cul", .Power = 1, .HP = 3, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
         New UnitStats With {.Name = "Grimlock", .ShortName = "Gri", .Power = 10, .HP = 12, .Melee = 3, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Umber Hulk", .ShortName = "Umb", .Power = 250, .HP = 180, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 4.0, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
-        New UnitStats With {.Name = "Beholder", .ShortName = "Behold", .Power = 800, .HP = 550, .Melee = 70, .Ranged = 140, .DefencePoints = 11, .FoodCost = 6.0, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True}
+        New UnitStats With {.Name = "Umber Hulk", .ShortName = "Umb", .Power = 250, .HP = 180, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Beholder", .ShortName = "Behold", .Power = 800, .HP = 550, .Melee = 70, .Ranged = 140, .DefencePoints = 11, .FoodCost = 6, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True}
     }
 }
         AllRaces.Add(cult)
@@ -1679,11 +1687,11 @@ Public Class Form1
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Dretch", .ShortName = "Dre", .Power = 1, .HP = 4, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.LightInfantry},
         New UnitStats With {.Name = "Quasit", .ShortName = "Qua", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer, .Flying = True},
-        New UnitStats With {.Name = "Vrock", .ShortName = "Vro", .Power = 50, .HP = 45, .Melee = 10, .Ranged = 0, .DefencePoints = 3, .FoodCost = 2, .Type = UnitType.LightCavalry, .Flying = True, .CanChase = True},
-        New UnitStats With {.Name = "Hezrou", .ShortName = "Hez", .Power = 75, .HP = 80, .Melee = 15, .Ranged = 0, .DefencePoints = 5, .FoodCost = 3, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Glabrezu", .ShortName = "Gla", .Power = 200, .HP = 160, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 4, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
-        New UnitStats With {.Name = "Marilith", .ShortName = "Mar", .Power = 400, .HP = 220, .Melee = 40, .Ranged = 0, .DefencePoints = 10, .FoodCost = 5, .Type = UnitType.HeavyInfantry, .CanCharge = True},
-        New UnitStats With {.Name = "Balor", .ShortName = "Bal", .Power = 900, .HP = 600, .Melee = 120, .Ranged = 100, .DefencePoints = 12, .FoodCost = 9, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True, .CanCharge = True}
+        New UnitStats With {.Name = "Vrock", .ShortName = "Vro", .Power = 50, .HP = 45, .Melee = 10, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1, .Type = UnitType.LightCavalry, .Flying = True, .CanChase = True},
+        New UnitStats With {.Name = "Hezrou", .ShortName = "Hez", .Power = 75, .HP = 80, .Melee = 15, .Ranged = 0, .DefencePoints = 5, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True},
+        New UnitStats With {.Name = "Glabrezu", .ShortName = "Gla", .Power = 200, .HP = 160, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True, .CanChase = True},
+        New UnitStats With {.Name = "Marilith", .ShortName = "Mar", .Power = 400, .HP = 220, .Melee = 40, .Ranged = 0, .DefencePoints = 10, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .CanCharge = True},
+        New UnitStats With {.Name = "Balor", .ShortName = "Bal", .Power = 900, .HP = 600, .Melee = 120, .Ranged = 100, .DefencePoints = 12, .FoodCost = 1, .Type = UnitType.HeavyCavalry, .Flying = True, .CanChase = True, .CanCharge = True}
     }
 }
         AllRaces.Add(demons)
@@ -1692,20 +1700,20 @@ Public Class Form1
         Dim Undead As New RaceUnits With {
     .RaceName = "Undead",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Zombie", .ShortName = "Zombie", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Skeleton", .ShortName = "Skeleton", .Power = 4, .HP = 20, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 0, .CanChase = True, .CanCharge = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Shadow", .ShortName = "Shadow", .Power = 6, .HP = 30, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .FoodCost = 0, .Flying = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Ghost", .ShortName = "Ghost", .Power = 8, .HP = 40, .Melee = 3, .Ranged = 0, .DefencePoints = 4, .FoodCost = 0, .Flying = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Wight", .ShortName = "Wight", .Power = 9, .HP = 45, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .CanChase = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Spectre", .ShortName = "Spectre", .Power = 12, .HP = 60, .Melee = 5, .Ranged = 0, .DefencePoints = 7, .FoodCost = 0, .Flying = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Wraith", .ShortName = "Wraith", .Power = 16, .HP = 80, .Melee = 7, .Ranged = 0, .DefencePoints = 10, .FoodCost = 0, .Flying = True, .Type = UnitType.LightCavalry},
-        New UnitStats With {.Name = "Banshee", .ShortName = "Banshee", .Power = 20, .HP = 100, .Melee = 8, .Ranged = 2, .DefencePoints = 10, .FoodCost = 0, .Flying = True, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Ghoul", .ShortName = "Ghoul", .Power = 25, .HP = 90, .Melee = 8, .Ranged = 0, .DefencePoints = 10, .FoodCost = 0, .CanChase = True, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Bone Golem", .ShortName = "BnGolm", .Power = 36, .HP = 140, .Melee = 9, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Vampire", .ShortName = "Vampire", .Power = 49, .HP = 180, .Melee = 15, .Ranged = 0, .DefencePoints = 13, .FoodCost = 0, .Flying = True, .Type = UnitType.HeavyCavalry},
-        New UnitStats With {.Name = "Lich", .ShortName = "Lich", .Power = 64, .HP = 220, .Melee = 15, .Ranged = 8, .DefencePoints = 14, .FoodCost = 0, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Death Knight", .ShortName = "DthKnt", .Power = 81, .HP = 260, .Melee = 40, .Ranged = 0, .DefencePoints = 14, .FoodCost = 0, .CanCharge = True, .Type = UnitType.HeavyCavalry},
-        New UnitStats With {.Name = "Bone Dragon", .ShortName = "BnDrgn", .Power = 100, .HP = 500, .Melee = 100, .Ranged = 100, .DefencePoints = 10, .FoodCost = 0, .CanChase = True, .CanCharge = True, .Flying = True, .Type = UnitType.HeavyCavalry}
+        New UnitStats With {.Name = "Zombie", .ShortName = "Zombie", .Power = 1, .HP = 5, .Melee = 1, .Ranged = 0, .DefencePoints = 0, .FoodCost = 0.1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Skeleton", .ShortName = "Skeleton", .Power = 4, .HP = 20, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .FoodCost = 0.1, .CanChase = True, .CanCharge = True, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Shadow", .ShortName = "Shadow", .Power = 6, .HP = 30, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .FoodCost = 0.1, .Flying = True, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Ghost", .ShortName = "Ghost", .Power = 8, .HP = 40, .Melee = 3, .Ranged = 0, .DefencePoints = 4, .FoodCost = 0.1, .Flying = True, .Type = UnitType.LightCavalry},
+        New UnitStats With {.Name = "Wight", .ShortName = "Wight", .Power = 9, .HP = 45, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0.1, .CanChase = True, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Spectre", .ShortName = "Spectre", .Power = 12, .HP = 60, .Melee = 5, .Ranged = 0, .DefencePoints = 7, .FoodCost = 0.1, .Flying = True, .Type = UnitType.LightCavalry},
+        New UnitStats With {.Name = "Wraith", .ShortName = "Wraith", .Power = 16, .HP = 80, .Melee = 7, .Ranged = 0, .DefencePoints = 10, .FoodCost = 0.1, .Flying = True, .Type = UnitType.LightCavalry},
+        New UnitStats With {.Name = "Banshee", .ShortName = "Banshee", .Power = 20, .HP = 100, .Melee = 8, .Ranged = 2, .DefencePoints = 10, .FoodCost = 0.1, .Flying = True, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Ghoul", .ShortName = "Ghoul", .Power = 25, .HP = 90, .Melee = 8, .Ranged = 0, .DefencePoints = 10, .FoodCost = 0.1, .CanChase = True, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Bone Golem", .ShortName = "BnGolm", .Power = 36, .HP = 140, .Melee = 9, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Vampire", .ShortName = "Vampire", .Power = 49, .HP = 180, .Melee = 15, .Ranged = 0, .DefencePoints = 13, .FoodCost = 0.1, .Flying = True, .Type = UnitType.HeavyCavalry},
+        New UnitStats With {.Name = "Lich", .ShortName = "Lich", .Power = 64, .HP = 220, .Melee = 15, .Ranged = 8, .DefencePoints = 14, .FoodCost = 0.1, .Type = UnitType.Archer},
+        New UnitStats With {.Name = "Death Knight", .ShortName = "DthKnt", .Power = 81, .HP = 260, .Melee = 40, .Ranged = 0, .DefencePoints = 14, .FoodCost = 0.1, .CanCharge = True, .Type = UnitType.HeavyCavalry},
+        New UnitStats With {.Name = "Bone Dragon", .ShortName = "BnDrgn", .Power = 100, .HP = 500, .Melee = 100, .Ranged = 100, .DefencePoints = 10, .FoodCost = 0.1, .CanChase = True, .CanCharge = True, .Flying = True, .Type = UnitType.HeavyCavalry}
     }
 }
         AllRaces.Add(Undead)
@@ -1714,13 +1722,13 @@ Public Class Form1
         Dim Golems As New RaceUnits With {
     .RaceName = "Golems",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Mud Golem", .ShortName = "MudGol", .Power = 1, .HP = 10, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Stone Golem", .ShortName = "StnGol", .Power = 5, .HP = 30, .Melee = 2, .Ranged = 0, .DefencePoints = 4, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Iron Golem", .ShortName = "IrnGol", .Power = 10, .HP = 60, .Melee = 3, .Ranged = 0, .DefencePoints = 8, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Flesh Golem", .ShortName = "FlhGol", .Power = 20, .HP = 70, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Adamant Golem", .ShortName = "AdmGol", .Power = 25, .HP = 100, .Melee = 4, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Crystal Golem", .ShortName = "CryGol", .Power = 30, .HP = 140, .Melee = 4, .Ranged = 2, .DefencePoints = 14, .FoodCost = 0, .Type = UnitType.HeavyInfantry},
-        New UnitStats With {.Name = "Obsidian Golem", .ShortName = "ObsGol", .Power = 40, .HP = 180, .Melee = 5, .Ranged = 0, .DefencePoints = 15, .FoodCost = 0, .Type = UnitType.HeavyInfantry}
+        New UnitStats With {.Name = "Mud Golem", .ShortName = "MudGol", .Power = 1, .HP = 10, .Melee = 1, .Ranged = 0, .DefencePoints = 1, .FoodCost = 0.1, .Type = UnitType.LightInfantry},
+        New UnitStats With {.Name = "Stone Golem", .ShortName = "StnGol", .Power = 5, .HP = 30, .Melee = 2, .Ranged = 0, .DefencePoints = 4, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Iron Golem", .ShortName = "IrnGol", .Power = 10, .HP = 60, .Melee = 3, .Ranged = 0, .DefencePoints = 8, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Flesh Golem", .ShortName = "FlhGol", .Power = 20, .HP = 70, .Melee = 4, .Ranged = 0, .DefencePoints = 5, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Adamant Golem", .ShortName = "AdmGol", .Power = 25, .HP = 100, .Melee = 4, .Ranged = 0, .DefencePoints = 12, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Crystal Golem", .ShortName = "CryGol", .Power = 30, .HP = 140, .Melee = 4, .Ranged = 2, .DefencePoints = 14, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry},
+        New UnitStats With {.Name = "Obsidian Golem", .ShortName = "ObsGol", .Power = 40, .HP = 180, .Melee = 5, .Ranged = 0, .DefencePoints = 15, .FoodCost = 0.1, .Type = UnitType.HeavyInfantry}
     }
 }
         AllRaces.Add(Golems)
@@ -1728,10 +1736,10 @@ Public Class Form1
         Dim Elementals As New RaceUnits With {
             .RaceName = "Elementals",
             .Units = New List(Of UnitStats) From {
-                New UnitStats With {.Name = "Earth Elemental", .ShortName = "ErtEle", .Power = 300, .HP = 120, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 0, .CanCharge = True, .CanChase = True},
-                New UnitStats With {.Name = "Air Elemental", .ShortName = "AirEle", .Power = 400, .HP = 140, .Melee = 30, .Ranged = 4, .DefencePoints = 5, .FoodCost = 0, .Flying = True, .CanCharge = True, .CanChase = True},
-                New UnitStats With {.Name = "Fire Elemental", .ShortName = "FirEle", .Power = 500, .HP = 160, .Melee = 40, .Ranged = 4, .DefencePoints = 4, .FoodCost = 0, .CanCharge = True, .CanChase = True},
-                New UnitStats With {.Name = "Water Elemental", .ShortName = "WatEle", .Power = 600, .HP = 180, .Melee = 45, .Ranged = 0, .DefencePoints = 6, .FoodCost = 0, .CanCharge = True, .CanChase = True}
+                New UnitStats With {.Name = "Earth Elemental", .ShortName = "ErtEle", .Power = 300, .HP = 120, .Melee = 25, .Ranged = 0, .DefencePoints = 8, .FoodCost = 0.1, .CanCharge = True, .CanChase = True},
+                New UnitStats With {.Name = "Air Elemental", .ShortName = "AirEle", .Power = 400, .HP = 140, .Melee = 30, .Ranged = 4, .DefencePoints = 5, .FoodCost = 0.1, .Flying = True, .CanCharge = True, .CanChase = True},
+                New UnitStats With {.Name = "Fire Elemental", .ShortName = "FirEle", .Power = 500, .HP = 160, .Melee = 40, .Ranged = 4, .DefencePoints = 4, .FoodCost = 0.1, .CanCharge = True, .CanChase = True},
+                New UnitStats With {.Name = "Water Elemental", .ShortName = "WatEle", .Power = 600, .HP = 180, .Melee = 45, .Ranged = 0, .DefencePoints = 6, .FoodCost = 0.1, .CanCharge = True, .CanChase = True}
             }
         }
         AllRaces.Add(Elementals)
@@ -1868,6 +1876,9 @@ Public Class Form1
 
                     Dim isSpecial As Boolean = (stepIndex = maxSteps - 1)
 
+                    ' ======================================================
+                    ' === SPECIAL STEP (5th command: move or recruit) ======
+                    ' ======================================================
                     If isSpecial Then
                         a.HasUsedSpecial = True
 
@@ -1878,8 +1889,7 @@ Public Class Form1
                             AIRecruitArmy(a, p, aiArmyIndex)
                         End If
 
-                        ' Try to execute the special for this step.
-                        ' Prefer the command at stepIndex; if missing, fall back to the most recently queued command.
+                        ' Prefer command at this index; otherwise use the last one
                         Dim cmdToRun As ArmyCommand = Nothing
                         If stepIndex < a.MoveQueue.Count Then
                             cmdToRun = a.MoveQueue(stepIndex)
@@ -1891,7 +1901,10 @@ Public Class Form1
                             Dim moveCommand As String = If(cmdToRun.Command, "").ToUpper().Trim()
 
                             Select Case moveCommand
+                            ' === Recruit command ===
                                 Case "RECRUIT"
+                                    Debug.WriteLine($"[RECRUIT DEBUG] Player={p.Race}, Army={a.Name}, Param='{cmdToRun.Parameter}', Amt='{cmdToRun.Amount}'")
+
                                     Dim unitShort As String = If(cmdToRun.Parameter, "").Trim().ToLowerInvariant()
                                     Dim amtRaw As String = If(cmdToRun.Amount, "").Trim().ToUpperInvariant()
 
@@ -1903,6 +1916,13 @@ Public Class Form1
                                         End If
                                     Next
                                     If ru Is Nothing Then Exit Select
+
+                                    Debug.WriteLine($"[RECRUIT DEBUG] Searching {ru.Units.Count} units for race {ru.RaceName}")
+                                    For Each u In ru.Units
+                                        Debug.WriteLine($"    Checking sn='{u.ShortName}', name='{u.Name}'")
+                                    Next
+                                    Debug.WriteLine($"[RECRUIT DEBUG] Done searching.")
+
 
                                     Dim tmpl As UnitStats = Nothing
                                     For Each u In ru.Units
@@ -1916,24 +1936,54 @@ Public Class Form1
                                     End If
 
                                     If amtRaw = "" OrElse amtRaw = "MAX" Then
-                                        ' Use your existing 5% cap recruiter (keeps your <50 militia behaviour)
                                         RecruitArmyUnits(a, p, tmpl)
                                     Else
                                         Dim n As Integer
                                         If Integer.TryParse(amtRaw, n) AndAlso n > 0 Then
-                                            RecruitArmyUnits_ExactAmount(a, p, tmpl, n)  ' exact amount (subject to pop/resources), no 5% cap
+                                            RecruitArmyUnits_ExactAmount(a, p, tmpl, n)
                                         Else
                                             Console.WriteLine($"Recruit failed: bad amount '{amtRaw}'.")
                                         End If
                                     End If
 
+                            ' === Stay still ===
+                                Case "STAY"
+                                ' No action
 
+                            ' === Movement on 5th step ===
+                                Case "N", "NE", "E", "SE", "S", "SW", "W", "NW"
+                                    If a.TotalSoldiers < 500 Then Exit Select
+
+                                    Dim offset As Point = DirectionToOffset(moveCommand)
+                                    Dim newX As Integer = Math.Max(0, Math.Min(mapSize - 1, a.X + offset.X))
+                                    Dim newY As Integer = Math.Max(0, Math.Min(mapSize - 1, a.Y + offset.Y))
+
+                                    ' Identify owner of target tile before capture
+                                    Dim targetOwner As Player = Nothing
+                                    Dim targetOwnerId As Integer = Map(newX, newY, 1)
+                                    If targetOwnerId >= 0 AndAlso targetOwnerId < Players.Count Then
+                                        targetOwner = Players(targetOwnerId)
+                                    End If
+
+                                    ' Capture ownership if valid (orthogonal only)
+                                    If Map(newX, newY, 1) <> p.PlayerNumber AndAlso IsCaptureValidOrthogonal(newX, newY, p.PlayerNumber) Then
+                                        Map(newX, newY, 1) = p.PlayerNumber
+                                        ' Orc slave capture trigger
+                                        If p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase) Then
+                                            TryCaptureSlaves(p, targetOwner)
+                                        End If
+                                    End If
+
+                                    ' Move army
+                                    a.X = newX
+                                    a.Y = newY
                             End Select
                         End If
 
+                        ' ======================================================
+                        ' === NORMAL MOVEMENT STEPS (1–4) =====================
+                        ' ======================================================
                     Else
-                        ' --- Movement step: only armies >= 500 can move ---
-                        ' --- Movement step: only armies >= 500 can move ---
                         If a.TotalSoldiers < 500 Then Continue For
 
                         If stepIndex < a.MoveQueue.Count Then
@@ -1949,12 +1999,10 @@ Public Class Form1
                                 targetOwner = Players(targetOwnerId)
                             End If
 
-                            ' --- Capture ownership if valid (orthogonal only) ---
+                            ' Capture ownership if valid (orthogonal only)
                             If Map(newX, newY, 1) <> p.PlayerNumber AndAlso IsCaptureValidOrthogonal(newX, newY, p.PlayerNumber) Then
-                                ' Square is captured
                                 Map(newX, newY, 1) = p.PlayerNumber
-
-                                ' --- Orc slave capture trigger (only when capture actually happens) ---
+                                ' Orc slave capture trigger
                                 If p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase) Then
                                     TryCaptureSlaves(p, targetOwner)
                                 End If
@@ -1964,7 +2012,6 @@ Public Class Form1
                             a.X = newX
                             a.Y = newY
                         End If
-
                     End If
                 Next
             Next
@@ -2095,7 +2142,6 @@ Public Class Form1
         'Debug.WriteLine($"[SLAVES] Orcs captured {slavesToCapture} {targetTileOwner.Race.ToLower()} slaves. Remaining {targetTileOwner.Race} pop: {targetTileOwner.Population}")
     End Sub
 
-
     Public Sub RecruitArmyUnits(army As Army, player As Player, unitTemplate As UnitStats)
         If army Is Nothing OrElse player Is Nothing OrElse unitTemplate Is Nothing Then Exit Sub
 
@@ -2133,7 +2179,7 @@ Public Class Form1
                     End If
 
                 ElseIf lower.StartsWith("m") OrElse lower.Contains("mount") OrElse lower.Contains("horse") OrElse
-                lower.Contains("wolf") OrElse lower.Contains("elk") OrElse lower.Contains("ram") Then
+                     lower.Contains("wolf") OrElse lower.Contains("elk") OrElse lower.Contains("ram") Then
                     If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then
                         mountsRequired += Math.Max(0, n)
                     Else
@@ -2160,15 +2206,21 @@ Public Class Form1
         ' --- Check final size viability ---
         If recruitAmount <= 0 Then
             Console.WriteLine($"{player.Race} wanted to recruit {unitTemplate.Name} but lacked resources/pop.")
-            TryRecruitMilitia(player, army)
+            ' === Only AI uses fallback ===
+            If player.AIControlled Then TryRecruitMilitia(player, army)
             Exit Sub
         End If
 
-        ' If resources only allow a token batch (<50 units), skip and do militia instead
+        ' --- Tiny batch rule (AI only) ---
         If recruitAmount < 50 Then
-            Console.WriteLine($"{player.Race} skipped tiny batch ({recruitAmount} {unitTemplate.Name}) and raised militia instead.")
-            TryRecruitMilitia(player, army)
-            Exit Sub
+            If player.AIControlled Then
+                Console.WriteLine($"{player.Race} skipped tiny batch ({recruitAmount} {unitTemplate.Name}) and raised militia instead.")
+                TryRecruitMilitia(player, army)
+                Exit Sub
+            Else
+                ' Humans still recruit small numbers – allow it
+                Console.WriteLine($"{player.Race} recruits small batch ({recruitAmount} {unitTemplate.Name}) due to limited resources.")
+            End If
         End If
 
         ' --- Check if unit already exists in army ---
@@ -2176,12 +2228,9 @@ Public Class Form1
 
         If existingUnit IsNot Nothing Then
             existingUnit.Size += recruitAmount
-            ' Ensure standard troops have a sane FoodCost (default 1.0 if unset/negative)
             If existingUnit.FoodCost < 0 Then existingUnit.FoodCost = 1.0
         Else
-            ' Use constructor instead of long With block
             Dim newUnit As New Unit(unitTemplate, army.Race, recruitAmount)
-            ' Override FoodCost if needed (default 1.0 for standard troops)
             If newUnit.FoodCost < 0 Then newUnit.FoodCost = 1.0
             army.Units.Add(newUnit)
         End If
@@ -2260,6 +2309,74 @@ Public Class Form1
         If player Is Nothing OrElse army Is Nothing Then Return moves
         If player.IsEliminated Then Return moves
 
+        ' === SPECIAL DEFENSIVE BEHAVIOUR: Third army defends the citadel ===
+        Dim myIndex As Integer = player.Armies.IndexOf(army)
+        If myIndex = 2 Then  ' third army in the list
+            Dim citadelPos As Point = GetStartingCornerCenter(player.PlayerNumber)
+            Dim enemyCloser As Boolean = False
+            Dim nearestEnemy As Army = Nothing
+            Dim nearestDist As Integer = Integer.MaxValue
+            Dim localForcedTarget As Nullable(Of Point) = Nothing
+
+            ' Check if any enemy army is closer to our capital than we are
+            For Each opp In Players
+                If opp Is Nothing OrElse opp Is player OrElse opp.IsEliminated Then Continue For
+                If opp.Armies Is Nothing Then Continue For
+
+                For Each ea In opp.Armies
+                    If ea Is Nothing OrElse ea.TotalSoldiers < 500 Then Continue For
+                    Dim dEnemyToHome As Integer = Manhattan(ea.X, ea.Y, citadelPos.X, citadelPos.Y)
+                    Dim dUsToHome As Integer = Manhattan(army.X, army.Y, citadelPos.X, citadelPos.Y)
+                    If dEnemyToHome < dUsToHome Then
+                        enemyCloser = True
+                        nearestEnemy = ea
+                        nearestDist = dEnemyToHome
+                    End If
+                Next
+            Next
+
+            ' Defensive movement logic
+            If enemyCloser AndAlso nearestEnemy IsNot Nothing Then
+                ' Move toward home to intercept
+                localForcedTarget = citadelPos
+            Else
+                ' If we’re already near home, just stay there
+                Dim distHome As Integer = Manhattan(army.X, army.Y, citadelPos.X, citadelPos.Y)
+                If distHome > 2 Then
+                    localForcedTarget = citadelPos
+                End If
+            End If
+
+            ' Recruitment check: if weaker than nearby enemies, recruit
+            Dim strongestEnemyNearby As Integer = 0
+            For Each opp In Players
+                If opp Is Nothing OrElse opp Is player OrElse opp.IsEliminated Then Continue For
+                If opp.Armies Is Nothing Then Continue For
+
+                For Each ea In opp.Armies
+                    If ea Is Nothing Then Continue For
+                    Dim d As Integer = Manhattan(ea.X, ea.Y, citadelPos.X, citadelPos.Y)
+                    If d < 12 Then
+                        strongestEnemyNearby = Math.Max(strongestEnemyNearby, ea.TotalSoldiers)
+                    End If
+                Next
+            Next
+
+            If army.TotalSoldiers < strongestEnemyNearby Then
+                ' Call existing recruitment helper
+                AIRecruitArmy(army, player, myIndex)
+            End If
+
+            ' If we’ve decided to move home, do so and exit this function
+            If localForcedTarget.HasValue Then
+                moves.Add(New ArmyCommand With {.Command = "Stay", .Parameter = ""})
+            End If
+
+            ' Return early — this army does not perform exploration or assault logic
+            Return moves
+        End If
+
+
         ' Only move if army has >= 500 men
         If army.TotalSoldiers < 500 Then Return moves
 
@@ -2277,9 +2394,15 @@ Public Class Form1
         If IsEnemyThreateningHome(player, DEFENSE_RADIUS) Then
             forcedTarget = homePos
         Else
-            ' 2) ASSAULT (second priority)
-            Dim assault As Nullable(Of Point) = NearestEnemyCapitalWithinRadius(player, army, ASSAULT_RADIUS)
-            If assault.HasValue Then forcedTarget = assault
+            ' 2) GLOBAL ASSAULT — if we’re much stronger, march on enemy capital (any distance)
+            Dim strongTarget As Nullable(Of Point) = GetGlobalAssaultTarget(player, army, 2.0)
+            If strongTarget.HasValue Then
+                forcedTarget = strongTarget
+            Else
+                ' 3) LOCAL ASSAULT — only if we happen to be near an enemy capital
+                Dim assault As Nullable(Of Point) = NearestEnemyCapitalWithinRadius(player, army, ASSAULT_RADIUS)
+                If assault.HasValue Then forcedTarget = assault
+            End If
         End If
 
         ' We’ll do maxSteps-1 normal steps and leave your last-step slot free if you use it
@@ -2538,8 +2661,39 @@ Public Class Form1
 
         Return best
     End Function
-    ' ==========================================================================
 
+
+    Private Function GetGlobalAssaultTarget(p As Player, a As Army, strengthRatio As Double) As Nullable(Of Point)
+        ' Looks across the entire map for a weaker enemy, ignoring distance
+        If p Is Nothing OrElse a Is Nothing Then Return Nothing
+
+        Dim myPower As Double = a.TotalSoldiers
+        Dim bestTarget As Nullable(Of Point) = Nothing
+        Dim weakestEnemyPower As Double = Double.MaxValue
+
+        For Each opp In Players
+            If opp Is Nothing OrElse opp Is p OrElse opp.IsEliminated Then Continue For
+
+            ' Estimate total enemy power (sum of all armies)
+            Dim totalEnemyPower As Double = 0
+            If opp.Armies IsNot Nothing Then
+                For Each ea In opp.Armies
+                    If ea Is Nothing Then Continue For
+                    totalEnemyPower += ea.TotalSoldiers
+                Next
+            End If
+
+            ' If we significantly overpower this enemy, target their capital
+            If totalEnemyPower > 0 AndAlso myPower >= totalEnemyPower * strengthRatio Then
+                If totalEnemyPower < weakestEnemyPower Then
+                    weakestEnemyPower = totalEnemyPower
+                    bestTarget = GetStartingCornerCenter(opp.PlayerNumber)
+                End If
+            End If
+        Next
+
+        Return bestTarget
+    End Function
 
 
     ' --- Helper: convert direction string to dx/dy ---
@@ -5112,7 +5266,7 @@ Public Class Form1
         Dim mercFactions As String() = {
         "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
         "Cultists", "Demons", "Undead", "Golems", "Elementals",
-        "Bandits", "Nomads", "Freeblades"
+        "Bandits", "Nomads", "Freeblades", "Sellswords"
     }
 
         Dim mercArmyNormal As MercenaryArmy = Nothing
@@ -5804,11 +5958,11 @@ Public Class Form1
 
     ' Directions only (no "Stay")
     Private ReadOnly moveChoicesCommon As List(Of String) =
-    New List(Of String) From {"N", "NE", "E", "SE", "S", "SW", "W", "NW"}
+    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW"}
 
     ' Directions + special RECRUIT for Move5
     Private ReadOnly moveChoicesSpecial As List(Of String) =
-    New List(Of String) From {"N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT"}
+    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT"}
     Private Function IsMoveComboColumn(col As DataGridViewColumn) As Boolean
         If col Is Nothing OrElse Not TypeOf col Is DataGridViewComboBoxColumn Then Return False
         Dim n As String = col.Name
@@ -5851,6 +6005,7 @@ Public Class Form1
     ' ----------------------------------------------------------------
     Private Function GetArmyOrders() As List(Of ArmyOrder)
         Dim orders As New List(Of ArmyOrder)()
+        Debug.WriteLine("=== Building orders from grid ===")
 
         For Each row As DataGridViewRow In dgvOrders.Rows
             If row Is Nothing OrElse row.IsNewRow Then Continue For
@@ -5861,17 +6016,14 @@ Public Class Form1
 
             Dim moves As New List(Of String)()
 
-            ' Moves 1..4 (only add if non-empty)
-            Dim i As Integer
-            For i = 1 To 4
+            ' === Moves 1..4 ===
+            For i As Integer = 1 To 4
                 Dim mv As String = If(row.Cells("Move" & i).Value, "").ToString().Trim()
                 If mv <> "" Then moves.Add(mv)
             Next
 
-            ' --- Move 5: either a normal move or a RECRUIT command ---
+            ' === Move 5 or Recruit ===
             Dim move5 As String = If(row.Cells("Move5").Value, "").ToString().Trim()
-
-            ' These columns exist after you added them in the Designer
             Dim unitKey As String = ""
             Dim amt As String = ""
 
@@ -5882,20 +6034,35 @@ Public Class Form1
                 amt = If(row.Cells("colRecruitAmount").Value, "").ToString().Trim()
             End If
 
-            If unitKey <> "" OrElse amt <> "" Then
-                ' If amount is blank, default to MAX (uses 5% cap path)
+            Debug.WriteLine($"Row: {order.ArmyName}  Move5='{move5}'  UnitKey='{unitKey}'  Amt='{amt}'")
+
+            ' --- Normalise ghost/default values ---
+            If amt.Equals("MAX", StringComparison.OrdinalIgnoreCase) OrElse amt = "0" Then amt = ""
+            If unitKey = "-" OrElse unitKey = "(none)" Then unitKey = ""
+
+            ' --- FIX: combine "RECRUIT" from Move5 with recruit fields ---
+            If move5.ToUpperInvariant() = "RECRUIT" AndAlso (unitKey <> "" OrElse amt <> "") Then
                 If amt = "" Then amt = "MAX"
                 moves.Add($"RECRUIT {unitKey} {amt}")
-            Else
-                If move5 <> "" Then moves.Add(move5)
+                Debug.WriteLine($"  Combined RECRUIT from Move5 + boxes → RECRUIT {unitKey} {amt}")
+            ElseIf move5 <> "" Then
+                moves.Add(move5)
+                Debug.WriteLine($"  Added MOVE: {move5}")
+            ElseIf unitKey <> "" AndAlso amt <> "" Then
+                moves.Add($"RECRUIT {unitKey} {amt}")
+                Debug.WriteLine($"  Added RECRUIT (no Move5) → RECRUIT {unitKey} {amt}")
             End If
 
             order.Moves = moves
             orders.Add(order)
+            Debug.WriteLine($"  Final orders: {String.Join(", ", moves)}")
         Next
 
+        Debug.WriteLine("=== Done building orders ===")
         Return orders
     End Function
+
+
 
     ' ----------------------------------------------------------------
     ' Assign MoveQueue to each Army
