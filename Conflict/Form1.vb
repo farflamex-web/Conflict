@@ -3471,6 +3471,7 @@ Public Class Form1
 
         RefreshArmyOrdersGrid()
 
+        UpdateSeenMonstersForAllPlayers(Players)
     End Sub
 
     Private Sub HandleNewMercenaryOffer(turnNumber As Integer)
