@@ -85,7 +85,15 @@ Partial Class Form1
         numInvestDwarf = New NumericUpDown()
         numInvestOrc = New NumericUpDown()
         numInvestHuman = New NumericUpDown()
-        txtMercOfferDetails = New TextBox()
+        lblBuySummoners = New Label()
+        cmbMarketResourceElf = New ComboBox()
+        numMarketAmountElf = New NumericUpDown()
+        numMarketAmountDwarf = New NumericUpDown()
+        cmbMarketResourceDwarf = New ComboBox()
+        numMarketAmountHuman = New NumericUpDown()
+        cmbMarketResourceHuman = New ComboBox()
+        numMarketAmountOrc = New NumericUpDown()
+        cmbMarketResourceOrc = New ComboBox()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -97,6 +105,10 @@ Partial Class Form1
         CType(numInvestDwarf, ComponentModel.ISupportInitialize).BeginInit()
         CType(numInvestOrc, ComponentModel.ISupportInitialize).BeginInit()
         CType(numInvestHuman, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMarketAmountElf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMarketAmountDwarf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMarketAmountHuman, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numMarketAmountOrc, ComponentModel.ISupportInitialize).BeginInit()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -375,7 +387,7 @@ Partial Class Form1
         ' lblElf2
         ' 
         lblElf2.AutoSize = True
-        lblElf2.Location = New Point(795, 824)
+        lblElf2.Location = New Point(790, 822)
         lblElf2.Name = "lblElf2"
         lblElf2.Size = New Size(20, 15)
         lblElf2.TabIndex = 18
@@ -386,45 +398,44 @@ Partial Class Form1
         chkBuySummonerElf.AutoSize = True
         chkBuySummonerElf.Location = New Point(836, 823)
         chkBuySummonerElf.Name = "chkBuySummonerElf"
-        chkBuySummonerElf.Size = New Size(108, 19)
+        chkBuySummonerElf.Size = New Size(15, 14)
         chkBuySummonerElf.TabIndex = 19
-        chkBuySummonerElf.Text = "Buy Summoner"
         chkBuySummonerElf.UseVisualStyleBackColor = True
         ' 
         ' cmbSummonerElf
         ' 
         cmbSummonerElf.DropDownStyle = ComboBoxStyle.DropDownList
         cmbSummonerElf.FormattingEnabled = True
-        cmbSummonerElf.Location = New Point(950, 819)
+        cmbSummonerElf.Location = New Point(857, 816)
         cmbSummonerElf.Name = "cmbSummonerElf"
-        cmbSummonerElf.Size = New Size(121, 23)
+        cmbSummonerElf.Size = New Size(104, 23)
         cmbSummonerElf.TabIndex = 20
         ' 
         ' cmbArmyElf
         ' 
         cmbArmyElf.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyElf.FormattingEnabled = True
-        cmbArmyElf.Location = New Point(1077, 819)
+        cmbArmyElf.Location = New Point(967, 815)
         cmbArmyElf.Name = "cmbArmyElf"
-        cmbArmyElf.Size = New Size(121, 23)
+        cmbArmyElf.Size = New Size(104, 23)
         cmbArmyElf.TabIndex = 21
         ' 
         ' cmbArmyDwarf
         ' 
         cmbArmyDwarf.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyDwarf.FormattingEnabled = True
-        cmbArmyDwarf.Location = New Point(1077, 844)
+        cmbArmyDwarf.Location = New Point(967, 840)
         cmbArmyDwarf.Name = "cmbArmyDwarf"
-        cmbArmyDwarf.Size = New Size(121, 23)
+        cmbArmyDwarf.Size = New Size(104, 23)
         cmbArmyDwarf.TabIndex = 25
         ' 
         ' cmbSummonerDwarf
         ' 
         cmbSummonerDwarf.DropDownStyle = ComboBoxStyle.DropDownList
         cmbSummonerDwarf.FormattingEnabled = True
-        cmbSummonerDwarf.Location = New Point(950, 844)
+        cmbSummonerDwarf.Location = New Point(857, 841)
         cmbSummonerDwarf.Name = "cmbSummonerDwarf"
-        cmbSummonerDwarf.Size = New Size(121, 23)
+        cmbSummonerDwarf.Size = New Size(104, 23)
         cmbSummonerDwarf.TabIndex = 24
         ' 
         ' chkBuySummonerDwarf
@@ -432,15 +443,14 @@ Partial Class Form1
         chkBuySummonerDwarf.AutoSize = True
         chkBuySummonerDwarf.Location = New Point(836, 848)
         chkBuySummonerDwarf.Name = "chkBuySummonerDwarf"
-        chkBuySummonerDwarf.Size = New Size(108, 19)
+        chkBuySummonerDwarf.Size = New Size(15, 14)
         chkBuySummonerDwarf.TabIndex = 23
-        chkBuySummonerDwarf.Text = "Buy Summoner"
         chkBuySummonerDwarf.UseVisualStyleBackColor = True
         ' 
         ' lblDwarf2
         ' 
         lblDwarf2.AutoSize = True
-        lblDwarf2.Location = New Point(795, 849)
+        lblDwarf2.Location = New Point(790, 847)
         lblDwarf2.Name = "lblDwarf2"
         lblDwarf2.Size = New Size(38, 15)
         lblDwarf2.TabIndex = 22
@@ -450,18 +460,18 @@ Partial Class Form1
         ' 
         cmbArmyOrc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyOrc.FormattingEnabled = True
-        cmbArmyOrc.Location = New Point(1077, 869)
+        cmbArmyOrc.Location = New Point(967, 865)
         cmbArmyOrc.Name = "cmbArmyOrc"
-        cmbArmyOrc.Size = New Size(121, 23)
+        cmbArmyOrc.Size = New Size(104, 23)
         cmbArmyOrc.TabIndex = 29
         ' 
         ' cmbSummonerOrc
         ' 
         cmbSummonerOrc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbSummonerOrc.FormattingEnabled = True
-        cmbSummonerOrc.Location = New Point(950, 869)
+        cmbSummonerOrc.Location = New Point(857, 866)
         cmbSummonerOrc.Name = "cmbSummonerOrc"
-        cmbSummonerOrc.Size = New Size(121, 23)
+        cmbSummonerOrc.Size = New Size(104, 23)
         cmbSummonerOrc.TabIndex = 28
         ' 
         ' chkBuySummonerOrc
@@ -469,15 +479,14 @@ Partial Class Form1
         chkBuySummonerOrc.AutoSize = True
         chkBuySummonerOrc.Location = New Point(836, 873)
         chkBuySummonerOrc.Name = "chkBuySummonerOrc"
-        chkBuySummonerOrc.Size = New Size(108, 19)
+        chkBuySummonerOrc.Size = New Size(15, 14)
         chkBuySummonerOrc.TabIndex = 27
-        chkBuySummonerOrc.Text = "Buy Summoner"
         chkBuySummonerOrc.UseVisualStyleBackColor = True
         ' 
         ' lblOrc2
         ' 
         lblOrc2.AutoSize = True
-        lblOrc2.Location = New Point(795, 874)
+        lblOrc2.Location = New Point(790, 872)
         lblOrc2.Name = "lblOrc2"
         lblOrc2.Size = New Size(26, 15)
         lblOrc2.TabIndex = 26
@@ -487,18 +496,18 @@ Partial Class Form1
         ' 
         cmbArmyHuman.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyHuman.FormattingEnabled = True
-        cmbArmyHuman.Location = New Point(1077, 894)
+        cmbArmyHuman.Location = New Point(967, 890)
         cmbArmyHuman.Name = "cmbArmyHuman"
-        cmbArmyHuman.Size = New Size(121, 23)
+        cmbArmyHuman.Size = New Size(104, 23)
         cmbArmyHuman.TabIndex = 33
         ' 
         ' cmbSummonerHuman
         ' 
         cmbSummonerHuman.DropDownStyle = ComboBoxStyle.DropDownList
         cmbSummonerHuman.FormattingEnabled = True
-        cmbSummonerHuman.Location = New Point(950, 894)
+        cmbSummonerHuman.Location = New Point(857, 891)
         cmbSummonerHuman.Name = "cmbSummonerHuman"
-        cmbSummonerHuman.Size = New Size(121, 23)
+        cmbSummonerHuman.Size = New Size(104, 23)
         cmbSummonerHuman.TabIndex = 32
         ' 
         ' chkBuySummonerHuman
@@ -506,15 +515,14 @@ Partial Class Form1
         chkBuySummonerHuman.AutoSize = True
         chkBuySummonerHuman.Location = New Point(836, 898)
         chkBuySummonerHuman.Name = "chkBuySummonerHuman"
-        chkBuySummonerHuman.Size = New Size(108, 19)
+        chkBuySummonerHuman.Size = New Size(15, 14)
         chkBuySummonerHuman.TabIndex = 31
-        chkBuySummonerHuman.Text = "Buy Summoner"
         chkBuySummonerHuman.UseVisualStyleBackColor = True
         ' 
         ' lblHuman2
         ' 
         lblHuman2.AutoSize = True
-        lblHuman2.Location = New Point(795, 899)
+        lblHuman2.Location = New Point(790, 897)
         lblHuman2.Name = "lblHuman2"
         lblHuman2.Size = New Size(47, 15)
         lblHuman2.TabIndex = 30
@@ -523,7 +531,7 @@ Partial Class Form1
         ' lblMercenaryBids
         ' 
         lblMercenaryBids.AutoSize = True
-        lblMercenaryBids.Location = New Point(1294, 799)
+        lblMercenaryBids.Location = New Point(1137, 801)
         lblMercenaryBids.Name = "lblMercenaryBids"
         lblMercenaryBids.Size = New Size(88, 15)
         lblMercenaryBids.TabIndex = 34
@@ -532,10 +540,10 @@ Partial Class Form1
         ' numMercBidElf
         ' 
         numMercBidElf.Increment = New Decimal(New Integer() {100, 0, 0, 0})
-        numMercBidElf.Location = New Point(1215, 819)
+        numMercBidElf.Location = New Point(1086, 815)
         numMercBidElf.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
         numMercBidElf.Name = "numMercBidElf"
-        numMercBidElf.Size = New Size(120, 23)
+        numMercBidElf.Size = New Size(93, 23)
         numMercBidElf.TabIndex = 35
         numMercBidElf.TextAlign = HorizontalAlignment.Right
         numMercBidElf.ThousandsSeparator = True
@@ -543,10 +551,10 @@ Partial Class Form1
         ' numMercBidDwarf
         ' 
         numMercBidDwarf.Increment = New Decimal(New Integer() {100, 0, 0, 0})
-        numMercBidDwarf.Location = New Point(1215, 844)
+        numMercBidDwarf.Location = New Point(1086, 840)
         numMercBidDwarf.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
         numMercBidDwarf.Name = "numMercBidDwarf"
-        numMercBidDwarf.Size = New Size(120, 23)
+        numMercBidDwarf.Size = New Size(93, 23)
         numMercBidDwarf.TabIndex = 36
         numMercBidDwarf.TextAlign = HorizontalAlignment.Right
         numMercBidDwarf.ThousandsSeparator = True
@@ -554,10 +562,10 @@ Partial Class Form1
         ' numMercBidOrc
         ' 
         numMercBidOrc.Increment = New Decimal(New Integer() {100, 0, 0, 0})
-        numMercBidOrc.Location = New Point(1215, 869)
+        numMercBidOrc.Location = New Point(1086, 864)
         numMercBidOrc.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
         numMercBidOrc.Name = "numMercBidOrc"
-        numMercBidOrc.Size = New Size(120, 23)
+        numMercBidOrc.Size = New Size(93, 23)
         numMercBidOrc.TabIndex = 37
         numMercBidOrc.TextAlign = HorizontalAlignment.Right
         numMercBidOrc.ThousandsSeparator = True
@@ -565,10 +573,10 @@ Partial Class Form1
         ' numMercBidHuman
         ' 
         numMercBidHuman.Increment = New Decimal(New Integer() {100, 0, 0, 0})
-        numMercBidHuman.Location = New Point(1215, 895)
+        numMercBidHuman.Location = New Point(1086, 890)
         numMercBidHuman.Maximum = New Decimal(New Integer() {1410065407, 2, 0, 0})
         numMercBidHuman.Name = "numMercBidHuman"
-        numMercBidHuman.Size = New Size(120, 23)
+        numMercBidHuman.Size = New Size(93, 23)
         numMercBidHuman.TabIndex = 38
         numMercBidHuman.TextAlign = HorizontalAlignment.Right
         numMercBidHuman.ThousandsSeparator = True
@@ -577,42 +585,42 @@ Partial Class Form1
         ' 
         cmbArmyElfMerc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyElfMerc.FormattingEnabled = True
-        cmbArmyElfMerc.Location = New Point(1341, 819)
+        cmbArmyElfMerc.Location = New Point(1185, 815)
         cmbArmyElfMerc.Name = "cmbArmyElfMerc"
-        cmbArmyElfMerc.Size = New Size(121, 23)
+        cmbArmyElfMerc.Size = New Size(87, 23)
         cmbArmyElfMerc.TabIndex = 39
         ' 
         ' cmbArmyDwarfMerc
         ' 
         cmbArmyDwarfMerc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyDwarfMerc.FormattingEnabled = True
-        cmbArmyDwarfMerc.Location = New Point(1341, 843)
+        cmbArmyDwarfMerc.Location = New Point(1185, 839)
         cmbArmyDwarfMerc.Name = "cmbArmyDwarfMerc"
-        cmbArmyDwarfMerc.Size = New Size(121, 23)
+        cmbArmyDwarfMerc.Size = New Size(87, 23)
         cmbArmyDwarfMerc.TabIndex = 40
         ' 
         ' cmbArmyOrcMerc
         ' 
         cmbArmyOrcMerc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyOrcMerc.FormattingEnabled = True
-        cmbArmyOrcMerc.Location = New Point(1341, 869)
+        cmbArmyOrcMerc.Location = New Point(1185, 864)
         cmbArmyOrcMerc.Name = "cmbArmyOrcMerc"
-        cmbArmyOrcMerc.Size = New Size(121, 23)
+        cmbArmyOrcMerc.Size = New Size(87, 23)
         cmbArmyOrcMerc.TabIndex = 41
         ' 
         ' cmbArmyHumanMerc
         ' 
         cmbArmyHumanMerc.DropDownStyle = ComboBoxStyle.DropDownList
         cmbArmyHumanMerc.FormattingEnabled = True
-        cmbArmyHumanMerc.Location = New Point(1341, 895)
+        cmbArmyHumanMerc.Location = New Point(1185, 890)
         cmbArmyHumanMerc.Name = "cmbArmyHumanMerc"
-        cmbArmyHumanMerc.Size = New Size(121, 23)
+        cmbArmyHumanMerc.Size = New Size(87, 23)
         cmbArmyHumanMerc.TabIndex = 42
         ' 
         ' lblInvestments
         ' 
         lblInvestments.AutoSize = True
-        lblInvestments.Location = New Point(1503, 799)
+        lblInvestments.Location = New Point(1287, 801)
         lblInvestments.Name = "lblInvestments"
         lblInvestments.Size = New Size(71, 15)
         lblInvestments.TabIndex = 43
@@ -621,10 +629,10 @@ Partial Class Form1
         ' numInvestElf
         ' 
         numInvestElf.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
-        numInvestElf.Location = New Point(1481, 818)
+        numInvestElf.Location = New Point(1278, 815)
         numInvestElf.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
         numInvestElf.Name = "numInvestElf"
-        numInvestElf.Size = New Size(120, 23)
+        numInvestElf.Size = New Size(93, 23)
         numInvestElf.TabIndex = 44
         numInvestElf.TextAlign = HorizontalAlignment.Right
         numInvestElf.ThousandsSeparator = True
@@ -632,10 +640,10 @@ Partial Class Form1
         ' numInvestDwarf
         ' 
         numInvestDwarf.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
-        numInvestDwarf.Location = New Point(1481, 842)
+        numInvestDwarf.Location = New Point(1278, 839)
         numInvestDwarf.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
         numInvestDwarf.Name = "numInvestDwarf"
-        numInvestDwarf.Size = New Size(120, 23)
+        numInvestDwarf.Size = New Size(93, 23)
         numInvestDwarf.TabIndex = 45
         numInvestDwarf.TextAlign = HorizontalAlignment.Right
         numInvestDwarf.ThousandsSeparator = True
@@ -643,10 +651,10 @@ Partial Class Form1
         ' numInvestOrc
         ' 
         numInvestOrc.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
-        numInvestOrc.Location = New Point(1481, 868)
+        numInvestOrc.Location = New Point(1278, 864)
         numInvestOrc.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
         numInvestOrc.Name = "numInvestOrc"
-        numInvestOrc.Size = New Size(120, 23)
+        numInvestOrc.Size = New Size(93, 23)
         numInvestOrc.TabIndex = 46
         numInvestOrc.TextAlign = HorizontalAlignment.Right
         numInvestOrc.ThousandsSeparator = True
@@ -654,28 +662,101 @@ Partial Class Form1
         ' numInvestHuman
         ' 
         numInvestHuman.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
-        numInvestHuman.Location = New Point(1481, 895)
+        numInvestHuman.Location = New Point(1278, 891)
         numInvestHuman.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
         numInvestHuman.Name = "numInvestHuman"
-        numInvestHuman.Size = New Size(120, 23)
+        numInvestHuman.Size = New Size(93, 23)
         numInvestHuman.TabIndex = 47
         numInvestHuman.TextAlign = HorizontalAlignment.Right
         numInvestHuman.ThousandsSeparator = True
         ' 
-        ' txtMercOfferDetails
+        ' lblBuySummoners
         ' 
-        txtMercOfferDetails.Location = New Point(107, 869)
-        txtMercOfferDetails.Multiline = True
-        txtMercOfferDetails.Name = "txtMercOfferDetails"
-        txtMercOfferDetails.Size = New Size(299, 90)
-        txtMercOfferDetails.TabIndex = 48
+        lblBuySummoners.AutoSize = True
+        lblBuySummoners.Location = New Point(915, 801)
+        lblBuySummoners.Name = "lblBuySummoners"
+        lblBuySummoners.Size = New Size(94, 15)
+        lblBuySummoners.TabIndex = 49
+        lblBuySummoners.Text = "Buy Summoners"
+        ' 
+        ' cmbMarketResourceElf
+        ' 
+        cmbMarketResourceElf.FormattingEnabled = True
+        cmbMarketResourceElf.Location = New Point(1386, 815)
+        cmbMarketResourceElf.Name = "cmbMarketResourceElf"
+        cmbMarketResourceElf.Size = New Size(93, 23)
+        cmbMarketResourceElf.TabIndex = 50
+        ' 
+        ' numMarketAmountElf
+        ' 
+        numMarketAmountElf.Location = New Point(1485, 815)
+        numMarketAmountElf.Minimum = New Decimal(New Integer() {9999999, 0, 0, Integer.MinValue})
+        numMarketAmountElf.Name = "numMarketAmountElf"
+        numMarketAmountElf.Size = New Size(93, 23)
+        numMarketAmountElf.TabIndex = 51
+        ' 
+        ' numMarketAmountDwarf
+        ' 
+        numMarketAmountDwarf.Location = New Point(1485, 839)
+        numMarketAmountDwarf.Minimum = New Decimal(New Integer() {9999999, 0, 0, Integer.MinValue})
+        numMarketAmountDwarf.Name = "numMarketAmountDwarf"
+        numMarketAmountDwarf.Size = New Size(93, 23)
+        numMarketAmountDwarf.TabIndex = 53
+        ' 
+        ' cmbMarketResourceDwarf
+        ' 
+        cmbMarketResourceDwarf.FormattingEnabled = True
+        cmbMarketResourceDwarf.Location = New Point(1386, 839)
+        cmbMarketResourceDwarf.Name = "cmbMarketResourceDwarf"
+        cmbMarketResourceDwarf.Size = New Size(93, 23)
+        cmbMarketResourceDwarf.TabIndex = 52
+        ' 
+        ' numMarketAmountHuman
+        ' 
+        numMarketAmountHuman.Location = New Point(1485, 891)
+        numMarketAmountHuman.Minimum = New Decimal(New Integer() {9999999, 0, 0, Integer.MinValue})
+        numMarketAmountHuman.Name = "numMarketAmountHuman"
+        numMarketAmountHuman.Size = New Size(93, 23)
+        numMarketAmountHuman.TabIndex = 57
+        ' 
+        ' cmbMarketResourceHuman
+        ' 
+        cmbMarketResourceHuman.FormattingEnabled = True
+        cmbMarketResourceHuman.Location = New Point(1386, 891)
+        cmbMarketResourceHuman.Name = "cmbMarketResourceHuman"
+        cmbMarketResourceHuman.Size = New Size(93, 23)
+        cmbMarketResourceHuman.TabIndex = 56
+        ' 
+        ' numMarketAmountOrc
+        ' 
+        numMarketAmountOrc.Location = New Point(1485, 864)
+        numMarketAmountOrc.Minimum = New Decimal(New Integer() {9999999, 0, 0, Integer.MinValue})
+        numMarketAmountOrc.Name = "numMarketAmountOrc"
+        numMarketAmountOrc.Size = New Size(93, 23)
+        numMarketAmountOrc.TabIndex = 55
+        ' 
+        ' cmbMarketResourceOrc
+        ' 
+        cmbMarketResourceOrc.FormattingEnabled = True
+        cmbMarketResourceOrc.Location = New Point(1386, 864)
+        cmbMarketResourceOrc.Name = "cmbMarketResourceOrc"
+        cmbMarketResourceOrc.Size = New Size(93, 23)
+        cmbMarketResourceOrc.TabIndex = 54
         ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
-        Controls.Add(txtMercOfferDetails)
+        Controls.Add(numMarketAmountHuman)
+        Controls.Add(cmbMarketResourceHuman)
+        Controls.Add(numMarketAmountOrc)
+        Controls.Add(cmbMarketResourceOrc)
+        Controls.Add(numMarketAmountDwarf)
+        Controls.Add(cmbMarketResourceDwarf)
+        Controls.Add(numMarketAmountElf)
+        Controls.Add(cmbMarketResourceElf)
+        Controls.Add(lblBuySummoners)
         Controls.Add(numInvestHuman)
         Controls.Add(numInvestOrc)
         Controls.Add(numInvestDwarf)
@@ -735,6 +816,10 @@ Partial Class Form1
         CType(numInvestDwarf, ComponentModel.ISupportInitialize).EndInit()
         CType(numInvestOrc, ComponentModel.ISupportInitialize).EndInit()
         CType(numInvestHuman, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMarketAmountElf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMarketAmountDwarf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMarketAmountHuman, ComponentModel.ISupportInitialize).EndInit()
+        CType(numMarketAmountOrc, ComponentModel.ISupportInitialize).EndInit()
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -802,6 +887,14 @@ Partial Class Form1
     Friend WithEvents numInvestDwarf As NumericUpDown
     Friend WithEvents numInvestOrc As NumericUpDown
     Friend WithEvents numInvestHuman As NumericUpDown
-    Friend WithEvents txtMercOfferDetails As TextBox
+    Friend WithEvents lblBuySummoners As Label
+    Friend WithEvents cmbMarketResourceElf As ComboBox
+    Friend WithEvents numMarketAmountElf As NumericUpDown
+    Friend WithEvents numMarketAmountDwarf As NumericUpDown
+    Friend WithEvents cmbMarketResourceDwarf As ComboBox
+    Friend WithEvents numMarketAmountHuman As NumericUpDown
+    Friend WithEvents cmbMarketResourceHuman As ComboBox
+    Friend WithEvents numMarketAmountOrc As NumericUpDown
+    Friend WithEvents cmbMarketResourceOrc As ComboBox
 
 End Class

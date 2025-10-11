@@ -146,7 +146,7 @@ Public Class Form1
 
     Private terrainCache As New Dictionary(Of String, Image)
 
-    Private TheMarket As New Market()
+
 
     ' === Name tracking for army generation ===
     Private UsedArmyNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
@@ -1001,332 +1001,6 @@ Public Class Form1
 
 
 
-#Region "Market Stuff"
-
-    ' === Market Class (nested) ===
-    Public Class Market
-        ' Prices (Double so we can use decimals)
-        Public Property GemPrice As Double = 20.0
-        Public Property AmberPrice As Double = 15.0
-        Public Property WinePrice As Double = 10.0
-        Public Property FurPrice As Double = 5.0
-        Public Property IronPrice As Double = 2.0
-        Public Property WoodPrice As Double = 2.0
-
-        ' Optional: track history or supply/demand stats later
-        ' Public Property TradeLog As New List(Of String)
-
-        ' === Market trading ===
-        Private Const FeeRate As Double = 0.1 ' 10% fee on trades
-
-        Public Sub BuyGoods(p As Player, good As String, amount As Integer)
-            If p Is Nothing OrElse amount <= 0 OrElse p.IsEliminated Then Exit Sub
-
-            Dim price As Double = GetPrice(good)
-            Dim cost As Double = price * amount
-            cost *= (1 + FeeRate) ' add fee
-
-            If p.Gold < cost Then
-                'Debug.WriteLine($"[MARKET] {p.Race} cannot afford to buy {amount} {good}. Needed {cost}, has {p.Gold}")
-                Exit Sub
-            End If
-
-            p.Gold -= CInt(Math.Round(cost))
-
-            Select Case good.ToLower()
-                Case "gems" : p.Gems += amount
-                Case "amber" : p.Amber += amount
-                Case "wine" : p.Wine += amount
-                Case "furs" : p.Furs += amount
-                Case "iron" : p.Iron += amount
-                Case "wood" : p.Wood += amount
-            End Select
-
-            demand(good) += amount
-
-            'Debug.WriteLine($"[MARKET] {p.Race} bought {amount} {good} for {Math.Round(cost, 2)} gold.")
-        End Sub
-
-        Public Sub SellGoods(p As Player, good As String, amount As Integer)
-            If p Is Nothing OrElse amount <= 0 Then Exit Sub
-
-            ' check stock
-            Dim hasEnough As Boolean = False
-            Select Case good.ToLower()
-                Case "gems" : hasEnough = (p.Gems >= amount)
-                Case "amber" : hasEnough = (p.Amber >= amount)
-                Case "wine" : hasEnough = (p.Wine >= amount)
-                Case "furs" : hasEnough = (p.Furs >= amount)
-                Case "iron" : hasEnough = (p.Iron >= amount)
-                Case "wood" : hasEnough = (p.Wood >= amount)
-            End Select
-
-            If Not hasEnough Then
-                'Debug.WriteLine($"[MARKET] {p.Race} tried to sell {amount} {good} but doesn’t have enough.")
-                Exit Sub
-            End If
-
-            Dim price As Double = GetPrice(good)
-            Dim gross As Double = price * amount
-            gross *= (1 - FeeRate) ' subtract fee
-
-            p.Gold += CInt(Math.Round(gross))
-
-            Select Case good.ToLower()
-                Case "gems" : p.Gems -= amount
-                Case "amber" : p.Amber -= amount
-                Case "wine" : p.Wine -= amount
-                Case "furs" : p.Furs -= amount
-                Case "iron" : p.Iron -= amount
-                Case "wood" : p.Wood -= amount
-            End Select
-
-            supply(good) += amount
-
-            'Debug.WriteLine($"[MARKET] {p.Race} sold {amount} {good} for {Math.Round(gross, 2)} gold.")
-        End Sub
-
-        Public Function GetPrice(good As String) As Double
-            Select Case good.ToLower()
-                Case "gems" : Return GemPrice
-                Case "amber" : Return AmberPrice
-                Case "wine" : Return WinePrice
-                Case "furs" : Return FurPrice
-                Case "iron" : Return IronPrice
-                Case "wood" : Return WoodPrice
-                Case Else : Return 1.0
-            End Select
-        End Function
-
-
-        ' === Adjust a price given demand vs supply ===
-        Public Sub UpdatePrices(demand As Dictionary(Of String, Integer),
-                            supply As Dictionary(Of String, Integer))
-
-            GemPrice = AdjustPrice(GemPrice, demand("gems"), supply("gems"), 500)
-            AmberPrice = AdjustPrice(AmberPrice, demand("amber"), supply("amber"), 500)
-            WinePrice = AdjustPrice(WinePrice, demand("wine"), supply("wine"), 500)
-            FurPrice = AdjustPrice(FurPrice, demand("furs"), supply("furs"), 500)
-            IronPrice = AdjustPrice(IronPrice, demand("iron"), supply("iron"), 2000)
-            WoodPrice = AdjustPrice(WoodPrice, demand("wood"), supply("wood"), 2000)
-        End Sub
-
-        Private Function AdjustPrice(oldPrice As Double, demand As Integer, supply As Integer, factor As Integer) As Double
-            Dim change As Double = (demand - supply) / factor
-            Dim newPrice As Double = oldPrice * (1 + change)
-            newPrice = Math.Max(oldPrice * 0.75, Math.Min(oldPrice * 1.25, newPrice))
-            Return Math.Round(newPrice, 2) ' 2 decimal places
-        End Function
-
-        ' Track per-turn trade volumes
-        Private demand As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) From {
-            {"gems", 0}, {"amber", 0}, {"wine", 0}, {"furs", 0}, {"iron", 0}, {"wood", 0}
-}
-
-        Private supply As New Dictionary(Of String, Integer)(StringComparer.OrdinalIgnoreCase) From {
-            {"gems", 0}, {"amber", 0}, {"wine", 0}, {"furs", 0}, {"iron", 0}, {"wood", 0}
-}
-
-        Public Sub ResetTradeLogs()
-            For Each key In demand.Keys.ToList()
-                demand(key) = 0
-                supply(key) = 0
-            Next
-        End Sub
-        Public Sub UpdatePrices()
-            GemPrice = AdjustPrice(GemPrice, demand("gems"), supply("gems"), 500)
-            AmberPrice = AdjustPrice(AmberPrice, demand("amber"), supply("amber"), 500)
-            WinePrice = AdjustPrice(WinePrice, demand("wine"), supply("wine"), 500)
-            FurPrice = AdjustPrice(FurPrice, demand("furs"), supply("furs"), 500)
-            IronPrice = AdjustPrice(IronPrice, demand("iron"), supply("iron"), 2000)
-            WoodPrice = AdjustPrice(WoodPrice, demand("wood"), supply("wood"), 2000)
-        End Sub
-
-        Public Function DebugDemand() As Dictionary(Of String, Integer)
-            Return New Dictionary(Of String, Integer)(demand)
-        End Function
-
-        Public Function DebugSupply() As Dictionary(Of String, Integer)
-            Return New Dictionary(Of String, Integer)(supply)
-        End Function
-
-
-    End Class
-
-    Private Sub AIHandleMarketTurn()
-        For Each p In Players
-            If p Is Nothing OrElse Not p.AIControlled OrElse p.IsEliminated Then Continue For
-
-            Dim log As String = $"{p.Race} (Player {p.PlayerNumber + 1}):" & vbCrLf
-            Dim transactionDone As Boolean = False
-
-            ' ===========================================================
-            ' === STEP 1: Check next-turn resource needs for recruitment ==
-            ' ===========================================================
-            Dim expectedRecruits As Integer = 0
-            For Each a In p.Armies
-                If a.TotalSoldiers < 500 Then
-                    expectedRecruits += Math.Min(CInt(p.Population * 0.05), 500 - a.TotalSoldiers)
-                End If
-            Next
-
-            ' Estimate rough material requirements
-            Dim avgIronCost As Double = 0.5
-            Dim avgWoodCost As Double = 0.3
-            Dim ironNeeded As Integer = CInt(expectedRecruits * avgIronCost)
-            Dim woodNeeded As Integer = CInt(expectedRecruits * avgWoodCost)
-
-            Dim ironShort As Integer = Math.Max(0, ironNeeded - p.Iron)
-            Dim woodShort As Integer = Math.Max(0, woodNeeded - p.Wood)
-
-            ' ===========================================================
-            ' === STEP 2: Prioritise buying missing iron/wood ===========
-            ' ===========================================================
-            If (ironShort > 0 OrElse woodShort > 0) AndAlso p.Gold > 0 Then
-                Dim ironRatio As Double = If(ironNeeded > 0, p.Iron / Math.Max(1, ironNeeded), 1)
-                Dim woodRatio As Double = If(woodNeeded > 0, p.Wood / Math.Max(1, woodNeeded), 1)
-
-                Dim buyGood As String = If(ironRatio < woodRatio, "iron", "wood")
-                Dim shortage As Integer = If(buyGood = "iron", ironShort, woodShort)
-                Dim price As Double = TheMarket.GetPrice(buyGood)
-                Dim maxAffordable As Integer = CInt(p.Gold / (price * 1.1)) ' 10% fee margin
-                Dim amountToBuy As Integer = Math.Min(shortage, Math.Min(2000, maxAffordable))
-
-                If amountToBuy > 0 Then
-                    TheMarket.BuyGoods(p, buyGood, amountToBuy)
-                    log &= $"   [Prep] Bought {amountToBuy} {buyGood} to cover next-turn recruits." & vbCrLf
-                    transactionDone = True
-                End If
-            End If
-
-            ' ===========================================================
-            ' === STEP 3: Normal market behaviour (only if free) ========
-            ' ===========================================================
-            If Not transactionDone Then
-                Dim roll As Integer = rnd.Next(100)
-                Dim didSomething As Boolean = False
-
-                ' === SELL logic ===
-                Dim sellChance As Integer = 20
-                If p.Gold < 500 Then sellChance += 30
-                If TheMarket.GemPrice > 25 OrElse TheMarket.AmberPrice > 20 OrElse
-               TheMarket.WinePrice > 15 OrElse TheMarket.FurPrice > 10 Then
-                    sellChance += 20
-                End If
-
-                If roll < sellChance Then
-                    Dim choice As String = PickTradeGoodForRace(p.Race)
-                    Dim stock As Integer = GetPlayerStock(p, choice)
-                    If stock > 0 Then
-                        Dim amount As Integer = Math.Min(stock, rnd.Next(5, 16))
-                        TheMarket.SellGoods(p, choice, amount)
-                        log &= $"   Sold {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
-                        didSomething = True
-                    End If
-                End If
-
-                ' === BUY logic ===
-                If Not didSomething Then
-                    roll = rnd.Next(100)
-                    Dim buyChance As Integer = 10
-                    If TheMarket.GemPrice < 15 OrElse TheMarket.AmberPrice < 12 OrElse
-                   TheMarket.WinePrice < 8 OrElse TheMarket.FurPrice < 4 Then
-                        buyChance += 30
-                    End If
-                    If p.Gold > 1000 Then buyChance += 20
-
-                    If roll < buyChance Then
-                        Dim goods() As String = {"gems", "amber", "wine", "furs", "iron", "wood"}
-                        Dim choice As String = goods(rnd.Next(goods.Length))
-                        Dim budget As Integer = Math.Min(p.Gold \ 5, rnd.Next(50, 151))
-                        If budget > 0 Then
-                            Dim price As Double = TheMarket.GetPrice(choice)
-                            Dim amount As Integer = CInt(Math.Floor(budget / price))
-                            If amount > 0 Then
-                                TheMarket.BuyGoods(p, choice, amount)
-                                log &= $"   Bought {amount} {choice} at {TheMarket.GetPrice(choice):F2}" & vbCrLf
-                                didSomething = True
-                            End If
-                        End If
-                    End If
-                End If
-
-                If Not didSomething Then
-                    log &= "   No trades this turn." & vbCrLf
-                End If
-
-                transactionDone = True
-            End If
-
-            ' ===========================================================
-            ' === Write log =============================================
-            ' ===========================================================
-            'rtbGameInfo.AppendText(log & vbCrLf)
-        Next
-    End Sub
-
-
-    Private Function PickTradeGoodForRace(race As String) As String
-        Select Case race.ToLower()
-            Case "dwarf" : Return "gems"
-            Case "elf" : Return "amber"
-            Case "human" : Return "wine"
-            Case "orc" : Return "furs"
-            Case Else : Return "gems"
-        End Select
-    End Function
-
-    Private Function GetPlayerStock(p As Player, good As String) As Integer
-        Select Case good.ToLower()
-            Case "gems" : Return p.Gems
-            Case "amber" : Return p.Amber
-            Case "wine" : Return p.Wine
-            Case "furs" : Return p.Furs
-            Case "iron" : Return p.Iron
-            Case "wood" : Return p.Wood
-            Case Else : Return 0
-        End Select
-    End Function
-
-
-    'Private Sub UpdateMarketReport(turnNumber As Integer)
-    '    rtbGameInfo.AppendText("=== Market Report ===" & vbCrLf)
-
-    '    ' Prices
-    '    rtbGameInfo.AppendText($"Gems:  {TheMarket.GemPrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText($"Amber: {TheMarket.AmberPrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText($"Wine:  {TheMarket.WinePrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText($"Furs:  {TheMarket.FurPrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText($"Iron:  {TheMarket.IronPrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText($"Wood:  {TheMarket.WoodPrice:F2} gold" & vbCrLf)
-    '    rtbGameInfo.AppendText(vbCrLf)
-
-    '    ' Demand/Supply logs (this turn so far)
-    '    rtbGameInfo.AppendText("Demand this turn:" & vbCrLf)
-    '    For Each kv In TheMarket.DebugDemand()
-    '        rtbGameInfo.AppendText($"  {kv.Key}: {kv.Value}" & vbCrLf)
-    '    Next
-    '    rtbGameInfo.AppendText("Supply this turn:" & vbCrLf)
-    '    For Each kv In TheMarket.DebugSupply()
-    '        rtbGameInfo.AppendText($"  {kv.Key}: {kv.Value}" & vbCrLf)
-    '    Next
-
-    '    rtbGameInfo.AppendText(vbCrLf & "(prices will update at end of turn)" & vbCrLf & vbCrLf)
-
-    '    ' === Player Inventories ===
-    '    rtbGameInfo.AppendText("=== Player Inventories ===" & vbCrLf)
-    '    For Each p In Players
-    '        rtbGameInfo.AppendText(
-    '        $"{p.Race}: " &
-    '        $"Gold {p.Gold}, " &
-    '        $"Gems {p.Gems}, Amber {p.Amber}, Wine {p.Wine}, Furs {p.Furs}, " &
-    '        $"Iron {p.Iron}, Wood {p.Wood}" & vbCrLf
-    '    )
-    '    Next
-    '    rtbGameInfo.AppendText(vbCrLf)
-    'End Sub
-
-
 
 
 
@@ -1426,10 +1100,6 @@ Public Class Form1
 
 
 
-
-
-
-#End Region
 
 #Region "=== Fields ==="
 
@@ -3458,6 +3128,7 @@ Public Class Form1
         ApplyOrdersToArmies(orders) ' Apply orders from players, from UI
         ApplyInvestmentPurchases() ' Apply orders from players, from UI
         ApplyMercBids() '  Apply orders from players, from UI
+        ApplyMarketTransactions() ' Apply orders from players, from UI
 
         ' Resolve bidding on mercenaries
         ResolveBiddingPhase()
@@ -3549,7 +3220,7 @@ Public Class Form1
 
         ' Show AI activity
         'rtbGameInfo.AppendText($"=== AI Market Actions (Turn {currentTurnNumber}) ===" & vbCrLf)
-        AIHandleMarketTurn()
+        AIHandleMarketTurn(Players)
         'rtbGameInfo.AppendText(vbCrLf)
 
         ' Update prices + show report
