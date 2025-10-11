@@ -126,6 +126,7 @@ Public Class Form1
         Public Property Players As List(Of Player)
         Public Property Map As Integer(,,)
         Public Property MercPriceLevel As Integer
+        Public Property CurrentMercOffer As MercenaryArmy
     End Class
 
 
@@ -456,7 +457,7 @@ Public Class Form1
         ToList()
 
         If allowed.Count = 0 Then
-            Debug.WriteLine($"[SUMMONER] No summoners available for {p.Race}.")
+            'Debug.WriteLine($"[SUMMONER] No summoners available for {p.Race}.")
             Exit Sub
         End If
 
@@ -473,7 +474,7 @@ Public Class Form1
         Dim cost As Integer = CInt(1000 * Math.Pow(3, ownedHeroes))
 
         If p.Gold < cost Then
-            Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford {baseSummonerName}. Needs {cost}, has {p.Gold}.")
+            'Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford {baseSummonerName}. Needs {cost}, has {p.Gold}.")
             Exit Sub
         End If
 
@@ -502,17 +503,17 @@ Public Class Form1
 
         targetArmy.Units.Add(summonerUnit)
 
-        Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
+        'Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
     End Sub
 
     ' ------------------------------------------------------------
     ' Manual (player) version of BuySummoner — uses selected values
     ' ------------------------------------------------------------
     Private Sub AttemptBuySummoner(p As Player, def As SummonerInfo, targetArmy As Army)
-        Debug.WriteLine($"[SUMMONER] AttemptBuySummoner started for {p.Race} -> {def.Name}")
+        'Debug.WriteLine($"[SUMMONER] AttemptBuySummoner started for {p.Race} -> {def.Name}")
         If p Is Nothing OrElse def Is Nothing OrElse targetArmy Is Nothing Then Exit Sub
 
-        Debug.WriteLine($"[SUMMONER] Gold={p.Gold}")
+        'Debug.WriteLine($"[SUMMONER] Gold={p.Gold}")
         ' === 1) Calculate cost based on existing heroes ===
         Dim ownedHeroes As Integer =
         p.Armies.SelectMany(Function(a) a.Units).
@@ -522,11 +523,11 @@ Public Class Form1
 
         ' === 2) Check affordability ===
         If p.Gold < cost Then
-            Debug.WriteLine($"[SUMMONER] {p.Race} cannot afford {def.Name}. Needs {cost}, has {p.Gold}.")
+            'Debug.WriteLine($"[SUMMONER] {p.Race} cannot afford {def.Name}. Needs {cost}, has {p.Gold}.")
             Exit Sub
         End If
 
-        Debug.WriteLine($"[SUMMONER] Deducting {cost} gold; heroes owned={ownedHeroes}")
+        'Debug.WriteLine($"[SUMMONER] Deducting {cost} gold; heroes owned={ownedHeroes}")
         ' === 3) Pay ===
         p.Gold -= cost
 
@@ -541,8 +542,8 @@ Public Class Form1
         ' === 5) Add to target army ===
         If targetArmy.Units Is Nothing Then targetArmy.Units = New List(Of Unit)
         targetArmy.Units.Add(summonerUnit)
-        Debug.WriteLine($"[SUMMONER] Added {def.Name} to {targetArmy.Name}. Units now: {targetArmy.Units.Count}")
-        Debug.WriteLine($"[SUMMONER] {p.Race} bought {fullName} for {targetArmy.Name} at {cost} gold. Remaining: {p.Gold}.")
+        'Debug.WriteLine($"[SUMMONER] Added {def.Name} to {targetArmy.Name}. Units now: {targetArmy.Units.Count}")
+        'Debug.WriteLine($"[SUMMONER] {p.Race} bought {fullName} for {targetArmy.Name} at {cost} gold. Remaining: {p.Gold}.")
     End Sub
 
     ' ------------------------------------------------------------
@@ -562,7 +563,7 @@ Public Class Form1
             Dim cmbArmy As ComboBox = TryCast(Me.Controls("cmbArmy" & suffix), ComboBox)
 
             If chk Is Nothing OrElse cmbSummoner Is Nothing OrElse cmbArmy Is Nothing Then
-                Debug.WriteLine($"[{p.Race}] Missing one or more controls — skipping.")
+                'Debug.WriteLine($"[{p.Race}] Missing one or more controls — skipping.")
                 Continue For
             End If
 
@@ -575,7 +576,7 @@ Public Class Form1
 
             ' Must have a summoner chosen
             If String.IsNullOrWhiteSpace(chosenSummoner) Then
-                Debug.WriteLine($"[{p.Race}] Summoner blank — skipping.")
+                'Debug.WriteLine($"[{p.Race}] Summoner blank — skipping.")
                 Continue For
             End If
 
@@ -593,12 +594,12 @@ Public Class Form1
             ' Default to first army if none chosen or found
             If targetArmy Is Nothing AndAlso p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
                 targetArmy = p.Armies(0)
-                Debug.WriteLine($"[{p.Race}] No army selected — defaulting to Army #1 '{targetArmy.Name}'.")
+                'Debug.WriteLine($"[{p.Race}] No army selected — defaulting to Army #1 '{targetArmy.Name}'.")
             End If
 
             ' Still no army (player has none)
             If targetArmy Is Nothing Then
-                Debug.WriteLine($"[{p.Race}] No available armies to receive summoner — skipping.")
+                'Debug.WriteLine($"[{p.Race}] No available armies to receive summoner — skipping.")
                 Continue For
             End If
 
@@ -608,7 +609,7 @@ Public Class Form1
                         s.AllowedRace.Equals(p.Race, StringComparison.OrdinalIgnoreCase))
 
             If def Is Nothing Then
-                Debug.WriteLine($"[{p.Race}] Invalid summoner name '{chosenSummoner}' — skipping.")
+                'Debug.WriteLine($"[{p.Race}] Invalid summoner name '{chosenSummoner}' — skipping.")
                 Continue For
             End If
 
@@ -663,7 +664,7 @@ Public Class Form1
         Dim minPower As Integer = roster.Min(Function(u) u.Power)
         If budget < minPower Then
             summoner.Level += 1
-            Debug.WriteLine($"[SUMMON] {summoner.Name} ({summoner.SummonerFaction}) too weak to summon. Trains to Level {summoner.Level}.")
+            'Debug.WriteLine($"[SUMMON] {summoner.Name} ({summoner.SummonerFaction}) too weak to summon. Trains to Level {summoner.Level}.")
             Exit Sub
         End If
 
@@ -697,7 +698,7 @@ Public Class Form1
         Loop
 
         If guard = 0 Then
-            Debug.WriteLine("Guard triggered in SummonCreaturesForUnit — possible bad roster config.")
+            'Debug.WriteLine("Guard triggered in SummonCreaturesForUnit — possible bad roster config.")
         End If
     End Sub
 
@@ -771,30 +772,31 @@ Public Class Form1
             If Players IsNot Nothing Then
                 For Each p In Players
                     Select Case p.Race.ToLower()
-                        Case "elf"
-                            HandlePlayerAssignment(p, cmbElf)
-                        Case "dwarf"
-                            HandlePlayerAssignment(p, cmbDwarf)
-                        Case "orc"
-                            HandlePlayerAssignment(p, cmbOrc)
-                        Case "human"
-                            HandlePlayerAssignment(p, cmbHuman)
+                        Case "elf" : HandlePlayerAssignment(p, cmbElf)
+                        Case "dwarf" : HandlePlayerAssignment(p, cmbDwarf)
+                        Case "orc" : HandlePlayerAssignment(p, cmbOrc)
+                        Case "human" : HandlePlayerAssignment(p, cmbHuman)
                     End Select
                 Next
             End If
 
+            ' === Update Seen Monsters just before saving ===
+            UpdateSeenMonstersForAllPlayers(Players)
+
+            ' === Build state ===
             Dim state As New GameState With {
             .TurnNumber = currentTurnNumber,
             .Players = Players,
             .Map = Map,
-            .MercPriceLevel = MercPriceLevel
+            .MercPriceLevel = MercPriceLevel,
+            .CurrentMercOffer = CurrentMercOffer
         }
 
-            Dim json As String =
-            Newtonsoft.Json.JsonConvert.SerializeObject(state, Newtonsoft.Json.Formatting.Indented)
+            ' === Save file ===
+            Dim json As String = Newtonsoft.Json.JsonConvert.SerializeObject(state, Newtonsoft.Json.Formatting.Indented)
             IO.File.WriteAllText(saveFile, json)
 
-            Debug.WriteLine($"[SAVE] Game saved to {saveFile}")
+            'Debug.WriteLine($"[SAVE] Game saved to {saveFile}")
 
         Catch ex As Exception
             MessageBox.Show($"Error saving game: {ex.Message}")
@@ -820,6 +822,7 @@ Public Class Form1
         dgvOrders.Rows.Clear()
 
         Try
+            isRestoringCombos = True
             Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
             If Not IO.Directory.Exists(saveDir) Then
                 MessageBox.Show($"No saved games found for {gameName}.")
@@ -844,6 +847,12 @@ Public Class Form1
             Players = state.Players
             Map = state.Map
             MercPriceLevel = state.MercPriceLevel
+            If state.CurrentMercOffer IsNot Nothing Then
+                CurrentMercOffer = state.CurrentMercOffer
+            Else
+                CurrentMercOffer = Nothing
+            End If
+
 
             ' === Repopulate assignment dropdowns ===
             PopulateCustomerDropdowns()
@@ -851,18 +860,35 @@ Public Class Form1
 
             If Players IsNot Nothing Then
                 For Each p In Players
-                    Select Case p.Race.ToLower()
+                    Select Case p.Race.ToLowerInvariant()
                         Case "elf"
-                            cmbElf.SelectedItem = p.Nickname
+                            If String.IsNullOrWhiteSpace(p.Nickname) Then
+                                SelectComboByDisplayText(cmbElf, "AI")
+                            Else
+                                SelectComboByDisplayText(cmbElf, p.Nickname)
+                            End If
                         Case "dwarf"
-                            cmbDwarf.SelectedItem = p.Nickname
+                            If String.IsNullOrWhiteSpace(p.Nickname) Then
+                                SelectComboByDisplayText(cmbDwarf, "AI")
+                            Else
+                                SelectComboByDisplayText(cmbDwarf, p.Nickname)
+                            End If
                         Case "orc"
-                            cmbOrc.SelectedItem = p.Nickname
+                            If String.IsNullOrWhiteSpace(p.Nickname) Then
+                                SelectComboByDisplayText(cmbOrc, "AI")
+                            Else
+                                SelectComboByDisplayText(cmbOrc, p.Nickname)
+                            End If
                         Case "human"
-                            cmbHuman.SelectedItem = p.Nickname
+                            If String.IsNullOrWhiteSpace(p.Nickname) Then
+                                SelectComboByDisplayText(cmbHuman, "AI")
+                            Else
+                                SelectComboByDisplayText(cmbHuman, p.Nickname)
+                            End If
                     End Select
                 Next
             End If
+
 
             ' --- Rebuild runtime-only data ---
             InitializeRaceUnits()             ' ensures AllRaces & SummonerRosters are alive
@@ -887,12 +913,63 @@ Public Class Form1
                 InitialiseMoveColumns()
             End If
 
-            Debug.WriteLine($"[LOAD] Loaded {latestFile}")
+            RestoreCustomerCombosFromPlayers()
+            isRestoringCombos = False   ' <--- re-enable handlers after load
+
+            'Debug.WriteLine($"[LOAD] Loaded {latestFile}")
         Catch ex As Exception
             MessageBox.Show($"Error loading game: {ex.Message}")
         End Try
     End Sub
 
+
+    ' Guards event handlers while we programmatically change selections.
+    Private isRestoringCombos As Boolean = False
+
+    ' Select an item in a ComboBox by the text it displays (works with strings or bound objects).
+    Private Sub SelectComboByDisplayText(combo As ComboBox, displayText As String)
+        If combo Is Nothing Then Exit Sub
+        Dim target As String = (If(displayText, "")).Trim()
+
+        ' Try exact match first.
+        Dim idx As Integer = combo.FindStringExact(target)
+
+        ' If not found, try case-insensitive/trimmed compare using the display text of each item.
+        If idx < 0 Then
+            For i As Integer = 0 To combo.Items.Count - 1
+                Dim shown As String = combo.GetItemText(combo.Items(i))
+                If String.Equals(shown?.Trim(), target, StringComparison.OrdinalIgnoreCase) Then
+                    idx = i : Exit For
+                End If
+            Next
+        End If
+
+        ' Apply selection (will leave blank if still not found).
+        combo.SelectedIndex = idx
+
+        'Debug.WriteLine($"[LOAD] {combo.Name} -> '{target}', index={idx}, items={combo.Items.Count}")
+    End Sub
+
+    ' Restore the four race/customer combos from Players without adding anything.
+    Private Sub RestoreCustomerCombosFromPlayers()
+        isRestoringCombos = True
+        Try
+            If Players Is Nothing Then Exit Sub
+
+            Dim elfName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Elf", StringComparison.OrdinalIgnoreCase))?.Nickname
+            Dim dwarfName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Dwarf", StringComparison.OrdinalIgnoreCase))?.Nickname
+            Dim orcName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase))?.Nickname
+            Dim humanName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Human", StringComparison.OrdinalIgnoreCase))?.Nickname
+
+            ' Only select if we actually have a non-blank nickname.
+            If Not String.IsNullOrWhiteSpace(elfName) Then SelectComboByDisplayText(cmbElf, elfName)
+            If Not String.IsNullOrWhiteSpace(dwarfName) Then SelectComboByDisplayText(cmbDwarf, dwarfName)
+            If Not String.IsNullOrWhiteSpace(orcName) Then SelectComboByDisplayText(cmbOrc, orcName)
+            If Not String.IsNullOrWhiteSpace(humanName) Then SelectComboByDisplayText(cmbHuman, humanName)
+        Finally
+            isRestoringCombos = False
+        End Try
+    End Sub
 
     Private Sub PostLoadFixups()
         If Players Is Nothing Then Exit Sub
@@ -949,7 +1026,7 @@ Public Class Form1
             cost *= (1 + FeeRate) ' add fee
 
             If p.Gold < cost Then
-                Debug.WriteLine($"[MARKET] {p.Race} cannot afford to buy {amount} {good}. Needed {cost}, has {p.Gold}")
+                'Debug.WriteLine($"[MARKET] {p.Race} cannot afford to buy {amount} {good}. Needed {cost}, has {p.Gold}")
                 Exit Sub
             End If
 
@@ -966,7 +1043,7 @@ Public Class Form1
 
             demand(good) += amount
 
-            Debug.WriteLine($"[MARKET] {p.Race} bought {amount} {good} for {Math.Round(cost, 2)} gold.")
+            'Debug.WriteLine($"[MARKET] {p.Race} bought {amount} {good} for {Math.Round(cost, 2)} gold.")
         End Sub
 
         Public Sub SellGoods(p As Player, good As String, amount As Integer)
@@ -984,7 +1061,7 @@ Public Class Form1
             End Select
 
             If Not hasEnough Then
-                Debug.WriteLine($"[MARKET] {p.Race} tried to sell {amount} {good} but doesn’t have enough.")
+                'Debug.WriteLine($"[MARKET] {p.Race} tried to sell {amount} {good} but doesn’t have enough.")
                 Exit Sub
             End If
 
@@ -1005,7 +1082,7 @@ Public Class Form1
 
             supply(good) += amount
 
-            Debug.WriteLine($"[MARKET] {p.Race} sold {amount} {good} for {Math.Round(gross, 2)} gold.")
+            'Debug.WriteLine($"[MARKET] {p.Race} sold {amount} {good} for {Math.Round(gross, 2)} gold.")
         End Sub
 
         Public Function GetPrice(good As String) As Double
@@ -1405,15 +1482,22 @@ Public Class Form1
         ' --- Clear existing data ---
         Players = Nothing
         rtbInfo.Clear()
-        'rtbGameInfo.Clear()
-        currentTurnNumber = 1
+        currentTurnNumber = 0
         MercPriceLevel = 50
+        CurrentMercOffer = Nothing
 
         ' --- Initialize everything ---
         CreateTerrainCache()
         InitializeRaceUnits()
         InitializePlayers()
         GenerateMap()
+
+        ' --- Generate the first merc offer for turn 0 ---
+        CurrentMercOffer = GenerateMercenaryOffer(currentTurnNumber)
+        'Debug.WriteLine("[MERC] Initial offer generated at game start.")
+
+        ' --- Mark all currently visible unit types as "seen" for all human players ---
+        UpdateSeenMonstersForAllPlayers(Players)
 
         ' --- Update HUD ---
         lblHud.Text = $"Game: {gameName}" & vbCrLf &
@@ -1423,8 +1507,12 @@ Public Class Form1
         ' --- Draw map ---
         pnlMap.Invalidate()
 
-        Debug.WriteLine($"[NEW GAME] {gameName} created successfully.")
+        ' --- Immediately save as Turn000 so it’s ready for printing / orders ---
+        SaveGame(gameName)
+
+        'Debug.WriteLine($"[NEW GAME] {gameName} created successfully (Turn {currentTurnNumber}).")
     End Sub
+
 
     Private Sub CreateTerrainCache()
         ' Clear existing cache (in case called multiple times)
@@ -1894,7 +1982,7 @@ Public Class Form1
             ' Find the race units in consolidated AllRaces
             Dim raceUnits As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName = p.Race)
             If raceUnits Is Nothing Then
-                System.Diagnostics.Debug.WriteLine($"Warning: Race '{p.Race}' not found in AllRaces. Armies will start empty.")
+                'System.Diagnostics.Debug.WriteLine($"Warning: Race '{p.Race}' not found in AllRaces. Armies will start empty.")
                 Players.Add(p)
                 Continue For
             End If
@@ -2065,7 +2153,7 @@ Public Class Form1
                                     Else
                                         Dim n As Integer
                                         If Integer.TryParse(amtRaw, n) AndAlso n > 0 Then
-                                            RecruitArmyUnits_ExactAmount(a, p, tmpl, n)
+                                            RecruitArmyUnits(a, p, tmpl, n)
                                         Else
                                             Console.WriteLine($"Recruit failed: bad amount '{amtRaw}'.")
                                         End If
@@ -2181,58 +2269,6 @@ Public Class Form1
         Next
     End Sub
 
-    Public Sub RecruitArmyUnits_ExactAmount(army As Army, player As Player, unitTemplate As UnitStats, requested As Integer)
-        If army Is Nothing OrElse player Is Nothing OrElse unitTemplate Is Nothing Then Exit Sub
-        If requested <= 0 Then Exit Sub
-
-        ' Start from requested number; limit by pop and resources (NO 5% cap here)
-        Dim ironReq As Integer, woodReq As Integer, mountsReq As Integer, mithrilReq As Integer
-        ParseUnitCosts(unitTemplate, ironReq, woodReq, mountsReq, mithrilReq)
-
-        Dim amount As Integer = Math.Min(requested, player.Population)
-        If ironReq > 0 Then amount = Math.Min(amount, player.Iron \ ironReq)
-        If woodReq > 0 Then amount = Math.Min(amount, player.Wood \ woodReq)
-        If mountsReq > 0 Then amount = Math.Min(amount, player.Mounts \ mountsReq)
-        If mithrilReq > 0 Then amount = Math.Min(amount, player.Mithril \ mithrilReq)
-
-        If amount <= 0 Then
-            Console.WriteLine($"{player.Race} could not recruit {requested} {unitTemplate.Name} (insufficient population/resources).")
-            Exit Sub
-        End If
-
-        ' Add to existing stack or create new
-        Dim existing As Unit = Nothing
-        For Each u In army.Units
-            If u IsNot Nothing AndAlso u.Name = unitTemplate.Name AndAlso u.Type = unitTemplate.Type Then
-                existing = u : Exit For
-            End If
-        Next
-
-        If existing IsNot Nothing Then
-            existing.Size += amount
-            If existing.FoodCost < 0 Then existing.FoodCost = 1.0
-        Else
-            Dim nu As New Unit(unitTemplate, army.Race, amount)
-            If nu.FoodCost < 0 Then nu.FoodCost = 1.0
-            army.Units.Add(nu)
-        End If
-
-        ' Deduct pop/resources
-        player.Population -= amount
-        If ironReq > 0 Then player.Iron -= ironReq * amount
-        If woodReq > 0 Then player.Wood -= woodReq * amount
-        If mountsReq > 0 Then player.Mounts -= mountsReq * amount
-        If mithrilReq > 0 Then player.Mithril -= mithrilReq * amount
-
-        ' Safety clamps
-        If player.Population < 0 Then player.Population = 0
-        If player.Iron < 0 Then player.Iron = 0
-        If player.Wood < 0 Then player.Wood = 0
-        If player.Mounts < 0 Then player.Mounts = 0
-        If player.Mithril < 0 Then player.Mithril = 0
-
-        Console.WriteLine($"{player.Race} recruits {amount}/{requested} {unitTemplate.Name} in army at ({army.X},{army.Y}).")
-    End Sub
 
 
     Private Sub TryCaptureSlaves(orcPlayer As Player, targetTileOwner As Player)
@@ -2267,14 +2303,25 @@ Public Class Form1
         'Debug.WriteLine($"[SLAVES] Orcs captured {slavesToCapture} {targetTileOwner.Race.ToLower()} slaves. Remaining {targetTileOwner.Race} pop: {targetTileOwner.Population}")
     End Sub
 
-    Public Sub RecruitArmyUnits(army As Army, player As Player, unitTemplate As UnitStats)
+    ' === Unified RecruitArmyUnits: supports both AI/MAX and player-entered numbers ===
+    Public Sub RecruitArmyUnits(army As Army, player As Player, unitTemplate As UnitStats, Optional requestedAmount As Integer = -1)
+        Console.WriteLine($"DEBUG RecruitArmyUnits called with requestedAmount={requestedAmount}")
+
         If army Is Nothing OrElse player Is Nothing OrElse unitTemplate Is Nothing Then Exit Sub
 
-        ' --- Determine desired max recruitable per turn (5% of population, minimum 1) ---
-        Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05)))
-        Dim recruitAmount As Integer = Math.Min(maxPerTurn, player.Population)
+        ' --- 1. Determine how many to recruit ---
+        Dim recruitAmount As Integer
 
-        ' --- Parse cost string robustly: supports "I:2, W:1, M:1, X:1" and textual fallbacks ---
+        If requestedAmount > 0 Then
+            ' Player specified a number manually
+            recruitAmount = Math.Min(requestedAmount, player.Population)
+        Else
+            ' AI or "MAX" order: use 5% population rule
+            Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05)))
+            recruitAmount = Math.Min(maxPerTurn, player.Population)
+        End If
+
+        ' --- 2. Parse cost string robustly: supports "I:2, W:1, M:1, X:1" and textual fallbacks ---
         Dim ironRequired As Integer = 0
         Dim woodRequired As Integer = 0
         Dim mountsRequired As Integer = 0
@@ -2288,67 +2335,54 @@ Public Class Form1
                 Dim lower As String = part.ToLowerInvariant()
                 Dim n As Integer
                 Dim idx = part.IndexOf(":"c)
+                Dim qty As Integer = 1
+                If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then qty = Math.Max(1, n)
 
+                ' --- Match by first letter or word fragment ---
                 If lower.StartsWith("i") OrElse lower.Contains("iron") Then
-                    If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then
-                        ironRequired += Math.Max(0, n)
-                    Else
-                        ironRequired += 1
-                    End If
+                    ironRequired += qty
 
                 ElseIf lower.StartsWith("w") OrElse lower.Contains("wood") Then
-                    If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then
-                        woodRequired += Math.Max(0, n)
-                    Else
-                        woodRequired += 1
-                    End If
+                    woodRequired += qty
 
                 ElseIf lower.StartsWith("m") OrElse lower.Contains("mount") OrElse lower.Contains("horse") OrElse
-                     lower.Contains("wolf") OrElse lower.Contains("elk") OrElse lower.Contains("ram") Then
-                    If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then
-                        mountsRequired += Math.Max(0, n)
-                    Else
-                        mountsRequired += 1
-                    End If
+                 lower.Contains("wolf") OrElse lower.Contains("elk") OrElse lower.Contains("ram") Then
+                    mountsRequired += qty
 
                 ElseIf lower.StartsWith("x") OrElse lower.Contains("mith") Then
-                    ' Mithril cost (new)
-                    If idx >= 0 AndAlso Integer.TryParse(part.Substring(idx + 1).Trim(), n) Then
-                        mithrilRequired += Math.Max(0, n)
-                    Else
-                        mithrilRequired += 1
-                    End If
+                    mithrilRequired += qty
                 End If
             Next
         End If
 
-        ' --- Limit by available resources (hard caps) ---
+        ' === Catch shorthand like "M:1" ===
+        If mountsRequired = 0 AndAlso unitTemplate.Cost.ToUpperInvariant().Contains("M:") Then mountsRequired = 1
+
+        ' --- 3. Limit by available resources (hard caps) ---
         If ironRequired > 0 Then recruitAmount = Math.Min(recruitAmount, player.Iron \ ironRequired)
         If woodRequired > 0 Then recruitAmount = Math.Min(recruitAmount, player.Wood \ woodRequired)
         If mountsRequired > 0 Then recruitAmount = Math.Min(recruitAmount, player.Mounts \ mountsRequired)
         If mithrilRequired > 0 Then recruitAmount = Math.Min(recruitAmount, player.Mithril \ mithrilRequired)
 
-        ' --- Check final size viability ---
+        ' --- 4. Check viability ---
         If recruitAmount <= 0 Then
             Console.WriteLine($"{player.Race} wanted to recruit {unitTemplate.Name} but lacked resources/pop.")
-            ' === Only AI uses fallback ===
             If player.AIControlled Then TryRecruitMilitia(player, army)
             Exit Sub
         End If
 
-        ' --- Tiny batch rule (AI only) ---
+        ' --- 5. Tiny batch rule (AI only) ---
         If recruitAmount < 50 Then
             If player.AIControlled Then
                 Console.WriteLine($"{player.Race} skipped tiny batch ({recruitAmount} {unitTemplate.Name}) and raised militia instead.")
                 TryRecruitMilitia(player, army)
                 Exit Sub
             Else
-                ' Humans still recruit small numbers – allow it
                 Console.WriteLine($"{player.Race} recruits small batch ({recruitAmount} {unitTemplate.Name}) due to limited resources.")
             End If
         End If
 
-        ' --- Check if unit already exists in army ---
+        ' --- 6. Check if unit already exists in army ---
         Dim existingUnit As Unit = army.Units.FirstOrDefault(Function(u) u.Name = unitTemplate.Name AndAlso u.Type = unitTemplate.Type)
 
         If existingUnit IsNot Nothing Then
@@ -2360,22 +2394,27 @@ Public Class Form1
             army.Units.Add(newUnit)
         End If
 
-        ' --- Deduct population and resources ---
+        ' --- 7. Deduct population and resources ---
         player.Population -= recruitAmount
         If ironRequired > 0 Then player.Iron -= ironRequired * recruitAmount
         If woodRequired > 0 Then player.Wood -= woodRequired * recruitAmount
         If mountsRequired > 0 Then player.Mounts -= mountsRequired * recruitAmount
         If mithrilRequired > 0 Then player.Mithril -= mithrilRequired * recruitAmount
 
-        ' --- Safety clamps (no negatives) ---
-        If player.Population < 0 Then player.Population = 0
-        If player.Iron < 0 Then player.Iron = 0
-        If player.Wood < 0 Then player.Wood = 0
-        If player.Mounts < 0 Then player.Mounts = 0
-        If player.Mithril < 0 Then player.Mithril = 0
+        ' --- 8. Safety clamps (no negatives) ---
+        player.Population = Math.Max(player.Population, 0)
+        player.Iron = Math.Max(player.Iron, 0)
+        player.Wood = Math.Max(player.Wood, 0)
+        player.Mounts = Math.Max(player.Mounts, 0)
+        player.Mithril = Math.Max(player.Mithril, 0)
 
-        Console.WriteLine($"{player.Race} recruits {recruitAmount} {unitTemplate.Name} in army at ({army.X},{army.Y})  [I:{ironRequired}, W:{woodRequired}, M:{mountsRequired}, X:{mithrilRequired}]  Mithril left={player.Mithril}")
+        ' --- 9. Log outcome ---
+        Dim mode As String = If(requestedAmount > 0, $"requested {requestedAmount}", "auto")
+        Console.WriteLine($"{player.Race} recruits {recruitAmount} {unitTemplate.Name} in army at ({army.X},{army.Y}) [{mode}]  " &
+                      $"[I:{ironRequired}, W:{woodRequired}, M:{mountsRequired}, X:{mithrilRequired}]  Mithril left={player.Mithril}")
     End Sub
+
+
 
     Private Sub TryRecruitMilitia(player As Player, army As Army)
         If player Is Nothing OrElse player.IsEliminated OrElse army Is Nothing Then Exit Sub
@@ -2428,11 +2467,15 @@ Public Class Form1
         Console.WriteLine($"[AI-FALLBACK] {player.Race} raises {recruitAmount} {unitName} (no resources). Pop now {player.Population}.")
     End Sub
 
-    ' === NEW: AI movement with defend/assault intent ===========================
+    ' === NEW: AI movement with defend/assault intent (AI-only) ===========================
     Private Function GenerateAIMoves(army As Army, player As Player, maxSteps As Integer) As List(Of ArmyCommand)
         Dim moves As New List(Of ArmyCommand)()
         If player Is Nothing OrElse army Is Nothing Then Return moves
         If player.IsEliminated Then Return moves
+
+        ' === ABSOLUTE SAFETY GUARD ===
+        ' Never run this logic for human-controlled players
+        If Not player.AIControlled Then Return moves
 
         ' === SPECIAL DEFENSIVE BEHAVIOUR: Third army defends the citadel ===
         Dim myIndex As Integer = player.Armies.IndexOf(army)
@@ -2462,14 +2505,10 @@ Public Class Form1
 
             ' Defensive movement logic
             If enemyCloser AndAlso nearestEnemy IsNot Nothing Then
-                ' Move toward home to intercept
                 localForcedTarget = citadelPos
             Else
-                ' If we’re already near home, just stay there
                 Dim distHome As Integer = Manhattan(army.X, army.Y, citadelPos.X, citadelPos.Y)
-                If distHome > 2 Then
-                    localForcedTarget = citadelPos
-                End If
+                If distHome > 2 Then localForcedTarget = citadelPos
             End If
 
             ' Recruitment check: if weaker than nearby enemies, recruit
@@ -2488,11 +2527,11 @@ Public Class Form1
             Next
 
             If army.TotalSoldiers < strongestEnemyNearby Then
-                ' Call existing recruitment helper
+                ' Recruit only for AI players
                 AIRecruitArmy(army, player, myIndex)
             End If
 
-            ' If we’ve decided to move home, do so and exit this function
+            ' If we’ve decided to move home, stay there
             If localForcedTarget.HasValue Then
                 moves.Add(New ArmyCommand With {.Command = "Stay", .Parameter = ""})
             End If
@@ -2502,16 +2541,16 @@ Public Class Form1
         End If
 
 
-        ' Only move if army has >= 500 men
+        ' === GENERAL AI MOVEMENT ===
         If army.TotalSoldiers < 500 Then Return moves
 
         Dim mapSize As Integer = Map.GetLength(0)
         Dim homePos As Point = GetStartingCornerCenter(player.PlayerNumber)
         Dim currentPos As New Point(army.X, army.Y)
 
-        ' --- Tactical intents (very local to avoid pathing quirks) ---
-        Const DEFENSE_RADIUS As Integer = 8   ' enemy near OUR capital? run home
-        Const ASSAULT_RADIUS As Integer = 6   ' WE are near THEIR capital? go poke it
+        ' --- Tactical intents ---
+        Const DEFENSE_RADIUS As Integer = 8
+        Const ASSAULT_RADIUS As Integer = 6
 
         Dim forcedTarget As Nullable(Of Point) = Nothing
 
@@ -2519,38 +2558,37 @@ Public Class Form1
         If IsEnemyThreateningHome(player, DEFENSE_RADIUS) Then
             forcedTarget = homePos
         Else
-            ' 2) GLOBAL ASSAULT — if we’re much stronger, march on enemy capital (any distance)
+            ' 2) GLOBAL ASSAULT — if we’re much stronger, march on enemy capital
             Dim strongTarget As Nullable(Of Point) = GetGlobalAssaultTarget(player, army, 2.0)
             If strongTarget.HasValue Then
                 forcedTarget = strongTarget
             Else
-                ' 3) LOCAL ASSAULT — only if we happen to be near an enemy capital
+                ' 3) LOCAL ASSAULT — if near an enemy capital
                 Dim assault As Nullable(Of Point) = NearestEnemyCapitalWithinRadius(player, army, ASSAULT_RADIUS)
                 If assault.HasValue Then forcedTarget = assault
             End If
         End If
 
-        ' We’ll do maxSteps-1 normal steps and leave your last-step slot free if you use it
+        ' === Pathfinding & tactical step generation ===
         For stepIndex As Integer = 0 To Math.Max(0, maxSteps - 2)
 
-            ' Try intent-guided step first (only orthogonal, never step onto occupied “active” tile)
+            ' --- Intent-guided move ---
             Dim pickedFromIntent As Boolean = False
             If forcedTarget.HasValue Then
                 Dim bestIntent As Nullable(Of Point) = Nothing
                 Dim bestDist As Integer = Integer.MaxValue
-
                 Dim adjOffsets As Point() = {New Point(0, -1), New Point(1, 0), New Point(0, 1), New Point(-1, 0)}
+
                 For Each off In adjOffsets
                     Dim nx = currentPos.X + off.X
                     Dim ny = currentPos.Y + off.Y
                     If nx < 0 OrElse nx >= mapSize OrElse ny < 0 OrElse ny >= mapSize Then Continue For
 
-                    ' Skip tiles occupied by an "active" army (>=500) of anyone
+                    ' Skip occupied active tiles
                     Dim blockingArmy As Army = Players.SelectMany(Function(pp) If(pp?.Armies, Enumerable.Empty(Of Army)())) _
-                .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
+                    .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
                     If blockingArmy IsNot Nothing Then Continue For
 
-                    ' Prefer moves that strictly reduce distance to the forced target
                     Dim dAfter As Integer = Manhattan(nx, ny, forcedTarget.Value.X, forcedTarget.Value.Y)
                     Dim dNow As Integer = Manhattan(currentPos.X, currentPos.Y, forcedTarget.Value.X, forcedTarget.Value.Y)
                     If dAfter < dNow AndAlso dAfter < bestDist Then
@@ -2560,11 +2598,10 @@ Public Class Form1
                 Next
 
                 If bestIntent.HasValue Then
-                    ' Convert to one orthogonal step + enqueue
                     Dim dx As Integer = Math.Sign(bestIntent.Value.X - currentPos.X)
                     Dim dy As Integer = Math.Sign(bestIntent.Value.Y - currentPos.Y)
-
                     Dim direction As String = ""
+
                     If Math.Abs(dx) >= Math.Abs(dy) AndAlso dx <> 0 Then
                         direction = If(dx > 0, "E", "W")
                     ElseIf dy <> 0 Then
@@ -2580,17 +2617,13 @@ Public Class Form1
                 End If
             End If
 
-            If pickedFromIntent Then
-                ' Done for this step, go try next step (still honoring intent if any)
-                Continue For
-            End If
+            If pickedFromIntent Then Continue For
 
-            ' --- Existing cautious expansion heuristic (unchanged) ---
+            ' --- Exploration / expansion heuristic ---
             Dim bestTile As Nullable(Of Point) = Nothing
             Dim bestScore As Double = Double.MinValue
-
-            ' Step 1: evaluate N/E/S/W around us
             Dim adjOffsets2 As Point() = {New Point(0, -1), New Point(1, 0), New Point(0, 1), New Point(-1, 0)}
+
             For Each dirOffset In adjOffsets2
                 Dim nx As Integer = currentPos.X + dirOffset.X
                 Dim ny As Integer = currentPos.Y + dirOffset.Y
@@ -2598,15 +2631,15 @@ Public Class Form1
 
                 ' Skip blocked by active army
                 Dim blockingArmy As Army = Players.SelectMany(Function(pp) If(pp?.Armies, Enumerable.Empty(Of Army)())) _
-            .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
+                .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
                 If blockingArmy IsNot Nothing Then Continue For
 
-                ' Skip already-owned tiles for capture scoring
+                ' Skip already-owned tiles
                 If Map(nx, ny, 1) = player.PlayerNumber Then Continue For
 
-                Dim score As Double = 100 ' adjacency bonus
+                Dim score As Double = 100
 
-                ' Terrain bonus
+                ' Terrain bias
                 Select Case player.Race.ToLower()
                     Case "elf" : If Map(nx, ny, 0) = 1 Then score += 10
                     Case "dwarf" : If Map(nx, ny, 0) = 3 Then score += 10
@@ -2618,7 +2651,7 @@ Public Class Form1
                 Dim distHome As Integer = Math.Abs(nx - homePos.X) + Math.Abs(ny - homePos.Y)
                 score += Math.Max(0, 20 - distHome)
 
-                ' Gentle nudge toward intent if present
+                ' Nudge toward intent
                 If forcedTarget.HasValue Then
                     Dim dNow = Manhattan(currentPos.X, currentPos.Y, forcedTarget.Value.X, forcedTarget.Value.Y)
                     Dim dAfter = Manhattan(nx, ny, forcedTarget.Value.X, forcedTarget.Value.Y)
@@ -2631,7 +2664,7 @@ Public Class Form1
                 End If
             Next
 
-            ' Step 2: BFS within ±5 if we found nothing adjacent
+            ' --- BFS fallback ---
             If Not bestTile.HasValue Then
                 Dim bfsQueue As New Queue(Of Point)
                 Dim visited(mapSize - 1, mapSize - 1) As Boolean
@@ -2650,9 +2683,8 @@ Public Class Form1
                         visited(nx, ny) = True
 
                         Dim blockingArmy As Army = Players.SelectMany(Function(pp) If(pp?.Armies, Enumerable.Empty(Of Army)())) _
-                    .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
+                        .FirstOrDefault(Function(a) a IsNot Nothing AndAlso a.X = nx AndAlso a.Y = ny AndAlso a.TotalSoldiers >= 500)
                         If blockingArmy IsNot Nothing Then Continue For
-
                         If Map(nx, ny, 1) = player.PlayerNumber Then Continue For
 
                         Dim score As Double = 0
@@ -2682,7 +2714,7 @@ Public Class Form1
                 End While
             End If
 
-            ' Step 3: Fallback to nearest living enemy capital (no lambdas)
+            ' --- Fallback to nearest living enemy capital ---
             If Not bestTile.HasValue Then
                 Dim livingEnemies As New List(Of Player)
                 For Each e As Player In Players
@@ -2713,11 +2745,12 @@ Public Class Form1
                 End If
             End If
 
-            ' Step 4: Convert bestTile to a single orthogonal move
+            ' --- Convert bestTile to single orthogonal move ---
+            If Not bestTile.HasValue Then Exit For
             Dim dx2 As Integer = bestTile.Value.X - currentPos.X
             Dim dy2 As Integer = bestTile.Value.Y - currentPos.Y
-
             Dim moveX As Integer = 0, moveY As Integer = 0
+
             If Math.Abs(dx2) >= Math.Abs(dy2) AndAlso dx2 <> 0 Then
                 moveX = Math.Sign(dx2)
             ElseIf dy2 <> 0 Then
@@ -3198,8 +3231,7 @@ Public Class Form1
 
                 p.Wood += woodFromSlaves
                 p.Iron += ironFromSlaves
-
-                Debug.WriteLine($"[SLAVE OUTPUT] Orc slaves produced +{woodFromSlaves} wood, +{ironFromSlaves} iron, +{foodFromSlaves} food.")
+'Debug.WriteLine($"[SLAVE OUTPUT] Orc slaves produced +{woodFromSlaves} wood, +{ironFromSlaves} iron, +{foodFromSlaves} food.")
             End If
 
             ' === Gold from population ===
@@ -3207,7 +3239,7 @@ Public Class Form1
             p.Gold += p.GoldCollectedThisTurn
 
             ' === Debug output ===
-            Debug.WriteLine($"[RESOURCE] {p.Race}: +{p.FoodCollectedThisTurn} food, +{p.WoodCollectedThisTurn} wood, +{p.IronCollectedThisTurn} iron, +{p.MountsCollectedThisTurn} mounts, +{p.MithrilCollectedThisTurn} mithril (tiles={ownedSquares})")
+            'Debug.WriteLine($"[RESOURCE] {p.Race}: +{p.FoodCollectedThisTurn} food, +{p.WoodCollectedThisTurn} wood, +{p.IronCollectedThisTurn} iron, +{p.MountsCollectedThisTurn} mounts, +{p.MithrilCollectedThisTurn} mithril (tiles={ownedSquares})")
         Next
     End Sub
 
@@ -3261,7 +3293,7 @@ Public Class Form1
 
                 If growth > 0 Then
                     p.Population += growth
-                    Debug.WriteLine($"[POP] {p.Race} grew by {growth} (foodRatio={foodRatio:F2}, tiles={ownedSquares}, tileBoost={tileBoost:F2}, capFactor={capacityFactor:F2}, pop={p.Population})")
+                    'Debug.WriteLine($"[POP] {p.Race} grew by {growth} (foodRatio={foodRatio:F2}, tiles={ownedSquares}, tileBoost={tileBoost:F2}, capFactor={capacityFactor:F2}, pop={p.Population})")
                 End If
             End If
         Next
@@ -3400,6 +3432,7 @@ Public Class Form1
     End Function
 
     Private Sub btnProcessTurn_Click(sender As Object, e As EventArgs) Handles btnProcessTurn.Click
+        rtbInfo.Clear()
         ' BEFORE ANYTHING THIS TURN
         RecomputeEliminationForAllPlayers()
 
@@ -3470,7 +3503,7 @@ Public Class Form1
         SafetyCaptureReconciliation()
 
         RefreshArmyOrdersGrid()
-        ''klk
+
         UpdateSeenMonstersForAllPlayers(Players)
     End Sub
 
@@ -3481,12 +3514,12 @@ Public Class Form1
         CurrentMercOffer = GenerateMercenaryOffer(turnNumber)
 
         If CurrentMercOffer Is Nothing Then
-            Debug.WriteLine($"Turn {turnNumber}: No mercenary offer generated this turn.")
+            'Debug.WriteLine($"Turn {turnNumber}: No mercenary offer generated this turn.")
             Exit Sub
         End If
 
         Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
-        Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
+        'Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
     End Sub
 
 
@@ -3517,6 +3550,32 @@ Public Class Form1
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
 
+        ' ===========================================================================
+        '  SAFETY NET – AUTO-UPDATE SEEN MONSTERS
+        ' ---------------------------------------------------------------------------
+        '  Why this exists:
+        '    • On Turn 0 the game is created, players are assigned manually,
+        '      and the GM might go straight to "Print" without first clicking "Save".
+        '    • Normally the discovery lists (seen-monsters files) are generated
+        '      inside SaveGame(), *after* players are assigned.
+        '    • If the GM forgets to Save before printing, those files will not exist
+        '      and the printed turn would show blank or incomplete monster info.
+        '
+        '  Solution:
+        '    We call UpdateSeenMonstersForAllPlayers() here as a precaution.
+        '    It’s harmless if already up-to-date, and ensures every printout
+        '    always reflects the latest armies and merc offers currently in memory.
+        ' ===========================================================================
+        Try
+            If Players IsNot Nothing AndAlso Players.Count > 0 Then
+                UpdateSeenMonstersForAllPlayers(Players)
+                'Debug.WriteLine("[PRINT] Seen-monsters list refreshed automatically before printing.")
+            End If
+        Catch ex As Exception
+            'Debug.WriteLine($"[PRINT] Auto-update of seen monsters failed: {ex.Message}")
+        End Try
+        ' ===========================================================================
+
         ' --- Draw header and player info ---
         DrawFrontPageHeaderAndPlayerInfo(g, e)
 
@@ -3524,15 +3583,14 @@ Public Class Form1
         Dim headerHeight As Single = 60
         Dim playerBoxHeight As Single = 80
         Dim spacing As Single = 20
-
         Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing
-
 
         DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
 
         ' Only one page
         e.HasMorePages = False
     End Sub
+
 
     ' --- Helper to draw heading and player info ---
     Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
@@ -4048,7 +4106,7 @@ Public Class Form1
                     Next
 
                     ' --- Report ---
-                    rtbInfo.Clear()
+                    'rtbInfo.Clear()
                     Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot)
                     rtbInfo.AppendText(compactReport)
 
@@ -4198,7 +4256,7 @@ Public Class Form1
                         atkValue = atkUnit.Melee
                         If atkUnit.Flying Then
                             atkValue *= 2
-                            Debug.WriteLine($"[DEBUG] Flying unit {atkUnit.Name} detected in battle (Size={atkUnit.Size})")
+                            'Debug.WriteLine($"[DEBUG] Flying unit {atkUnit.Name} detected in battle (Size={atkUnit.Size})")
                             atkExplanation = $"{atkUnit.Melee} melee (flying, double in chase)"
                         Else
                             atkExplanation = $"{atkUnit.Melee} melee for chase"
@@ -4479,18 +4537,18 @@ Public Class Form1
 
         ' Empire-level decision
         If Not ShouldRecruitArmy(player) Then
-            Debug.WriteLine($"[AI] {player.Race}: no recruitment (pred={GetPredictedTotalPower(player)}, enemyMax={GetStrongestEnemyPower(player)}).")
+            'Debug.WriteLine($"[AI] {player.Race}: no recruitment (pred={GetPredictedTotalPower(player)}, enemyMax={GetStrongestEnemyPower(player)}).")
             Exit Sub
         End If
 
         ' Choose a recruitable template
         Dim pick As UnitStats = DecideRecruitmentUnit(player, army)
         If pick Is Nothing Then
-            Debug.WriteLine($"[AI] {player.Race}: no valid unit template to recruit.")
+            'Debug.WriteLine($"[AI] {player.Race}: no valid unit template to recruit.")
             Exit Sub
         End If
         If String.IsNullOrWhiteSpace(pick.ShortName) Then
-            Debug.WriteLine($"[AI] {player.Race}: template '{pick.Name}' lacks ShortName; cannot enqueue RECRUIT.")
+            'Debug.WriteLine($"[AI] {player.Race}: template '{pick.Name}' lacks ShortName; cannot enqueue RECRUIT.")
             Exit Sub
         End If
 
@@ -4504,7 +4562,7 @@ Public Class Form1
         Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05R)))
         AddPredictedGain(player, maxPerTurn)
 
-        Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} (short '{pick.ShortName}') for Army {armyIndex + 1}. PredPower now {GetPredictedTotalPower(player)}.")
+        'Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} (short '{pick.ShortName}') for Army {armyIndex + 1}. PredPower now {GetPredictedTotalPower(player)}.")
     End Sub
 
 #End Region
@@ -5252,14 +5310,14 @@ Public Class Form1
                     If rnd.Next(100) < produced Then
                         p.Xorns += 1
                         ' Announce discovery (later you can hook this into your report system) - TO DO
-                        Debug.WriteLine($"[XORN] {p.Race} Player discovered a Xorn! Total Xorns: {p.Xorns}")
+                        'Debug.WriteLine($"[XORN] {p.Race} Player discovered a Xorn! Total Xorns: {p.Xorns}")
                     End If
 
                     ' === Xorn bonus gems each turn ===
                     If p.Xorns > 0 Then
                         Dim bonus As Integer = Enumerable.Range(1, p.Xorns).Sum(Function(i) rnd.Next(1, 11))
                         p.Gems += bonus
-                        Debug.WriteLine($"[XORN] {p.Race} Player gained {bonus} bonus Gems from {p.Xorns} Xorn(s). (Total: {p.Gems})")
+                        'Debug.WriteLine($"[XORN] {p.Race} Player gained {bonus} bonus Gems from {p.Xorns} Xorn(s). (Total: {p.Gems})")
                     End If
 
                 Case "elf"
@@ -5300,7 +5358,7 @@ Public Class Form1
 
 #Region "Mercenary Stuff"
 
-    Private CurrentMercOffer As MercenaryArmy
+    Public Shared CurrentMercOffer As MercenaryArmy
 
     Private MercPriceLevel As Integer = 0
 
@@ -5363,7 +5421,7 @@ Public Class Form1
             If bidAmount > p.Gold Then
                 bidAmount = p.Gold
                 numBid.Value = bidAmount  ' optional: visually update
-                Debug.WriteLine($"[MERC] {p.Race} bid reduced to {bidAmount} (max gold available).")
+                'Debug.WriteLine($"[MERC] {p.Race} bid reduced to {bidAmount} (max gold available).")
             End If
 
             p.CurrentBid = bidAmount
@@ -5455,8 +5513,8 @@ Public Class Form1
         ' === Debug: where it went and what it was ===
         Dim armyIndex As Integer = winner.Armies.IndexOf(target)
         If armyIndex < 0 Then armyIndex = 0
-        Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
-        Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
+        'Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
+        'Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
 
         ' Cleanup selection for next turn
         winner.TargetArmyForMercs = Nothing
@@ -5551,7 +5609,7 @@ Public Class Form1
             Loop
 
             If innerGuard = 0 Then
-                Debug.WriteLine("Guard triggered in GenerateMercenaryOffer inner loop — possible bad roster config.")
+                'Debug.WriteLine("Guard triggered in GenerateMercenaryOffer inner loop — possible bad roster config.")
             End If
 
             ' === 4. Guarantee at least one unit ===
@@ -5570,8 +5628,11 @@ Public Class Form1
         Loop
 
         If outerGuard = 0 Then
-            Debug.WriteLine("Guard triggered in GenerateMercenaryOffer outer loop — possible issue with faction selection.")
+            'Debug.WriteLine("Guard triggered in GenerateMercenaryOffer outer loop — possible issue with faction selection.")
         End If
+
+        ' === Reveal this new mercenary offer to all human players ===
+        RevealMercenaryOffer(mercArmyNormal, Players)
 
         Return mercArmyNormal
     End Function
@@ -5583,7 +5644,7 @@ Public Class Form1
 
         ' === 2. Handle no bids ===
         If bids Is Nothing OrElse bids.Count = 0 Then
-            Debug.WriteLine("No bids received; mercenary offer dismissed.")
+            'Debug.WriteLine("No bids received; mercenary offer dismissed.")
             CurrentMercOffer = Nothing
             Exit Sub
         End If
@@ -5596,7 +5657,7 @@ Public Class Form1
         ToList()
 
         If candidateBids.Count = 0 Then
-            Debug.WriteLine("No valid bids (must meet MinBid and be within available gold); mercenary offer dismissed.")
+            'Debug.WriteLine("No valid bids (must meet MinBid and be within available gold); mercenary offer dismissed.")
             CurrentMercOffer = Nothing
             Exit Sub
         End If
@@ -5624,7 +5685,7 @@ Public Class Form1
         If winner.Gold < 0 Then winner.Gold = 0
 
         AwardMercenariesToPlayer(CurrentMercOffer, winner)
-        Debug.WriteLine($"Mercenaries hired by Player {winner.PlayerNumber} ({winner.Race}) for {amount} gold!")
+        'Debug.WriteLine($"Mercenaries hired by Player {winner.PlayerNumber} ({winner.Race}) for {amount} gold!")
 
         ' === 6. Market inflation: raise price level by 50 ===
         MercPriceLevel += 50
@@ -5651,7 +5712,7 @@ Public Class Form1
                     If CanAffordMercenaries(p, CurrentMercOffer) Then
                         bids(p) = p.CurrentBid
                     Else
-                        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
+                        'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
                     End If
                 End If
             Next
@@ -5709,7 +5770,7 @@ Public Class Form1
 
         ' If AI cannot meet the minimum bid, skip bidding
         If p.Gold < minBid Then
-            Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford MinBid {minBid}.")
+            'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford MinBid {minBid}.")
             Return 0
         End If
 
@@ -5723,7 +5784,7 @@ Public Class Form1
         ' Ensure at least the MinBid
         If finalBid < minBid Then finalBid = minBid
 
-        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bids {finalBid} gold (MinBid {minBid}, aggression {aggression:F2}).")
+        'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bids {finalBid} gold (MinBid {minBid}, aggression {aggression:F2}).")
 
         Return finalBid
     End Function
@@ -5790,7 +5851,7 @@ Public Class Form1
                 p.Gold -= wages
                 If p.Gold < 0 Then p.Gold = 0 ' prevent negative gold
 
-                Debug.WriteLine($"[WAGES] {p.Race} (Player {p.PlayerNumber + 1}) paid {wages} gold in mercenary wages. Remaining gold: {p.Gold}")
+                'Debug.WriteLine($"[WAGES] {p.Race} (Player {p.PlayerNumber + 1}) paid {wages} gold in mercenary wages. Remaining gold: {p.Gold}")
             End If
         Next
     End Sub
@@ -5865,7 +5926,7 @@ Public Class Form1
 
         Dim claims As New Dictionary(Of String, Integer)
 
-        Debug.WriteLine("=== SafetyCaptureReconciliation ===")
+        'Debug.WriteLine("=== SafetyCaptureReconciliation ===")
 
         ' === Normal capture attempts ===
         For Each p In Players
@@ -5907,13 +5968,13 @@ Public Class Form1
                 If prevOwner <> val Then
                     Map(x, y, 1) = val
                     Dim raceName As String = SafeRaceName(val)
-                    Debug.WriteLine($"[SAFETY CAPTURE] {raceName} claims ({x},{y}) (prev {prevOwner})")
+                    'Debug.WriteLine($"[SAFETY CAPTURE] {raceName} claims ({x},{y}) (prev {prevOwner})")
                     'If rtbGameInfo IsNot Nothing Then
                     'rtbGameInfo.AppendText($"[SAFETY CAPTURE] {raceName} claims ({x},{y})." & vbCrLf)
                     'End If
                 End If
             Else
-                Debug.WriteLine($"[SAFETY] Contested tile at ({x},{y}); no change.")
+                'Debug.WriteLine($"[SAFETY] Contested tile at ({x},{y}); no change.")
             End If
         Next
 
@@ -5949,7 +6010,7 @@ Public Class Form1
                 If Not blocked AndAlso Map(cx, cy, 1) <> ownerId Then
                     Map(cx, cy, 1) = ownerId
                     Dim raceName As String = SafeRaceName(ownerId)
-                    Debug.WriteLine($"[CAPITAL RESTORE] {raceName} recovers its citadel at ({cx},{cy})")
+                    'Debug.WriteLine($"[CAPITAL RESTORE] {raceName} recovers its citadel at ({cx},{cy})")
                     'If rtbGameInfo IsNot Nothing Then
                     'rtbGameInfo.AppendText($"[CAPITAL RESTORE] {raceName} regains citadel control." & vbCrLf)
                     'End If
@@ -6177,6 +6238,8 @@ Public Class Form1
     End Function
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        InitialiseSummonerNames(SummonerDefinitions)
+        LoadMonsterDescriptions()
         LoadCustomerGrid()
         PopulateCustomerDropdowns()
         ApplyRaceColoursToCombos()
@@ -6212,7 +6275,7 @@ Public Class Form1
     ' ----------------------------------------------------------------
     Private Function GetArmyOrders() As List(Of ArmyOrder)
         Dim orders As New List(Of ArmyOrder)()
-        Debug.WriteLine("=== Building orders from grid ===")
+        'Debug.WriteLine("=== Building orders from grid ===")
 
         For Each row As DataGridViewRow In dgvOrders.Rows
             If row Is Nothing OrElse row.IsNewRow Then Continue For
@@ -6241,7 +6304,7 @@ Public Class Form1
                 amt = If(row.Cells("colRecruitAmount").Value, "").ToString().Trim()
             End If
 
-            Debug.WriteLine($"Row: {order.ArmyName}  Move5='{move5}'  UnitKey='{unitKey}'  Amt='{amt}'")
+            'Debug.WriteLine($"Row: {order.ArmyName}  Move5='{move5}'  UnitKey='{unitKey}'  Amt='{amt}'")
 
             ' --- Normalise ghost/default values ---
             If amt.Equals("MAX", StringComparison.OrdinalIgnoreCase) OrElse amt = "0" Then amt = ""
@@ -6262,10 +6325,10 @@ Public Class Form1
 
             order.Moves = moves
             orders.Add(order)
-            Debug.WriteLine($"  Final orders: {String.Join(", ", moves)}")
+            'Debug.WriteLine($"  Final orders: {String.Join(", ", moves)}")
         Next
 
-        Debug.WriteLine("=== Done building orders ===")
+        'Debug.WriteLine("=== Done building orders ===")
         Return orders
     End Function
 
@@ -6303,7 +6366,6 @@ Public Class Form1
             ' === Handle army renaming ===
             If Not String.IsNullOrWhiteSpace(order.ArmyName) AndAlso
            Not a.Name.Equals(order.ArmyName, StringComparison.OrdinalIgnoreCase) Then
-
                 Dim newName As String = StrConv(order.ArmyName.Trim(), VbStrConv.ProperCase)
                 a.Name = newName
             End If
@@ -6317,22 +6379,25 @@ Public Class Form1
                     Dim raw As String = If(order.Moves(i), "").Trim()
                     If raw = "" Then Continue For
 
-                    Dim parts As String() = raw.Split(" "c, StringSplitOptions.RemoveEmptyEntries)
+                    Debug.WriteLine($"[DEBUG RAW LINE] i={i}, Raw='{raw}'")
+                    Dim parts As String() = raw.Split(New Char() {" "c, ","c, ";"c}, StringSplitOptions.RemoveEmptyEntries)
+                    Debug.WriteLine($"[DEBUG PARTS] count={parts.Length}, contents={String.Join("|", parts)}")
+
                     Dim cmd As String = parts(0).ToUpperInvariant()
+                    Dim ac As New ArmyCommand With {.Command = cmd, .Parameter = "", .Amount = ""}
 
-                    Dim ac As New ArmyCommand With {.Command = cmd}
-
-                    If i = 4 AndAlso cmd = "RECRUIT" Then
+                    ' Handle RECRUIT command regardless of position
+                    If cmd = "RECRUIT" Then
                         If parts.Length >= 2 Then ac.Parameter = parts(1)   ' shortname
                         If parts.Length >= 3 Then ac.Amount = parts(2)      ' number or MAX
                     Else
-                        ac.Parameter = If(parts.Length > 1, parts(1), "")
+                        ' For movement or other commands, optional parameter
+                        If parts.Length > 1 Then ac.Parameter = parts(1)
                     End If
 
                     a.MoveQueue.Add(ac)
                 Next
             End If
-
         Next
     End Sub
 
@@ -6420,18 +6485,22 @@ Public Class Form1
     ' ============================================================
 
     Private Sub cmbElf_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbElf.SelectedIndexChanged
+        If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("elf", cmbElf)
     End Sub
 
     Private Sub cmbDwarf_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbDwarf.SelectedIndexChanged
+        If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("dwarf", cmbDwarf)
     End Sub
 
     Private Sub cmbOrc_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbOrc.SelectedIndexChanged
+        If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("orc", cmbOrc)
     End Sub
 
     Private Sub cmbHuman_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbHuman.SelectedIndexChanged
+        If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("human", cmbHuman)
     End Sub
 
@@ -6451,7 +6520,7 @@ Public Class Form1
             p.AIControlled = False
         End If
 
-        Debug.WriteLine($"[ASSIGN] {p.Race} set to {(If(p.AIControlled, "AI", p.Nickname))}")
+        'Debug.WriteLine($"[ASSIGN] {p.Race} set to {(If(p.AIControlled, "AI", p.Nickname))}")
     End Sub
 
     Private Sub RefreshArmyOrdersGrid()
@@ -6751,7 +6820,7 @@ Public Class Form1
                     End If
 
                     a.Name = formattedName
-                    System.Diagnostics.Debug.WriteLine($"[INSTANT RENAME] {p.Race} army renamed to '{a.Name}'")
+                    'System.Diagnostics.Debug.WriteLine($"[INSTANT RENAME] {p.Race} army renamed to '{a.Name}'")
                     ' grid.Rows(e.RowIndex).Cells("colArmy").Style.BackColor = Color.LightGreen
                 End If
 
