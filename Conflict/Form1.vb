@@ -116,6 +116,7 @@ Imports System.Drawing.Printing
 Imports System.IO
 Imports System.Linq
 Imports System.Reflection
+Imports Microsoft.VisualBasic.FileIO
 Imports Newtonsoft.Json
 
 Public Class Form1
@@ -191,7 +192,7 @@ Public Class Form1
         Public Property Amount As String        ' e.g. "MAX" or "250"  (new)
     End Class
 
-    Private Class ArmyListItem
+    Public Class ArmyListItem
         Public Property Display As String
         Public Property Index As Integer
         Public Overrides Function ToString() As String
@@ -352,7 +353,7 @@ Public Class Form1
         Public Property Description As String     ' optional for UI
     End Class
 
-    Private ReadOnly SummonerDefinitions As New List(Of SummonerInfo) From {
+    Public ReadOnly SummonerDefinitions As New List(Of SummonerInfo) From {
         New SummonerInfo With {.Name = "Druid", .AllowedRace = "Elf", .RosterKey = "Druid"},
         New SummonerInfo With {.Name = "Centaur Warchief", .AllowedRace = "Elf", .RosterKey = "Centaur Warchief"},
         New SummonerInfo With {.Name = "Archdruid", .AllowedRace = "Elf", .RosterKey = "Archdruid"},
@@ -748,8 +749,8 @@ Public Class Form1
         Public Property HumanSlaves As Integer = 0
         Public Property IsEliminated As Boolean = False
         Public Property TargetArmyForMercs As Army
-
-
+        Public Property Investments As Integer = 0
+        Public Property PendingInvestment As Integer = 0 ' gold being spent this turn on new investments
         Public Sub New()
             ' required for JSON deserialization
         End Sub
@@ -2116,7 +2117,7 @@ Public Class Form1
                             Select Case moveCommand
                             ' === Recruit command ===
                                 Case "RECRUIT"
-                                    Debug.WriteLine($"[RECRUIT DEBUG] Player={p.Race}, Army={a.Name}, Param='{cmdToRun.Parameter}', Amt='{cmdToRun.Amount}'")
+                                    'Debug.WriteLine($"[RECRUIT DEBUG] Player={p.Race}, Army={a.Name}, Param='{cmdToRun.Parameter}', Amt='{cmdToRun.Amount}'")
 
                                     Dim unitShort As String = If(cmdToRun.Parameter, "").Trim().ToLowerInvariant()
                                     Dim amtRaw As String = If(cmdToRun.Amount, "").Trim().ToUpperInvariant()
@@ -2130,11 +2131,11 @@ Public Class Form1
                                     Next
                                     If ru Is Nothing Then Exit Select
 
-                                    Debug.WriteLine($"[RECRUIT DEBUG] Searching {ru.Units.Count} units for race {ru.RaceName}")
+                                    'Debug.WriteLine($"[RECRUIT DEBUG] Searching {ru.Units.Count} units for race {ru.RaceName}")
                                     For Each u In ru.Units
-                                        Debug.WriteLine($"    Checking sn='{u.ShortName}', name='{u.Name}'")
+                                        'Debug.WriteLine($"    Checking sn='{u.ShortName}', name='{u.Name}'")
                                     Next
-                                    Debug.WriteLine($"[RECRUIT DEBUG] Done searching.")
+                                    'Debug.WriteLine($"[RECRUIT DEBUG] Done searching.")
 
 
                                     Dim tmpl As UnitStats = Nothing
@@ -2309,16 +2310,17 @@ Public Class Form1
 
         If army Is Nothing OrElse player Is Nothing OrElse unitTemplate Is Nothing Then Exit Sub
 
-        ' --- 1. Determine how many to recruit ---
         Dim recruitAmount As Integer
 
+        ' Always calculate the 5% population cap first
+        Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05)))
+
         If requestedAmount > 0 Then
-            ' Player specified a number manually
-            recruitAmount = Math.Min(requestedAmount, player.Population)
+            ' Player manually entered a number — must respect 5% population cap
+            recruitAmount = Math.Min(requestedAmount, maxPerTurn)
         Else
-            ' AI or "MAX" order: use 5% population rule
-            Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05)))
-            recruitAmount = Math.Min(maxPerTurn, player.Population)
+            ' AI or "MAX" order
+            recruitAmount = maxPerTurn
         End If
 
         ' --- 2. Parse cost string robustly: supports "I:2, W:1, M:1, X:1" and textual fallbacks ---
@@ -3231,12 +3233,28 @@ Public Class Form1
 
                 p.Wood += woodFromSlaves
                 p.Iron += ironFromSlaves
-'Debug.WriteLine($"[SLAVE OUTPUT] Orc slaves produced +{woodFromSlaves} wood, +{ironFromSlaves} iron, +{foodFromSlaves} food.")
+                'Debug.WriteLine($"[SLAVE OUTPUT] Orc slaves produced +{woodFromSlaves} wood, +{ironFromSlaves} iron, +{foodFromSlaves} food.")
             End If
 
-            ' === Gold from population ===
+            ' --- Apply investments ---
+            If p.PendingInvestment > 0 AndAlso p.Gold >= p.PendingInvestment Then
+                Dim blocks As Integer = p.PendingInvestment \ 1000
+                p.Investments += blocks
+                p.Gold -= p.PendingInvestment
+                p.PendingInvestment = 0
+            End If
+
+            ' === 1. Normal income from population ===
             p.GoldCollectedThisTurn = p.Population \ 10
+
+            ' === 2. Add income from previous investments ===
+            If p.Investments > 0 Then
+                p.GoldCollectedThisTurn += (p.Investments * 100)
+            End If
+
+            ' === 3. Apply total to player's gold ===
             p.Gold += p.GoldCollectedThisTurn
+
 
             ' === Debug output ===
             'Debug.WriteLine($"[RESOURCE] {p.Race}: +{p.FoodCollectedThisTurn} food, +{p.WoodCollectedThisTurn} wood, +{p.IronCollectedThisTurn} iron, +{p.MountsCollectedThisTurn} mounts, +{p.MithrilCollectedThisTurn} mithril (tiles={ownedSquares})")
@@ -3436,10 +3454,12 @@ Public Class Form1
         ' BEFORE ANYTHING THIS TURN
         RecomputeEliminationForAllPlayers()
 
-        Dim orders As List(Of ArmyOrder) = GetArmyOrders() ' Apply orders from UI
-        ApplyOrdersToArmies(orders) ' Apply orders
+        Dim orders As List(Of ArmyOrder) = GetArmyOrders() '  Apply orders from players, from UI
+        ApplyOrdersToArmies(orders) ' Apply orders from players, from UI
+        ApplyInvestmentPurchases() ' Apply orders from players, from UI
+        ApplyMercBids() '  Apply orders from players, from UI
 
-        ApplyMercBids()
+        ' Resolve bidding on mercenaries
         ResolveBiddingPhase()
 
         ' --- 1. Collect resources for all players ---
@@ -3519,7 +3539,7 @@ Public Class Form1
         End If
 
         Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
-        'Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
+        Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
     End Sub
 
 
@@ -3762,14 +3782,14 @@ Public Class Form1
 
                 For x As Integer = 0 To mapSize - 1
                     Dim xNumPos As Single = xOffset + x * tileSize + tileSize / 2
-                    g.DrawString((x + 1).ToString(), font, brush, xNumPos, yOffset - 12, New StringFormat() With {.Alignment = StringAlignment.Center})
-                    g.DrawString((x + 1).ToString(), font, brush, xNumPos, yOffset + totalMapHeight + 2, New StringFormat() With {.Alignment = StringAlignment.Center})
+                    g.DrawString((x).ToString(), font, brush, xNumPos, yOffset - 12, New StringFormat() With {.Alignment = StringAlignment.Center})
+                    g.DrawString((x).ToString(), font, brush, xNumPos, yOffset + totalMapHeight + 2, New StringFormat() With {.Alignment = StringAlignment.Center})
                 Next
 
                 For y As Integer = 0 To mapSize - 1
                     Dim yNumPos As Single = yOffset + y * tileSize + tileSize / 2
-                    g.DrawString((y + 1).ToString(), font, brush, leftOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
-                    g.DrawString((y + 1).ToString(), font, brush, rightOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
+                    g.DrawString((y).ToString(), font, brush, leftOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
+                    g.DrawString((y).ToString(), font, brush, rightOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
                 Next
             End Using
         End Using
@@ -3905,7 +3925,6 @@ Public Class Form1
         Return prefix & suffix
     End Function
 
-
     Public Sub ResolveCombat()
         Dim armiesAlreadyInBattle As New HashSet(Of Army)()
         Dim processedLocations As New HashSet(Of Point)()
@@ -3949,6 +3968,9 @@ Public Class Form1
                             End If
                         Next
                     Next
+
+                    ' Debug line to confirm how many armies are found at this tile
+                    Console.WriteLine($"[COMBAT] Tile {pt.X},{pt.Y} has {allArmiesHere.Count} armies engaged.")
 
                     ' Need at least 2 distinct sides
                     Dim distinctPlayers As New HashSet(Of String)(
@@ -4106,7 +4128,6 @@ Public Class Form1
                     Next
 
                     ' --- Report ---
-                    'rtbInfo.Clear()
                     Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot)
                     rtbInfo.AppendText(compactReport)
 
@@ -4118,8 +4139,7 @@ Public Class Form1
                     ' Do NOT recompute eliminations here; queue them and apply after loops
                     ' (prevents collection mutation mid-enumeration)
 
-                    ' Done with this hotspot
-                    Exit For
+                    ' *** Removed "Exit For" to allow all armies on same tile to be processed ***
                 Next
             Next
         Next
@@ -5513,8 +5533,8 @@ Public Class Form1
         ' === Debug: where it went and what it was ===
         Dim armyIndex As Integer = winner.Armies.IndexOf(target)
         If armyIndex < 0 Then armyIndex = 0
-        'Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
-        'Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
+        Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
+        Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
 
         ' Cleanup selection for next turn
         winner.TargetArmyForMercs = Nothing
@@ -5642,6 +5662,8 @@ Public Class Form1
         ' === 1. Validate offer ===
         If CurrentMercOffer Is Nothing OrElse CurrentMercOffer.Units.Count = 0 Then Exit Sub
 
+
+
         ' === 2. Handle no bids ===
         If bids Is Nothing OrElse bids.Count = 0 Then
             'Debug.WriteLine("No bids received; mercenary offer dismissed.")
@@ -5712,7 +5734,7 @@ Public Class Form1
                     If CanAffordMercenaries(p, CurrentMercOffer) Then
                         bids(p) = p.CurrentBid
                     Else
-                        'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
+                        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
                     End If
                 End If
             Next
@@ -6224,20 +6246,8 @@ Public Class Form1
 #End Region
     ' === Army Orders System =====================================
 
-    ' Directions only (no "Stay")
-    Private ReadOnly moveChoicesCommon As List(Of String) =
-    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW"}
-
-    ' Directions + special RECRUIT for Move5
-    Private ReadOnly moveChoicesSpecial As List(Of String) =
-    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT"}
-    Private Function IsMoveComboColumn(col As DataGridViewColumn) As Boolean
-        If col Is Nothing OrElse Not TypeOf col Is DataGridViewComboBoxColumn Then Return False
-        Dim n As String = col.Name
-        Return n = "Move1" OrElse n = "Move2" OrElse n = "Move3" OrElse n = "Move4" OrElse n = "Move5"
-    End Function
-
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        CurrentForm = Me
         InitialiseSummonerNames(SummonerDefinitions)
         LoadMonsterDescriptions()
         LoadCustomerGrid()
@@ -6249,241 +6259,7 @@ Public Class Form1
     End Sub
 
 
-    ' ----------------------------------------------------------------
-    ' Populate the orders grid from current Players and their Armies
-    ' ----------------------------------------------------------------
-    Private Sub PopulateArmyOrdersGrid()
-        dgvOrders.Rows.Clear()
-
-        For Each p In Players
-            If p Is Nothing OrElse p.IsEliminated Then Continue For
-
-            For Each a In p.Armies
-                If a Is Nothing Then Continue For
-
-                Dim idx As Integer = dgvOrders.Rows.Add()
-                Dim row As DataGridViewRow = dgvOrders.Rows(idx)
-                row.Cells("colPlayer").Value = p.Race
-                row.Cells("colArmy").Value = a.Name
-            Next
-        Next
-    End Sub
-
-
-    ' ----------------------------------------------------------------
-    ' Extract typed orders from the grid (handles RECRUIT on move 5)
-    ' ----------------------------------------------------------------
-    Private Function GetArmyOrders() As List(Of ArmyOrder)
-        Dim orders As New List(Of ArmyOrder)()
-        'Debug.WriteLine("=== Building orders from grid ===")
-
-        For Each row As DataGridViewRow In dgvOrders.Rows
-            If row Is Nothing OrElse row.IsNewRow Then Continue For
-
-            Dim order As New ArmyOrder()
-            order.Player = If(row.Cells("colPlayer").Value, "").ToString().Trim()
-            order.ArmyName = If(row.Cells("colArmy").Value, "").ToString().Trim()
-
-            Dim moves As New List(Of String)()
-
-            ' === Moves 1..4 ===
-            For i As Integer = 1 To 4
-                Dim mv As String = If(row.Cells("Move" & i).Value, "").ToString().Trim()
-                If mv <> "" Then moves.Add(mv)
-            Next
-
-            ' === Move 5 or Recruit ===
-            Dim move5 As String = If(row.Cells("Move5").Value, "").ToString().Trim()
-            Dim unitKey As String = ""
-            Dim amt As String = ""
-
-            If dgvOrders.Columns.Contains("colRecruitUnit") Then
-                unitKey = If(row.Cells("colRecruitUnit").Value, "").ToString().Trim()
-            End If
-            If dgvOrders.Columns.Contains("colRecruitAmount") Then
-                amt = If(row.Cells("colRecruitAmount").Value, "").ToString().Trim()
-            End If
-
-            'Debug.WriteLine($"Row: {order.ArmyName}  Move5='{move5}'  UnitKey='{unitKey}'  Amt='{amt}'")
-
-            ' --- Normalise ghost/default values ---
-            If amt.Equals("MAX", StringComparison.OrdinalIgnoreCase) OrElse amt = "0" Then amt = ""
-            If unitKey = "-" OrElse unitKey = "(none)" Then unitKey = ""
-
-            ' --- FIX: combine "RECRUIT" from Move5 with recruit fields ---
-            If move5.ToUpperInvariant() = "RECRUIT" AndAlso (unitKey <> "" OrElse amt <> "") Then
-                If amt = "" Then amt = "MAX"
-                moves.Add($"RECRUIT {unitKey} {amt}")
-                Debug.WriteLine($"  Combined RECRUIT from Move5 + boxes → RECRUIT {unitKey} {amt}")
-            ElseIf move5 <> "" Then
-                moves.Add(move5)
-                Debug.WriteLine($"  Added MOVE: {move5}")
-            ElseIf unitKey <> "" AndAlso amt <> "" Then
-                moves.Add($"RECRUIT {unitKey} {amt}")
-                Debug.WriteLine($"  Added RECRUIT (no Move5) → RECRUIT {unitKey} {amt}")
-            End If
-
-            order.Moves = moves
-            orders.Add(order)
-            'Debug.WriteLine($"  Final orders: {String.Join(", ", moves)}")
-        Next
-
-        'Debug.WriteLine("=== Done building orders ===")
-        Return orders
-    End Function
-
-
-
-    ' ----------------------------------------------------------------
-    ' Assign MoveQueue to each Army
-    ' ----------------------------------------------------------------
-    Private Sub ApplyOrdersToArmies(orders As List(Of ArmyOrder))
-        If Players Is Nothing OrElse orders Is Nothing Then Exit Sub
-
-        For Each order In orders
-            Dim p As Player = Players.FirstOrDefault(Function(pl) pl.Race.Equals(order.Player, StringComparison.OrdinalIgnoreCase))
-            If p Is Nothing Then Continue For
-            If p.Armies Is Nothing OrElse p.Armies.Count = 0 Then Continue For
-
-            Dim a As Army = Nothing
-
-            ' Try to find army by its current name
-            a = p.Armies.FirstOrDefault(Function(ar)
-                                            Return Not String.IsNullOrEmpty(ar.Name) AndAlso
-                                               ar.Name.Equals(order.ArmyName, StringComparison.OrdinalIgnoreCase)
-                                        End Function)
-
-            ' If not found (e.g. renamed), fall back to matching by index
-            If a Is Nothing Then
-                Dim index As Integer = orders.IndexOf(order)
-                If index >= 0 AndAlso index < p.Armies.Count Then
-                    a = p.Armies(index)
-                End If
-            End If
-
-            If a Is Nothing Then Continue For
-
-            ' === Handle army renaming ===
-            If Not String.IsNullOrWhiteSpace(order.ArmyName) AndAlso
-           Not a.Name.Equals(order.ArmyName, StringComparison.OrdinalIgnoreCase) Then
-                Dim newName As String = StrConv(order.ArmyName.Trim(), VbStrConv.ProperCase)
-                a.Name = newName
-            End If
-
-            ' === Clear and apply movement/special orders ===
-            If a.MoveQueue Is Nothing Then a.MoveQueue = New List(Of ArmyCommand)
-            a.MoveQueue.Clear()
-
-            If order.Moves IsNot Nothing Then
-                For i As Integer = 0 To order.Moves.Count - 1
-                    Dim raw As String = If(order.Moves(i), "").Trim()
-                    If raw = "" Then Continue For
-
-                    Debug.WriteLine($"[DEBUG RAW LINE] i={i}, Raw='{raw}'")
-                    Dim parts As String() = raw.Split(New Char() {" "c, ","c, ";"c}, StringSplitOptions.RemoveEmptyEntries)
-                    Debug.WriteLine($"[DEBUG PARTS] count={parts.Length}, contents={String.Join("|", parts)}")
-
-                    Dim cmd As String = parts(0).ToUpperInvariant()
-                    Dim ac As New ArmyCommand With {.Command = cmd, .Parameter = "", .Amount = ""}
-
-                    ' Handle RECRUIT command regardless of position
-                    If cmd = "RECRUIT" Then
-                        If parts.Length >= 2 Then ac.Parameter = parts(1)   ' shortname
-                        If parts.Length >= 3 Then ac.Amount = parts(2)      ' number or MAX
-                    Else
-                        ' For movement or other commands, optional parameter
-                        If parts.Length > 1 Then ac.Parameter = parts(1)
-                    End If
-
-                    a.MoveQueue.Add(ac)
-                Next
-            End If
-        Next
-    End Sub
-
-
-    Private Sub InitialiseMoveColumns()
-        For Each col As DataGridViewColumn In dgvOrders.Columns
-            If Not IsMoveComboColumn(col) Then Continue For
-
-            Dim comboCol As DataGridViewComboBoxColumn = DirectCast(col, DataGridViewComboBoxColumn)
-            comboCol.Items.Clear()
-
-            If col.Name = "Move5" Then
-                comboCol.Items.AddRange(moveChoicesSpecial.ToArray())
-            Else
-                comboCol.Items.AddRange(moveChoicesCommon.ToArray())
-            End If
-
-            comboCol.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
-            comboCol.FlatStyle = FlatStyle.Standard
-            comboCol.Sorted = False
-        Next
-    End Sub
-
-
-    Private Sub FinaliseMoveColumns()
-        For Each col As DataGridViewColumn In dgvOrders.Columns
-            If Not IsMoveComboColumn(col) Then Continue For
-
-            Dim comboCol = DirectCast(col, DataGridViewComboBoxColumn)
-            comboCol.DataSource = Nothing
-            comboCol.Sorted = False
-
-            If col.Name = "Move5" Then
-                comboCol.DataSource = New List(Of String)(moveChoicesSpecial) ' clone
-            Else
-                comboCol.DataSource = New List(Of String)(moveChoicesCommon)  ' clone
-            End If
-        Next
-
-        ' Optional: scrub any existing "Stay" values from already-populated cells
-        For Each row As DataGridViewRow In dgvOrders.Rows
-            If row.IsNewRow Then Continue For
-            For i = 1 To 5
-                Dim cell = row.Cells("Move" & i)
-                If cell IsNot Nothing Then
-                    Dim v As String = If(cell.Value, "").ToString()
-                    If v.Equals("Stay", StringComparison.OrdinalIgnoreCase) Then
-                        cell.Value = Nothing ' blank is treated as no move
-                    End If
-                End If
-            Next
-        Next
-    End Sub
-
-
-    Private Sub EnableMoveColumns()
-        With dgvOrders
-            .EditMode = DataGridViewEditMode.EditOnEnter
-            .AutoGenerateColumns = False
-            .AllowUserToAddRows = False
-        End With
-
-        For Each col As DataGridViewColumn In dgvOrders.Columns
-            If Not IsMoveComboColumn(col) Then Continue For
-            Dim c = DirectCast(col, DataGridViewComboBoxColumn)
-            c.ReadOnly = False
-            c.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton
-            c.FlatStyle = FlatStyle.Standard
-        Next
-    End Sub
-
-
-
-    ' ----------------------------------------------------------------
-    ' Support class for reading orders from the grid
-    ' ----------------------------------------------------------------
-    Public Class ArmyOrder
-        Public Property Player As String
-        Public Property ArmyName As String
-        Public Property Moves As List(Of String)
-    End Class
-
-    ' ============================================================
-    ' === Player Assignment Change Handlers ======================
-    ' ============================================================
-
+#Region "=== UI Events ===="
     Private Sub cmbElf_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbElf.SelectedIndexChanged
         If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("elf", cmbElf)
@@ -6503,169 +6279,6 @@ Public Class Form1
         If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("human", cmbHuman)
     End Sub
-
-    Private Sub UpdatePlayerAssignment(race As String, combo As ComboBox)
-        If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub
-
-        Dim p As Player = Players.FirstOrDefault(Function(pl) pl.Race.Equals(race, StringComparison.OrdinalIgnoreCase))
-        If p Is Nothing Then Exit Sub
-
-        Dim sel As String = If(combo.SelectedItem?.ToString(), "").Trim()
-
-        If String.IsNullOrEmpty(sel) OrElse sel.Equals("AI", StringComparison.OrdinalIgnoreCase) Then
-            p.Nickname = ""
-            p.AIControlled = True
-        Else
-            p.Nickname = sel
-            p.AIControlled = False
-        End If
-
-        'Debug.WriteLine($"[ASSIGN] {p.Race} set to {(If(p.AIControlled, "AI", p.Nickname))}")
-    End Sub
-
-    Private Sub RefreshArmyOrdersGrid()
-        If Players Is Nothing OrElse Players.Count = 0 Then
-            dgvOrders.Rows.Clear()
-            Return
-        End If
-
-        PopulateArmyOrdersGrid()    ' repopulate all armies
-        InitialiseMoveColumns()     ' refill directions
-        dgvOrders.AllowUserToAddRows = False
-        dgvOrders.EditMode = DataGridViewEditMode.EditOnEnter
-        RefreshBuySummonerControls()
-        RefreshMercBidControls()
-    End Sub
-
-    Private Sub RefreshMercBidControls()
-        If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub
-
-        For Each p In Players
-            If p Is Nothing OrElse p.IsEliminated Then Continue For
-
-            Dim race As String = p.Race.ToLowerInvariant()
-            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
-
-            ' === Reset numeric box ===
-            Dim numBox = TryCast(Me.Controls("numMercBid" & suffix), NumericUpDown)
-            If numBox IsNot Nothing Then numBox.Value = 0
-
-            ' === Populate target army combo ===
-            Dim cmbArmy = TryCast(Me.Controls("cmbArmy" & suffix & "Merc"), ComboBox)
-            If cmbArmy Is Nothing Then Continue For
-
-            cmbArmy.Items.Clear()
-            For i As Integer = 0 To p.Armies.Count - 1
-                Dim a = p.Armies(i)
-                If a IsNot Nothing Then
-                    Dim item As New ArmyListItem With {
-                    .Display = $"{i + 1} - {a.Name}",
-                    .Index = i
-                }
-                    cmbArmy.Items.Add(item)
-                End If
-            Next
-
-            cmbArmy.SelectedIndex = -1
-        Next
-    End Sub
-
-
-    Private Sub RefreshBuySummonerControls()
-        If Players Is Nothing OrElse Players.Count = 0 Then Exit Sub
-
-        For Each p In Players
-            If p Is Nothing OrElse p.IsEliminated Then Continue For
-
-            Dim race As String = p.Race.ToLowerInvariant()
-
-            ' --- Build the control name suffix (Elf, Dwarf, Orc, Human) ---
-            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
-
-            ' --- Find the combo boxes dynamically by name ---
-            Dim cmbSummoner = TryCast(Me.Controls("cmbSummoner" & suffix), ComboBox)
-            Dim cmbArmy = TryCast(Me.Controls("cmbArmy" & suffix), ComboBox)
-
-            If cmbSummoner Is Nothing OrElse cmbArmy Is Nothing Then Continue For
-
-            ' === Fill Summoner Type Combo ===
-            cmbSummoner.Items.Clear()
-            Dim list As List(Of String) = GetSummonerListForRace(race)
-            If list IsNot Nothing Then cmbSummoner.Items.AddRange(list.ToArray())
-
-            ' === Fill Army Combo ===
-            cmbArmy.Items.Clear()
-            For i As Integer = 0 To p.Armies.Count - 1
-                Dim a = p.Armies(i)
-                If a IsNot Nothing Then
-                    Dim item As New ArmyListItem With {
-                        .Display = $"{i + 1} - {a.Name}",
-                        .Index = i
-                    }
-                    cmbArmy.Items.Add(item)
-                End If
-            Next
-
-        Next
-    End Sub
-
-    Private Function GetSummonerListForRace(race As String) As List(Of String)
-        Dim list As New List(Of String)
-
-        For Each s In SummonerDefinitions
-            If s IsNot Nothing AndAlso s.AllowedRace.Equals(race, StringComparison.OrdinalIgnoreCase) Then
-                list.Add(s.Name)
-            End If
-        Next
-
-        Return list
-    End Function
-
-
-
-
-    ' ===== UI helpers =====
-    Private Class UnitOption
-        Public Property Display As String      ' "Light Ironfoot / Light Infantry"
-        Public Property ShortName As String    ' "li"
-    End Class
-
-    Private Function UnitTypeToDisplay(t As UnitType) As String
-        ' Matches your Unit.Type names
-        Return t.ToString().Replace("_"c, " "c)
-    End Function
-
-    Private Function SanitizeShort(name As String) As String
-        If String.IsNullOrWhiteSpace(name) Then Return ""
-        Dim sb As New System.Text.StringBuilder()
-        For Each ch In name.ToLowerInvariant()
-            If Char.IsLetterOrDigit(ch) Then sb.Append(ch)
-        Next
-        Return sb.ToString()
-    End Function
-
-    Private Function BuildUnitOptionsForRace(race As String) As List(Of UnitOption)
-        Dim opts As New List(Of UnitOption)
-        If String.IsNullOrWhiteSpace(race) Then Return opts
-
-        Dim ru As RaceUnits = Nothing
-        For Each r In AllRaces
-            If r IsNot Nothing AndAlso r.RaceName.Equals(race, StringComparison.OrdinalIgnoreCase) Then
-                ru = r : Exit For
-            End If
-        Next
-        If ru Is Nothing OrElse ru.Units Is Nothing Then Return opts
-
-        For Each u In ru.Units
-            If u Is Nothing Then Continue For
-            Dim sn As String = If(String.IsNullOrWhiteSpace(u.ShortName), SanitizeShort(u.Name), u.ShortName)
-            opts.Add(New UnitOption With {
-            .Display = $"{u.Name} / {UnitTypeToDisplay(u.Type)}",
-            .ShortName = sn
-        })
-        Next
-        Return opts
-    End Function
 
     ' One handler to do both jobs
     Private Sub dgvOrders_CellEnter(sender As Object, e As DataGridViewCellEventArgs) _
@@ -6829,5 +6442,8 @@ Public Class Form1
 
         End Select
     End Sub
+
+
+#End Region
 
 End Class

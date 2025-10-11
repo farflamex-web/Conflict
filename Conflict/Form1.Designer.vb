@@ -80,6 +80,12 @@ Partial Class Form1
         cmbArmyDwarfMerc = New ComboBox()
         cmbArmyOrcMerc = New ComboBox()
         cmbArmyHumanMerc = New ComboBox()
+        lblInvestments = New Label()
+        numInvestElf = New NumericUpDown()
+        numInvestDwarf = New NumericUpDown()
+        numInvestOrc = New NumericUpDown()
+        numInvestHuman = New NumericUpDown()
+        txtMercOfferDetails = New TextBox()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -87,6 +93,10 @@ Partial Class Form1
         CType(numMercBidDwarf, ComponentModel.ISupportInitialize).BeginInit()
         CType(numMercBidOrc, ComponentModel.ISupportInitialize).BeginInit()
         CType(numMercBidHuman, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numInvestElf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numInvestDwarf, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numInvestOrc, ComponentModel.ISupportInitialize).BeginInit()
+        CType(numInvestHuman, ComponentModel.ISupportInitialize).BeginInit()
         SuspendLayout()
         ' 
         ' btnPrint
@@ -599,11 +609,78 @@ Partial Class Form1
         cmbArmyHumanMerc.Size = New Size(121, 23)
         cmbArmyHumanMerc.TabIndex = 42
         ' 
+        ' lblInvestments
+        ' 
+        lblInvestments.AutoSize = True
+        lblInvestments.Location = New Point(1503, 799)
+        lblInvestments.Name = "lblInvestments"
+        lblInvestments.Size = New Size(71, 15)
+        lblInvestments.TabIndex = 43
+        lblInvestments.Text = "Investments"
+        ' 
+        ' numInvestElf
+        ' 
+        numInvestElf.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
+        numInvestElf.Location = New Point(1481, 818)
+        numInvestElf.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
+        numInvestElf.Name = "numInvestElf"
+        numInvestElf.Size = New Size(120, 23)
+        numInvestElf.TabIndex = 44
+        numInvestElf.TextAlign = HorizontalAlignment.Right
+        numInvestElf.ThousandsSeparator = True
+        ' 
+        ' numInvestDwarf
+        ' 
+        numInvestDwarf.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
+        numInvestDwarf.Location = New Point(1481, 842)
+        numInvestDwarf.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
+        numInvestDwarf.Name = "numInvestDwarf"
+        numInvestDwarf.Size = New Size(120, 23)
+        numInvestDwarf.TabIndex = 45
+        numInvestDwarf.TextAlign = HorizontalAlignment.Right
+        numInvestDwarf.ThousandsSeparator = True
+        ' 
+        ' numInvestOrc
+        ' 
+        numInvestOrc.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
+        numInvestOrc.Location = New Point(1481, 868)
+        numInvestOrc.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
+        numInvestOrc.Name = "numInvestOrc"
+        numInvestOrc.Size = New Size(120, 23)
+        numInvestOrc.TabIndex = 46
+        numInvestOrc.TextAlign = HorizontalAlignment.Right
+        numInvestOrc.ThousandsSeparator = True
+        ' 
+        ' numInvestHuman
+        ' 
+        numInvestHuman.Increment = New Decimal(New Integer() {1000, 0, 0, 0})
+        numInvestHuman.Location = New Point(1481, 895)
+        numInvestHuman.Maximum = New Decimal(New Integer() {1000000, 0, 0, 0})
+        numInvestHuman.Name = "numInvestHuman"
+        numInvestHuman.Size = New Size(120, 23)
+        numInvestHuman.TabIndex = 47
+        numInvestHuman.TextAlign = HorizontalAlignment.Right
+        numInvestHuman.ThousandsSeparator = True
+        ' 
+        ' txtMercOfferDetails
+        ' 
+        txtMercOfferDetails.Location = New Point(107, 869)
+        txtMercOfferDetails.Multiline = True
+        txtMercOfferDetails.Name = "txtMercOfferDetails"
+        txtMercOfferDetails.Size = New Size(299, 90)
+        txtMercOfferDetails.TabIndex = 48
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(txtMercOfferDetails)
+        Controls.Add(numInvestHuman)
+        Controls.Add(numInvestOrc)
+        Controls.Add(numInvestDwarf)
+        Controls.Add(numInvestElf)
+        Controls.Add(lblInvestments)
         Controls.Add(cmbArmyHumanMerc)
         Controls.Add(cmbArmyOrcMerc)
         Controls.Add(cmbArmyDwarfMerc)
@@ -654,6 +731,10 @@ Partial Class Form1
         CType(numMercBidDwarf, ComponentModel.ISupportInitialize).EndInit()
         CType(numMercBidOrc, ComponentModel.ISupportInitialize).EndInit()
         CType(numMercBidHuman, ComponentModel.ISupportInitialize).EndInit()
+        CType(numInvestElf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numInvestDwarf, ComponentModel.ISupportInitialize).EndInit()
+        CType(numInvestOrc, ComponentModel.ISupportInitialize).EndInit()
+        CType(numInvestHuman, ComponentModel.ISupportInitialize).EndInit()
         ResumeLayout(False)
         PerformLayout()
     End Sub
@@ -716,5 +797,11 @@ Partial Class Form1
     Friend WithEvents cmbArmyDwarfMerc As ComboBox
     Friend WithEvents cmbArmyOrcMerc As ComboBox
     Friend WithEvents cmbArmyHumanMerc As ComboBox
+    Friend WithEvents lblInvestments As Label
+    Friend WithEvents numInvestElf As NumericUpDown
+    Friend WithEvents numInvestDwarf As NumericUpDown
+    Friend WithEvents numInvestOrc As NumericUpDown
+    Friend WithEvents numInvestHuman As NumericUpDown
+    Friend WithEvents txtMercOfferDetails As TextBox
 
 End Class
