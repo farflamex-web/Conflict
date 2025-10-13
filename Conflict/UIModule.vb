@@ -207,7 +207,7 @@ Module UIModule
 
     ' Directions + special RECRUIT for Move5
     Public ReadOnly moveChoicesSpecial As List(Of String) =
-    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT"}
+    New List(Of String) From {"", "N", "NE", "E", "SE", "S", "SW", "W", "NW", "RECRUIT", "TRAIN"}
 
 
 

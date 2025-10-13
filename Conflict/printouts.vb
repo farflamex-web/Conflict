@@ -16,7 +16,7 @@ Imports System.Drawing.Printing
 
 Module Printouts
 
-    Private printDoc As PrintDocument
+    Public printDoc As PrintDocument
 
     Public terrainCache As New Dictionary(Of String, Image)
 
@@ -52,20 +52,9 @@ Module Printouts
         AddHandler printDoc.PrintPage, AddressOf printDoc_PrintPage
     End Sub
 
-    ' ------------------------------------------------------------
-    ' Entry point for generating reports for all non-AI players
-    ' ------------------------------------------------------------
-    Public Sub GenerateAllPlayerReports()
-        If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
+    Public Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
+        Debug.WriteLine("[PRINT] printDoc_PrintPage fired.")
 
-        For Each p In CurrentForm.Players
-            If p Is Nothing OrElse p.IsEliminated OrElse p.AIControlled Then Continue For
-            GenerateSinglePlayerReport(p)
-        Next
-    End Sub
-
-
-    Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
 
@@ -109,11 +98,11 @@ Module Printouts
     End Sub
 
     Public Sub DrawMap(g As Graphics,
-                    Optional width As Single = -1,
-                    Optional height As Single = -1,
-                    Optional isPanel As Boolean = True,
-                    Optional e As PrintPageEventArgs = Nothing,
-                    Optional topOffset As Single = 0)
+                   Optional width As Single = -1,
+                   Optional height As Single = -1,
+                   Optional isPanel As Boolean = True,
+                   Optional e As PrintPageEventArgs = Nothing,
+                   Optional topOffset As Single = 0)
 
         ' === Validate references ===
         If CurrentForm Is Nothing Then Exit Sub
@@ -143,12 +132,19 @@ Module Printouts
         Dim yOffset As Single
 
         If isPanel Then
+            ' PANEL RENDERING (unchanged)
             xOffset = numberMargin + (width - 2 * numberMargin - totalMapWidth) / 2
             yOffset = numberMargin + (height - 2 * numberMargin - totalMapHeight) / 2 + topOffset
             g.Clear(Color.White)
         Else
-            xOffset = e.PageBounds.Left + (e.PageBounds.Width - totalMapWidth) / 2
-            yOffset = e.PageBounds.Top + topOffset
+            ' PRINT / EXPORT RENDERING
+            ' Safe guards for e = Nothing (e.g. HTML export)
+            Dim pageLeft As Single = If(e IsNot Nothing, e.PageBounds.Left, 0)
+            Dim pageTop As Single = If(e IsNot Nothing, e.PageBounds.Top, 0)
+            Dim pageWidth As Single = If(e IsNot Nothing, e.PageBounds.Width, width)
+            xOffset = pageLeft + (pageWidth - totalMapWidth) / 2
+            yOffset = pageTop + topOffset
+            ' Do NOT clear for print/export; caller handles background
         End If
 
         ' --- Draw terrain and ownership ---
@@ -327,45 +323,111 @@ Module Printouts
         End Using
     End Sub
 
+    ' ------------------------------------------------------------
+    '  Generate HTML turn reports for all active (non-AI) players
+    ' ------------------------------------------------------------
+    Public Sub GenerateAllPlayerReports()
+        If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
+
+        ' === Create flat HTML folder next to Saves ===
+        Dim htmlRoot As String = Path.Combine(Application.StartupPath, "HTML")
+        If Not Directory.Exists(htmlRoot) Then Directory.CreateDirectory(htmlRoot)
+
+        Dim gameNum As Integer = CurrentForm.GameNumber
+        Dim turnNum As Integer = CurrentForm.TurnNumber
+
+        For Each p In CurrentForm.Players
+            If p Is Nothing OrElse p.IsEliminated OrElse p.AIControlled Then Continue For
+            GenerateSinglePlayerReport(p, htmlRoot, gameNum, turnNum)
+        Next
+    End Sub
 
     ' ------------------------------------------------------------
-    ' Main routine for one player: handles both print + HTML
+    '  Generate one player's HTML turn skeleton (with embedded map)
     ' ------------------------------------------------------------
-    Private Sub GenerateSinglePlayerReport(p As Player)
+    Private Sub GenerateSinglePlayerReport(p As Player, htmlRoot As String, gameNum As Integer, turnNum As Integer)
         Try
-            ' Debug feedback
-            Debug.WriteLine($"[REPORT] Generating report for {p.Nickname} ({p.Race})")
+            ' === Build file name ===
+            Dim safeNick As String = p.Nickname.ToLower().Replace(" ", "_").Replace("""", "").Replace("'", "")
+            Dim fileName As String = $"{safeNick}_game{gameNum:D3}_turn{turnNum:D3}.html"
+            Dim filePath As String = Path.Combine(htmlRoot, fileName)
 
-            ' === Prepare folder ===
-            Dim gameName As String = $"Game{CurrentForm.GameNumber:D3}"
-            Dim folder As String = Path.Combine(Application.StartupPath, "HTMLPrintouts", gameName)
-            If Not Directory.Exists(folder) Then Directory.CreateDirectory(folder)
+            ' === Generate map image ===
+            Dim base64Map As String = GetMapImageBase64(p, gameNum, turnNum)
 
-            ' === Construct file name ===
-            Dim turnNum As Integer = CurrentForm.TurnNumber
-            Dim safeNick As String = p.Nickname.ToLower().Replace(" ", "_")
-            Dim fileName As String = $"{safeNick}_{gameName.ToLower()}_turn{turnNum:D3}.html"
-            Dim filePath As String = Path.Combine(folder, fileName)
-
-            ' === Build HTML ===
+            ' === Basic HTML skeleton ===
             Using writer As New StreamWriter(filePath, append:=False)
-                writer.WriteLine("<html>")
-                writer.WriteLine("<head><title>" & p.Nickname & " - Turn " & turnNum & "</title></head>")
-                writer.WriteLine("<body style='font-family:Segoe UI, sans-serif;'>")
-                writer.WriteLine("<h1>" & p.Nickname & " (" & p.Race & ")</h1>")
-                writer.WriteLine("<h3>Game: " & gameName & " | Turn " & turnNum & "</h3>")
+                writer.WriteLine("<!DOCTYPE html>")
+                writer.WriteLine("<html lang='en'>")
+                writer.WriteLine("<head>")
+                writer.WriteLine($"<meta charset='UTF-8'>")
+                writer.WriteLine($"<title>Conflict Turn {turnNum} – {p.Nickname} ({p.Race})</title>")
+                writer.WriteLine("<style>")
+                writer.WriteLine("body { font-family: Segoe UI, Arial, sans-serif; background-color: #fafafa; margin: 30px; }")
+                writer.WriteLine("h1 { color: #333; } h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; }")
+                writer.WriteLine("table { border-collapse: collapse; width: 100%; margin-top: 8px; }")
+                writer.WriteLine("th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }")
+                writer.WriteLine(".section { margin-bottom: 30px; }")
+                writer.WriteLine("</style>")
+                writer.WriteLine("</head>")
+                writer.WriteLine("<body>")
+
+                writer.WriteLine($"<h1>Conflict – Turn {turnNum}</h1>")
+                writer.WriteLine($"<h2>{p.Nickname} ({p.Race})</h2>")
+                writer.WriteLine($"<p><strong>Population:</strong> {p.Population}<br>")
+                writer.WriteLine($"<strong>Gold:</strong> {p.Gold}</p>")
                 writer.WriteLine("<hr>")
-                writer.WriteLine("<p>Report generation placeholder. Sections will follow.</p>")
+
+                ' === Section skeletons ===
+                writer.WriteLine("<div class='section'><h2>Resources</h2><p>[Resource summary placeholder]</p></div>")
+
+                ' === Map section ===
+                If base64Map <> "" Then
+                    writer.WriteLine("<div class='section'><h2>Map Overview</h2>")
+                    writer.WriteLine($"<img src='data:image/png;base64,{base64Map}' alt='Map for {p.Nickname}' style='border:1px solid #999; width:600px; height:600px;'>")
+                    writer.WriteLine("</div>")
+                Else
+                    writer.WriteLine("<div class='section'><h2>Map Overview</h2><p>[Map unavailable]</p></div>")
+                End If
+
+                writer.WriteLine("<div class='section'><h2>Armies</h2><p>[Army list placeholder]</p></div>")
+                writer.WriteLine("<div class='section'><h2>Events</h2><p>[Recent events placeholder]</p></div>")
+                writer.WriteLine("<div class='section'><h2>Notes</h2><p>[Additional notes placeholder]</p></div>")
+
+                writer.WriteLine($"<p style='font-size:11px;color:#888;'>Generated automatically on {DateTime.Now:dd MMM yyyy HH:mm}</p>")
                 writer.WriteLine("</body></html>")
             End Using
 
-            ' === Printer output stub ===
-            ' Later we’ll add a PrintDocument or PDF option here using the same data.
-            Debug.WriteLine($"[REPORT] HTML saved: {filePath}")
+            Debug.WriteLine($"[HTML TURN] Created: {filePath}")
 
         Catch ex As Exception
-            Debug.WriteLine($"[REPORT ERROR] {ex.Message}")
+            Debug.WriteLine($"[HTML TURN ERROR] {p.Nickname}: {ex.Message}")
         End Try
     End Sub
+
+    Private Function GetMapImageBase64(p As Player, gameNum As Integer, turnNum As Integer) As String
+        Try
+            Const IMAGE_SIZE As Integer = 800
+
+            Using bmp As New Bitmap(IMAGE_SIZE, IMAGE_SIZE)
+                Using g As Graphics = Graphics.FromImage(bmp)
+                    g.Clear(Color.White)
+
+                    ' Draw in printer layout mode, but with e = Nothing (now handled safely)
+                    DrawMap(g, IMAGE_SIZE, IMAGE_SIZE, False, Nothing, 0)
+                End Using
+
+                Using ms As New MemoryStream()
+                    bmp.Save(ms, Imaging.ImageFormat.Png)
+                    Return Convert.ToBase64String(ms.ToArray())
+                End Using
+            End Using
+
+        Catch ex As Exception
+            Debug.WriteLine($"[HTML MAP ERROR] {ex.Message}")
+            Return ""
+        End Try
+    End Function
+
 
 End Module

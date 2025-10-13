@@ -179,7 +179,7 @@ Public Class Form1
         Public Property HasUsedSpecial As Boolean = False
         Public Property RetreatedThisTurn As Boolean = False
         Public Property Race As String
-
+        Public Property TrainingLevel As Double
         Public Sub New()
             ' required for JSON deserialization
         End Sub
@@ -343,6 +343,8 @@ Public Class Form1
         Public Property IsSummoner As Boolean
         Public Property IsHero As Boolean
         Public Property SummonerFaction As String
+        Public Property TrainingBonus As Double = 0.0    ' default 0 = untrained
+
     End Class
 
 
@@ -1601,6 +1603,16 @@ Public Class Form1
 
         ' === Mercenary Factions ===
 
+        ' === Warrior Monks ===
+        Dim warriorMonks As New RaceUnits With {
+    .RaceName = "Warrior Monks",
+    .Units = New List(Of UnitStats) From {
+        New UnitStats With {.Name = "Warrior Monk", .ShortName = "WarMon", .Power = 4, .HP = 9, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .FoodCost = 1.0, .Type = UnitType.HeavyInfantry, .TrainingBonus = 0.5}
+    }
+}
+        AllRaces.Add(warriorMonks)
+
+
         ' === Skulkrin ===
         Dim skulkrin As New RaceUnits With {
     .RaceName = "Skulkrin",
@@ -1626,9 +1638,9 @@ Public Class Form1
         Dim freeblades As New RaceUnits With {
     .RaceName = "Freeblades",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Freeblade Skirmisher", .ShortName = "FreSkr", .Power = 2, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry},
-        New UnitStats With {.Name = "Freeblade Archer", .ShortName = "FreArc", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer},
-        New UnitStats With {.Name = "Freeblade Rider", .ShortName = "FreRid", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry}
+        New UnitStats With {.Name = "Freeblade Skirmisher", .ShortName = "FreSkr", .Power = 2, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .Type = UnitType.LightInfantry, .TrainingBonus = 0.1},
+        New UnitStats With {.Name = "Freeblade Archer", .ShortName = "FreArc", .Power = 2, .HP = 5, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .FoodCost = 1, .Type = UnitType.Archer, .TrainingBonus = 0.1},
+        New UnitStats With {.Name = "Freeblade Rider", .ShortName = "FreRid", .Power = 3, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 1, .FoodCost = 1, .CanChase = True, .Type = UnitType.LightCavalry, .TrainingBonus = 0.1}
     }
 }
         AllRaces.Add(freeblades)
@@ -1637,7 +1649,7 @@ Public Class Form1
         Dim sellswords As New RaceUnits With {
     .RaceName = "Sellswords",
     .Units = New List(Of UnitStats) From {
-        New UnitStats With {.Name = "Sellsword", .ShortName = "SelSwo", .Power = 5, .HP = 8, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry}
+        New UnitStats With {.Name = "Sellsword", .ShortName = "SelSwo", .Power = 5, .HP = 8, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .FoodCost = 1, .Type = UnitType.HeavyInfantry, .TrainingBonus = 0.25}
     }
 }
         AllRaces.Add(sellswords)
@@ -1964,6 +1976,11 @@ Public Class Form1
                                         End If
                                     End If
 
+                            ' === Train command ===
+                                Case "TRAIN"
+                                    ' Army trains: gain +10% TrainingLevel
+                                    a.TrainingLevel *= 1.1
+
                             ' === Stay still ===
                                 Case "STAY"
                                 ' No action
@@ -2213,6 +2230,20 @@ Public Class Form1
         player.Wood = Math.Max(player.Wood, 0)
         player.Mounts = Math.Max(player.Mounts, 0)
         player.Mithril = Math.Max(player.Mithril, 0)
+
+        ' --- 8.5 Training dilution ---
+        Dim oldMen As Integer = army.TotalSoldiers - recruitAmount
+        Dim newMen As Integer = recruitAmount
+
+        If oldMen > 0 AndAlso newMen > 0 Then
+            Dim totalMen As Integer = oldMen + newMen
+            ' Weighted average: new recruits start at 0% training
+            army.TrainingLevel = (army.TrainingLevel * oldMen) / totalMen
+        ElseIf oldMen = 0 AndAlso newMen > 0 Then
+            ' Newly formed army starts untrained
+            army.TrainingLevel = 0
+        End If
+
 
         ' --- 9. Log outcome ---
         Dim mode As String = If(requestedAmount > 0, $"requested {requestedAmount}", "auto")
@@ -3322,6 +3353,9 @@ Public Class Form1
         RefreshArmyOrdersGrid()
 
         UpdateSeenMonstersForAllPlayers(Players)
+
+        Printouts.GenerateAllPlayerReports()
+
     End Sub
 
     Private Sub HandleNewMercenaryOffer(turnNumber As Integer)
@@ -3365,10 +3399,18 @@ Public Class Form1
 
 #Region "=== Printing: Front Page ==="
 
-    ' --- Print button ---
     Private Sub btnPrint_Click(sender As Object, e As EventArgs) Handles btnPrint.Click
-        printDoc.Print()
+        ' Make sure the printing system is ready
+        Printouts.CreateTerrainCache()
+
+        ' Use the PrintDocument that lives in the Printouts module
+        If Printouts.printDoc IsNot Nothing Then
+            Printouts.printDoc.Print()
+        Else
+            MessageBox.Show("Print document not initialised. (SetupPrinting must run first.)")
+        End If
     End Sub
+
 
 
 #End Region
@@ -3682,7 +3724,8 @@ Public Class Form1
                 Dim attackers As List(Of Unit) = activeArmies.
                                              Where(Function(a) a IsNot defArmy).
                                              SelectMany(Function(a) a.Units).ToList()
-                ApplyProportionalDamage(defArmy, attackers, phaseName, unitSnapshot, battleLog)
+                Dim attackerArmies As List(Of Army) = activeArmies.Where(Function(a) a IsNot defArmy).ToList()
+                ApplyProportionalDamage(defArmy, attackerArmies, phaseName, unitSnapshot, battleLog)
             Next
         Next
 
@@ -3724,7 +3767,7 @@ Public Class Form1
 
         ' Each losing army takes proportional damage from winner LC
         For Each defArmy In losers
-            ApplyProportionalDamage(defArmy, winnerLC, "Chase", chaseSnapshot, battleLog)
+            ApplyProportionalDamage(defArmy, {winner}.ToList(), "Chase", chaseSnapshot, battleLog)
         Next
 
         Return battleLog
@@ -3745,7 +3788,7 @@ Public Class Form1
 
 
     Public Sub ApplyProportionalDamage(defArmy As Army,
-                                   attackingUnits As List(Of Unit),
+                                   attackerArmies As List(Of Army),
                                    phase As String,
                                    unitSnapshot As Dictionary(Of Unit, Integer),
                                    battleLog As BattleLog)
@@ -3755,6 +3798,9 @@ Public Class Form1
         For Each defUnit In defArmy.Units
             calculatedCasualties(defUnit) = 0
         Next
+
+        ' --- Flatten attackers for iteration ---
+        Dim attackingUnits As List(Of Unit) = attackerArmies.SelectMany(Function(a) a.Units).ToList()
 
         ' --- Loop over each attacker ---
         For Each atkUnit In attackingUnits
@@ -3771,6 +3817,7 @@ Public Class Form1
                     Else
                         Continue For
                     End If
+
                 Case "charge"
                     If atkUnit.CanCharge Then
                         atkValue = atkUnit.Melee
@@ -3778,15 +3825,16 @@ Public Class Form1
                     Else
                         Continue For
                     End If
+
                 Case "melee"
                     atkValue = atkUnit.Melee
                     atkExplanation = $"{atkUnit.Melee} melee"
+
                 Case "chase"
                     If atkUnit.CanChase Then
                         atkValue = atkUnit.Melee
                         If atkUnit.Flying Then
                             atkValue *= 2
-                            'Debug.WriteLine($"[DEBUG] Flying unit {atkUnit.Name} detected in battle (Size={atkUnit.Size})")
                             atkExplanation = $"{atkUnit.Melee} melee (flying, double in chase)"
                         Else
                             atkExplanation = $"{atkUnit.Melee} melee for chase"
@@ -3796,13 +3844,23 @@ Public Class Form1
                     End If
             End Select
 
+            ' === Find this unit's army (for training level lookup) ===
+            Dim atkArmy As Army = attackerArmies.FirstOrDefault(Function(a) a.Units.Contains(atkUnit))
+
+            ' === Apply attacker training bonus ===
+            If atkArmy IsNot Nothing AndAlso atkArmy.TrainingLevel > 0 Then
+                Dim atkBonus As Double = 1.0 + atkArmy.TrainingLevel
+                atkValue = CInt(Math.Round(atkValue * atkBonus))
+                atkExplanation &= $" +{atkArmy.TrainingLevel:P0} training"
+            End If
+
             ' --- Total HP-weighted size of defenders ---
             Dim totalDefWeight As Double = defArmy.Units.Sum(Function(u) unitSnapshot(u) * u.GetEffectiveHP())
             If totalDefWeight = 0 Then Continue For
 
             ' --- Apply proportional damage to each defender unit ---
             For Each defUnit In defArmy.Units
-                Dim sizeBefore As Integer = unitSnapshot(defUnit) ' snapshot at phase start
+                Dim sizeBefore As Integer = unitSnapshot(defUnit)
                 Dim unitWeight As Double = sizeBefore * defUnit.GetEffectiveHP()
 
                 ' Raw damage proportional to weight
@@ -3812,6 +3870,14 @@ Public Class Form1
                 Dim mitResult = GetUnitMitigation(defUnit)
                 Dim mitigationValue As Double = mitResult.Mitigation
                 Dim mitigationExplanation As String = mitResult.Explanation
+
+                ' === Apply defender training bonus (reduces damage slightly) ===
+                If defArmy.TrainingLevel > 0 Then
+                    ' Defensive training bonus is half as strong as attack training
+                    Dim defBonus As Double = Math.Min(defArmy.TrainingLevel * 0.5, 0.9)
+                    mitigationValue = 1 - ((1 - mitigationValue) * (1 - defBonus))
+                    mitigationExplanation &= $" +{defArmy.TrainingLevel:P0} training"
+                End If
 
                 ' Final damage after mitigation, with global casualty multiplier
                 Const CASUALTY_MULTIPLIER As Double = 3.0
@@ -3864,6 +3930,7 @@ Public Class Form1
 
         ' ✅ Note: Do not remove units here. Cleanup will happen at the end of ResolveBattle.
     End Sub
+
 
 
     Public Function GetUnitMitigation(unit As Unit) As (Mitigation As Double, Explanation As String)
@@ -4899,6 +4966,7 @@ Public Class Form1
 
         ' For hero mercs (summoners, champions, etc.)
         Public Property Hero As Unit
+
     End Class
 
     Public Class MercenaryArmy
@@ -4906,6 +4974,8 @@ Public Class Form1
         Public Property Faction As String
         Public Property Units As New List(Of MercenaryStack)() ' mix of normal and hero entries
         Public Property MinBid As Integer
+        Public Property TrainingBonus As Double = 0.0    ' 0 = none, 0.1 = +10%, etc.
+
 
         Public ReadOnly Property TotalSize As Integer
             Get
@@ -4981,7 +5051,6 @@ Public Class Form1
         Next
     End Sub
 
-
     Private Sub AwardMercenariesToPlayer(offer As MercenaryArmy, winner As Player)
         If offer Is Nothing OrElse winner Is Nothing Then Exit Sub
         If winner.Armies Is Nothing OrElse winner.Armies.Count = 0 Then Exit Sub
@@ -5012,6 +5081,10 @@ Public Class Form1
         ' Build a concise composition string as we add/merge
         Dim parts As New List(Of String)
 
+        ' Track total men and total training effect
+        Dim totalNewMen As Integer = 0
+        Dim weightedTraining As Double = 0.0
+
         For Each s In offer.Units
             If s Is Nothing Then Continue For
 
@@ -5024,21 +5097,38 @@ Public Class Form1
             ElseIf s.Template IsNot Nothing Then
                 ' === Normal mercenary ===
                 Dim t As UnitStats = s.Template
+                Dim count As Integer = s.Count
+                totalNewMen += count
+
+                ' Accumulate weighted training bonus if this template has one
+                If t.TrainingBonus > 0 Then
+                    weightedTraining += t.TrainingBonus * count
+                End If
 
                 ' Merge if this type already exists
                 Dim existing = target.Units.FirstOrDefault(Function(u) u.Name = t.Name AndAlso u.Type = t.Type)
                 If existing IsNot Nothing Then
-                    existing.Size += s.Count
+                    existing.Size += count
                     existing.IsMercenary = True
                 Else
-                    Dim newU As New Unit(t, winner.Race, s.Count)
+                    Dim newU As New Unit(t, winner.Race, count)
                     newU.IsMercenary = True
                     target.Units.Add(newU)
                 End If
 
-                parts.Add($"{t.Name} x{s.Count}")
+                parts.Add($"{t.Name} x{count}")
             End If
         Next
+
+        ' === Apply combined training from unit-level bonuses ===
+        If totalNewMen > 0 AndAlso weightedTraining > 0 Then
+            Dim oldMen As Integer = target.TotalSoldiers
+            Dim totalMen As Integer = Math.Max(1, oldMen + totalNewMen)
+            Dim averageNewTraining As Double = weightedTraining / totalNewMen
+            Dim combined As Double = ((target.TrainingLevel * oldMen) + (averageNewTraining * totalNewMen)) / totalMen
+            target.TrainingLevel = combined
+            Debug.WriteLine($"[MERC] Combined merc training {averageNewTraining:P0}; new army training level = {target.TrainingLevel:P0}")
+        End If
 
         ' === Debug: where it went and what it was ===
         Dim armyIndex As Integer = winner.Armies.IndexOf(target)
@@ -5059,7 +5149,7 @@ Public Class Form1
         Dim maxBudget As Integer = MercPriceLevel
 
         Dim mercFactions As String() = {
-        "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
+        "WarriorMonks", "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
         "Cultists", "Demons", "Undead", "Golems", "Elementals",
         "Bandits", "Nomads", "Freeblades", "Sellswords"
     }
@@ -5741,6 +5831,7 @@ Public Class Form1
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         CurrentForm = Me
+        CreateTerrainCache()
         SetupPrinting()
         PopulateGameList()
         InitialiseSummonerNames(SummonerDefinitions)
