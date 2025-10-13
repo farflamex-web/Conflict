@@ -279,7 +279,7 @@ Module Market
         If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
 
         For Each p In CurrentForm.Players
-            If p Is Nothing OrElse p.IsEliminated Then Continue For
+            If p Is Nothing OrElse p.IsEliminated OrElse p.AIControlled Then Continue For
 
             Dim suffix As String = Char.ToUpper(p.Race(0)) & p.Race.Substring(1).ToLower()
 
@@ -303,6 +303,125 @@ Module Market
             num.Value = 0
             cmb.SelectedIndex = -1
         Next
+    End Sub
+
+    Public Sub InitialiseMarketCombos()
+        ' The list of tradeable goods
+        Dim goods As String() = {"Iron", "Wood", "Amber", "Gems", "Furs", "Wine"}
+
+        ' Loop through all four races
+        Dim races As String() = {"Elf", "Dwarf", "Orc", "Human"}
+
+        For Each race In races
+            Dim suffix As String = race
+            Dim cmb As ComboBox = TryCast(CurrentForm.Controls("cmbMarketResource" & suffix), ComboBox)
+            If cmb IsNot Nothing Then
+                cmb.Items.Clear()
+                cmb.Items.AddRange(goods)
+                cmb.SelectedIndex = -1
+            End If
+        Next
+
+        ApplyRaceColoursToMarketCombos()
+    End Sub
+
+    Public Sub ApplyRaceColoursToMarketCombos()
+        If CurrentForm Is Nothing Then Exit Sub
+
+        ' === ELF ===
+        With CurrentForm
+            .cmbMarketResourceElf.BackColor = Color.LightGreen
+            .numMarketAmountElf.BackColor = Color.LightGreen
+            .numInvestElf.BackColor = Color.LightGreen
+            .cmbArmyElfMerc.BackColor = Color.LightGreen
+            .numMercBidElf.BackColor = Color.LightGreen
+            .cmbArmyElf.BackColor = Color.LightGreen
+            .cmbSummonerElf.BackColor = Color.LightGreen
+            .cmbElf.BackColor = Color.LightGreen
+            .cmbElf.ForeColor = Color.Black
+        End With
+
+        ' === DWARF ===
+        With CurrentForm
+            .cmbMarketResourceDwarf.BackColor = Color.LightSkyBlue
+            .numMarketAmountDwarf.BackColor = Color.LightSkyBlue
+            .numInvestDwarf.BackColor = Color.LightSkyBlue
+            .cmbArmyDwarfMerc.BackColor = Color.LightSkyBlue
+            .numMercBidDwarf.BackColor = Color.LightSkyBlue
+            .cmbArmyDwarf.BackColor = Color.LightSkyBlue
+            .cmbSummonerDwarf.BackColor = Color.LightSkyBlue
+            .cmbDwarf.BackColor = Color.LightSkyBlue
+            .cmbDwarf.ForeColor = Color.Black
+        End With
+
+        ' === ORC ===
+        With CurrentForm
+            .cmbMarketResourceOrc.BackColor = Color.LightCoral
+            .numMarketAmountOrc.BackColor = Color.LightCoral
+            .numInvestOrc.BackColor = Color.LightCoral
+            .cmbArmyOrcMerc.BackColor = Color.LightCoral
+            .numMercBidOrc.BackColor = Color.LightCoral
+            .cmbArmyOrc.BackColor = Color.LightCoral
+            .cmbSummonerOrc.BackColor = Color.LightCoral
+            .cmbOrc.BackColor = Color.LightCoral
+            .cmbOrc.ForeColor = Color.Black
+        End With
+
+        ' === HUMAN ===
+        With CurrentForm
+            .cmbMarketResourceHuman.BackColor = Color.Yellow
+            .numMarketAmountHuman.BackColor = Color.Yellow
+            .numInvestHuman.BackColor = Color.Yellow
+            .cmbArmyHumanMerc.BackColor = Color.Yellow
+            .numMercBidHuman.BackColor = Color.Yellow
+            .cmbArmyHuman.BackColor = Color.Yellow
+            .cmbSummonerHuman.BackColor = Color.Yellow
+            .cmbHuman.BackColor = Color.Yellow
+            .cmbHuman.ForeColor = Color.Black
+        End With
+
+        ' === Apply custom colours to DropDownList combos for all races ===
+        ' Elf
+        ApplyCustomComboColor(CurrentForm.cmbSummonerElf)
+        ApplyCustomComboColor(CurrentForm.cmbArmyElf)
+        ApplyCustomComboColor(CurrentForm.cmbArmyElfMerc)
+
+        ' Dwarf
+        ApplyCustomComboColor(CurrentForm.cmbSummonerDwarf)
+        ApplyCustomComboColor(CurrentForm.cmbArmyDwarf)
+        ApplyCustomComboColor(CurrentForm.cmbArmyDwarfMerc)
+
+        ' Orc
+        ApplyCustomComboColor(CurrentForm.cmbSummonerOrc)
+        ApplyCustomComboColor(CurrentForm.cmbArmyOrc)
+        ApplyCustomComboColor(CurrentForm.cmbArmyOrcMerc)
+
+        ' Human
+        ApplyCustomComboColor(CurrentForm.cmbSummonerHuman)
+        ApplyCustomComboColor(CurrentForm.cmbArmyHuman)
+        ApplyCustomComboColor(CurrentForm.cmbArmyHumanMerc)
+
+    End Sub
+
+    Public Sub ApplyCustomComboColor(cmb As ComboBox)
+        cmb.DrawMode = DrawMode.OwnerDrawFixed
+        AddHandler cmb.DrawItem, AddressOf ComboBox_DrawItem_Colourful
+    End Sub
+
+    Private Sub ComboBox_DrawItem_Colourful(sender As Object, e As DrawItemEventArgs)
+        Dim cmb = DirectCast(sender, ComboBox)
+        If e.Index < 0 Then Exit Sub
+
+        ' Fill the background using the combo's BackColor
+        Using b As New SolidBrush(cmb.BackColor)
+            e.Graphics.FillRectangle(b, e.Bounds)
+        End Using
+
+        ' Draw the text in the control's ForeColor (black by default)
+        Dim text As String = cmb.GetItemText(cmb.Items(e.Index))
+        TextRenderer.DrawText(e.Graphics, text, cmb.Font, e.Bounds, cmb.ForeColor, TextFormatFlags.Left)
+
+        e.DrawFocusRectangle()
     End Sub
 
 

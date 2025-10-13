@@ -30,8 +30,6 @@ Partial Class Form1
         rtbArmies = New RichTextBox()
         lblHud = New Label()
         btnNewGame = New Button()
-        btnLoadGame = New Button()
-        btnKillPlayer = New Button()
         dgvCustomers = New DataGridView()
         btnSaveCustomers = New Button()
         grp = New GroupBox()
@@ -44,7 +42,6 @@ Partial Class Form1
         lblDwarf = New Label()
         cmbElf = New ComboBox()
         lblElf = New Label()
-        btnSave = New Button()
         dgvOrders = New DataGridView()
         colPlayer = New DataGridViewTextBoxColumn()
         colArmy = New DataGridViewTextBoxColumn()
@@ -94,6 +91,9 @@ Partial Class Form1
         cmbMarketResourceHuman = New ComboBox()
         numMarketAmountOrc = New NumericUpDown()
         cmbMarketResourceOrc = New ComboBox()
+        lblMarket = New Label()
+        cmbGameSelect = New ComboBox()
+        cmbTurn = New ComboBox()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -113,9 +113,9 @@ Partial Class Form1
         ' 
         ' btnPrint
         ' 
-        btnPrint.Location = New Point(542, 869)
+        btnPrint.Location = New Point(412, 898)
         btnPrint.Name = "btnPrint"
-        btnPrint.Size = New Size(124, 23)
+        btnPrint.Size = New Size(109, 23)
         btnPrint.TabIndex = 0
         btnPrint.Text = "Print"
         btnPrint.UseVisualStyleBackColor = True
@@ -131,7 +131,7 @@ Partial Class Form1
         ' 
         btnProcessTurn.Location = New Point(412, 869)
         btnProcessTurn.Name = "btnProcessTurn"
-        btnProcessTurn.Size = New Size(124, 23)
+        btnProcessTurn.Size = New Size(109, 23)
         btnProcessTurn.TabIndex = 4
         btnProcessTurn.Text = "Process Turn"
         btnProcessTurn.UseVisualStyleBackColor = True
@@ -173,30 +173,12 @@ Partial Class Form1
         ' 
         ' btnNewGame
         ' 
-        btnNewGame.Location = New Point(412, 898)
+        btnNewGame.Location = New Point(412, 927)
         btnNewGame.Name = "btnNewGame"
-        btnNewGame.Size = New Size(124, 23)
+        btnNewGame.Size = New Size(109, 23)
         btnNewGame.TabIndex = 10
         btnNewGame.Text = "Create Game"
         btnNewGame.UseVisualStyleBackColor = True
-        ' 
-        ' btnLoadGame
-        ' 
-        btnLoadGame.Location = New Point(542, 898)
-        btnLoadGame.Name = "btnLoadGame"
-        btnLoadGame.Size = New Size(124, 23)
-        btnLoadGame.TabIndex = 11
-        btnLoadGame.Text = "Load Game"
-        btnLoadGame.UseVisualStyleBackColor = True
-        ' 
-        ' btnKillPlayer
-        ' 
-        btnKillPlayer.Location = New Point(672, 869)
-        btnKillPlayer.Name = "btnKillPlayer"
-        btnKillPlayer.Size = New Size(109, 23)
-        btnKillPlayer.TabIndex = 12
-        btnKillPlayer.Text = "Kill Player"
-        btnKillPlayer.UseVisualStyleBackColor = True
         ' 
         ' dgvCustomers
         ' 
@@ -309,15 +291,6 @@ Partial Class Form1
         lblElf.Size = New Size(20, 15)
         lblElf.TabIndex = 0
         lblElf.Text = "Elf"
-        ' 
-        ' btnSave
-        ' 
-        btnSave.Location = New Point(672, 898)
-        btnSave.Name = "btnSave"
-        btnSave.Size = New Size(109, 22)
-        btnSave.TabIndex = 16
-        btnSave.Text = "Save Game"
-        btnSave.UseVisualStyleBackColor = True
         ' 
         ' dgvOrders
         ' 
@@ -743,11 +716,39 @@ Partial Class Form1
         cmbMarketResourceOrc.Size = New Size(93, 23)
         cmbMarketResourceOrc.TabIndex = 54
         ' 
+        ' lblMarket
+        ' 
+        lblMarket.AutoSize = True
+        lblMarket.Location = New Point(1426, 800)
+        lblMarket.Name = "lblMarket"
+        lblMarket.Size = New Size(112, 15)
+        lblMarket.TabIndex = 58
+        lblMarket.Text = "Market Transactions"
+        ' 
+        ' cmbGameSelect
+        ' 
+        cmbGameSelect.FormattingEnabled = True
+        cmbGameSelect.Location = New Point(672, 873)
+        cmbGameSelect.Name = "cmbGameSelect"
+        cmbGameSelect.Size = New Size(109, 23)
+        cmbGameSelect.TabIndex = 59
+        ' 
+        ' cmbTurn
+        ' 
+        cmbTurn.FormattingEnabled = True
+        cmbTurn.Location = New Point(672, 902)
+        cmbTurn.Name = "cmbTurn"
+        cmbTurn.Size = New Size(109, 23)
+        cmbTurn.TabIndex = 60
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(cmbTurn)
+        Controls.Add(cmbGameSelect)
+        Controls.Add(lblMarket)
         Controls.Add(numMarketAmountHuman)
         Controls.Add(cmbMarketResourceHuman)
         Controls.Add(numMarketAmountOrc)
@@ -788,12 +789,9 @@ Partial Class Form1
         Controls.Add(chkBuySummonerElf)
         Controls.Add(lblElf2)
         Controls.Add(dgvOrders)
-        Controls.Add(btnSave)
         Controls.Add(grp)
         Controls.Add(btnSaveCustomers)
         Controls.Add(dgvCustomers)
-        Controls.Add(btnKillPlayer)
-        Controls.Add(btnLoadGame)
         Controls.Add(btnNewGame)
         Controls.Add(lblHud)
         Controls.Add(rtbArmies)
@@ -832,8 +830,6 @@ Partial Class Form1
     Friend WithEvents rtbArmies As RichTextBox
     Friend WithEvents lblHud As Label
     Friend WithEvents btnNewGame As Button
-    Friend WithEvents btnLoadGame As Button
-    Friend WithEvents btnKillPlayer As Button
     Friend WithEvents dgvCustomers As DataGridView
     Friend WithEvents btnSaveCustomers As Button
     Friend WithEvents grp As GroupBox
@@ -846,7 +842,6 @@ Partial Class Form1
     Friend WithEvents lblDwarf As Label
     Friend WithEvents cmbElf As ComboBox
     Friend WithEvents lblElf As Label
-    Friend WithEvents btnSave As Button
     Friend WithEvents dgvOrders As DataGridView
     Friend WithEvents colPlayer As DataGridViewTextBoxColumn
     Friend WithEvents colArmy As DataGridViewTextBoxColumn
@@ -896,5 +891,8 @@ Partial Class Form1
     Friend WithEvents cmbMarketResourceHuman As ComboBox
     Friend WithEvents numMarketAmountOrc As NumericUpDown
     Friend WithEvents cmbMarketResourceOrc As ComboBox
+    Friend WithEvents lblMarket As Label
+    Friend WithEvents cmbGameSelect As ComboBox
+    Friend WithEvents cmbTurn As ComboBox
 
 End Class

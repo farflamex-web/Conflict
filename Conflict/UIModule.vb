@@ -216,9 +216,12 @@ Module UIModule
     ' ============================================================
     Public Sub UpdatePlayerAssignment(race As String, combo As ComboBox)
         If CurrentForm.Players Is Nothing OrElse CurrentForm.Players.Count = 0 Then Exit Sub
+
         Dim p As Player = CurrentForm.Players.FirstOrDefault(Function(pl) pl.Race.Equals(race, StringComparison.OrdinalIgnoreCase))
         If p Is Nothing Then Exit Sub
+
         Dim sel As String = If(combo.SelectedItem?.ToString(), "").Trim()
+
         If String.IsNullOrEmpty(sel) OrElse sel.Equals("AI", StringComparison.OrdinalIgnoreCase) Then
             p.Nickname = ""
             p.AIControlled = True
@@ -226,7 +229,23 @@ Module UIModule
             p.Nickname = sel
             p.AIControlled = False
         End If
+
+        ' --- Auto-save whenever a player assignment changes ---
+        Try
+            ' Format folder name based on current game number
+            Dim gameFolder As String = $"Game{CurrentForm.GameNumber:D3}"
+
+            ' Only save if a valid game is actually active
+            If CurrentForm.GameNumber > 0 Then
+                CurrentForm.SaveGame(gameFolder)
+                Debug.WriteLine($"[AUTOSAVE] Game {gameFolder} saved after assigning {race} -> {sel}")
+            End If
+
+        Catch ex As Exception
+            Debug.WriteLine($"[AUTOSAVE ERROR] {ex.Message}")
+        End Try
     End Sub
+
 
     Public Sub RefreshArmyOrdersGrid()
         If CurrentForm.Players Is Nothing OrElse CurrentForm.Players.Count = 0 Then

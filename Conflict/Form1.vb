@@ -1,7 +1,6 @@
 ﻿Option Strict On
 Option Explicit On
 
-
 ' ===========================================================
 ' PROJECT: Conflict
 ' ===========================================================
@@ -140,13 +139,15 @@ Public Class Form1
     Private Const LegendLabelSpacing As Single = 10
     Private Const GridFontSize As Single = 6
 
-    Private Map(Rows - 1, Cols - 1, 2) As Integer
+    Public Map(Rows - 1, Cols - 1, 2) As Integer
 
     Private Races() As String = {"Elf", "Dwarf", "Orc", "Human"}
 
-    Private terrainCache As New Dictionary(Of String, Image)
-
-
+    Private CurrentState As GameState
+    Private CurrentReports As TurnReports
+    Private IsPopulatingTurns As Boolean = False
+    ' Guards event handlers while we programmatically change selections.
+    Private isRestoringCombos As Boolean = False
 
     ' === Name tracking for army generation ===
     Private UsedArmyNames As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
@@ -158,7 +159,6 @@ Public Class Form1
         LightCavalry = 3
         HeavyCavalry = 4
     End Enum
-
 
 
 #End Region
@@ -345,6 +345,18 @@ Public Class Form1
         Public Property SummonerFaction As String
     End Class
 
+
+    Public Class TurnReports
+        Public Property TurnNumber As Integer
+        Public Property Notes As New List(Of String)
+
+        ' Simple placeholders for now — we’ll replace or expand these later
+        Public Property BattleReports As New List(Of String)
+        Public Property Messages As New List(Of String)
+        Public Property Summaries As New List(Of String)
+    End Class
+
+
     ' === Central definition for all summoners ===
     Public Class SummonerInfo
         Public Property Name As String            ' e.g. "Kobold War Chief"
@@ -439,7 +451,6 @@ Public Class Form1
         Return $"{prefix}{suffix} the {summonerType}"
     End Function
 
-
     Private Sub AIBuySummoners()
         For Each p In Players
             ' Skip null, human, or eliminated players
@@ -447,7 +458,6 @@ Public Class Form1
             BuySummoner(p) ' BuySummoner will handle cost and random choice
         Next
     End Sub
-
 
     Private Sub BuySummoner(p As Player)
         If p Is Nothing OrElse p.IsEliminated Then Exit Sub
@@ -655,7 +665,7 @@ Public Class Form1
         Dim budget As Integer = summoner.Level * 10
 
         ' --- Deterministic randomiser per turn/summoner ---
-        Dim seed As Integer = (Math.Max(1, currentTurnNumber) * 97) Xor
+        Dim seed As Integer = (Math.Max(1, TurnNumber) * 97) Xor
                           (ownerArmy.X * 73856093) Xor
                           (ownerArmy.Y * 19349663) Xor
                           (If(summoner.Name, "").GetHashCode())
@@ -762,12 +772,13 @@ Public Class Form1
 
 #Region "=== Save / Load ==="
 
-    Private Sub SaveGame(gameName As String)
+
+    Public Sub SaveGame(gameName As String)
         Try
             Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
             If Not IO.Directory.Exists(saveDir) Then IO.Directory.CreateDirectory(saveDir)
 
-            Dim saveFile As String = IO.Path.Combine(saveDir, $"Turn{currentTurnNumber:D3}.json")
+            Dim saveFile As String = IO.Path.Combine(saveDir, $"Turn{TurnNumber:D3}.json")
 
             ' === Apply combo assignments before saving ===
             If Players IsNot Nothing Then
@@ -786,23 +797,30 @@ Public Class Form1
 
             ' === Build state ===
             Dim state As New GameState With {
-            .TurnNumber = currentTurnNumber,
+            .TurnNumber = TurnNumber,
             .Players = Players,
             .Map = Map,
             .MercPriceLevel = MercPriceLevel,
             .CurrentMercOffer = CurrentMercOffer
         }
 
-            ' === Save file ===
+            ' === Save main game state ===
             Dim json As String = Newtonsoft.Json.JsonConvert.SerializeObject(state, Newtonsoft.Json.Formatting.Indented)
             IO.File.WriteAllText(saveFile, json)
 
-            'Debug.WriteLine($"[SAVE] Game saved to {saveFile}")
+            ' === ALSO save turn reports ===
+            If CurrentReports IsNot Nothing Then
+                Dim reportsFile As String = IO.Path.Combine(saveDir, $"Turn{TurnNumber:D3}_Reports.json")
+                Dim reportsJson As String = Newtonsoft.Json.JsonConvert.SerializeObject(CurrentReports, Newtonsoft.Json.Formatting.Indented)
+                IO.File.WriteAllText(reportsFile, reportsJson)
+            End If
 
         Catch ex As Exception
             MessageBox.Show($"Error saving game: {ex.Message}")
         End Try
     End Sub
+
+
 
     ' ============================================================
     ' Helper to apply human/AI assignment based on combo selection
@@ -819,7 +837,114 @@ Public Class Form1
         End If
     End Sub
 
-    Private Sub LoadGame(gameName As String)
+    ' ============================================================
+    '  Load selected game from combo box
+    ' ============================================================
+    Private Sub PopulateGameList()
+        Try
+            cmbGameSelect.Items.Clear()
+            cmbGameSelect.Items.Add("(Select Game)")
+
+            Dim savesRoot As String = Path.Combine(Application.StartupPath, "Saves")
+            If Not Directory.Exists(savesRoot) Then Directory.CreateDirectory(savesRoot)
+
+            For Each folderPath In Directory.GetDirectories(savesRoot)
+                Dim gameName As String = Path.GetFileName(folderPath)
+                cmbGameSelect.Items.Add(gameName)
+            Next
+
+            cmbGameSelect.SelectedIndex = 0
+        Catch ex As Exception
+            Debug.WriteLine($"[GAMELIST ERROR] {ex.Message}")
+        End Try
+    End Sub
+
+    Private Sub cmbGameSelect_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbGameSelect.SelectedIndexChanged
+        Try
+            If cmbGameSelect.SelectedIndex <= 0 Then Exit Sub ' ignore placeholder
+
+            Dim selectedFolder As String = cmbGameSelect.SelectedItem.ToString().Trim()
+            If String.IsNullOrWhiteSpace(selectedFolder) Then Exit Sub
+
+            Dim numPart As String = New String(selectedFolder.Where(AddressOf Char.IsDigit).ToArray())
+            Dim n As Integer
+            If Not Integer.TryParse(numPart, n) Then n = 1
+
+            GameNumber = n
+            LoadGame(selectedFolder)      ' <-- load the most recent turn as usual
+
+            ' === Populate the Turn list for this game ===
+            PopulateTurnList(selectedFolder)
+
+        Catch ex As Exception
+            MessageBox.Show($"Error loading selected game: {ex.Message}")
+        End Try
+    End Sub
+
+
+    Private Sub PopulateTurnList(gameName As String)
+        IsPopulatingTurns = True
+        cmbTurn.Items.Clear()
+
+        Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
+        If Not IO.Directory.Exists(saveDir) Then
+            IsPopulatingTurns = False
+            Exit Sub
+        End If
+
+        Dim turnFiles = IO.Directory.GetFiles(saveDir, "Turn*.json")
+        Dim turnNumbers = turnFiles.
+        Select(Function(f)
+                   Dim name = IO.Path.GetFileNameWithoutExtension(f)
+                   Dim digits = New String(name.SkipWhile(Function(c) Not Char.IsDigit(c)).ToArray())
+                   Dim num As Integer
+                   If Integer.TryParse(digits, num) Then Return num Else Return -1
+               End Function).
+        Where(Function(n) n >= 0).
+        Distinct().
+        OrderBy(Function(n) n)
+
+        For Each num In turnNumbers
+            cmbTurn.Items.Add($"Turn {num:D3}")
+        Next
+
+        If cmbTurn.Items.Count > 0 Then
+            cmbTurn.SelectedIndex = cmbTurn.Items.Count - 1
+        End If
+
+        IsPopulatingTurns = False
+    End Sub
+
+
+    Private Sub cmbTurn_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbTurn.SelectedIndexChanged
+        If IsPopulatingTurns Then Exit Sub  ' <--- ignore changes during fill
+
+        Dim gameName As String = cmbGameSelect.SelectedItem?.ToString()
+        If String.IsNullOrWhiteSpace(gameName) Then Exit Sub
+
+        Dim turnText As String = cmbTurn.SelectedItem?.ToString()
+        If String.IsNullOrWhiteSpace(turnText) OrElse Not turnText.Contains(" ") Then Exit Sub
+
+        Dim turnNum As Integer
+        If Not Integer.TryParse(turnText.Split(" "c)(1), turnNum) Then Exit Sub
+
+        LoadGame(gameName, turnNum)
+
+        ' Load matching reports (if any)
+        Dim saveDir As String = IO.Path.Combine(Application.StartupPath, "Saves", gameName)
+        Dim reportsFile As String = IO.Path.Combine(saveDir, $"Turn{turnNum:D3}_Reports.json")
+        If IO.File.Exists(reportsFile) Then
+            Dim jsonReports = IO.File.ReadAllText(reportsFile)
+            CurrentReports = JsonConvert.DeserializeObject(Of TurnReports)(jsonReports)
+        Else
+            CurrentReports = New TurnReports With {.TurnNumber = turnNum}
+        End If
+
+        'MessageBox.Show($"Loaded Turn {turnNum:D3} for {gameName} in read-only mode. Restart the program to resume play.")
+    End Sub
+
+
+    Public Sub LoadGame(gameName As String, Optional loadTurnNumber As Integer? = Nothing)
         dgvOrders.Rows.Clear()
 
         Try
@@ -830,102 +955,84 @@ Public Class Form1
                 Exit Sub
             End If
 
-            ' --- Find most recent turn file ---
-            Dim latestFile = IO.Directory.GetFiles(saveDir, "Turn*.json").
-                         OrderByDescending(Function(f) f).FirstOrDefault()
+            ' --- Choose file ---
+            Dim saveFile As String
+            If loadTurnNumber.HasValue Then
+                saveFile = IO.Path.Combine(saveDir, $"Turn{loadTurnNumber.Value:D3}.json")
+            Else
+                saveFile = IO.Directory.GetFiles(saveDir, "Turn*.json").
+                        OrderByDescending(Function(f) f).FirstOrDefault()
+            End If
 
-            If latestFile Is Nothing Then
-                MessageBox.Show($"No save files found in {saveDir}.")
+            If saveFile Is Nothing OrElse Not IO.File.Exists(saveFile) Then
+                MessageBox.Show($"No save file found in {saveDir}.")
                 Exit Sub
             End If
 
-            ' --- Read and deserialize ---
-            Dim json As String = IO.File.ReadAllText(latestFile)
+            ' --- Deserialize state ---
+            Dim json As String = IO.File.ReadAllText(saveFile)
             Dim state As GameState = Newtonsoft.Json.JsonConvert.DeserializeObject(Of GameState)(json)
 
-            ' --- Restore data ---
-            currentTurnNumber = state.TurnNumber
+            ' --- Restore core data ---
+            TurnNumber = state.TurnNumber
             Players = state.Players
             Map = state.Map
             MercPriceLevel = state.MercPriceLevel
-            If state.CurrentMercOffer IsNot Nothing Then
-                CurrentMercOffer = state.CurrentMercOffer
-            Else
-                CurrentMercOffer = Nothing
-            End If
-
-
-            ' === Repopulate assignment dropdowns ===
-            PopulateCustomerDropdowns()
-            ApplyRaceColoursToCombos()
-
-            If Players IsNot Nothing Then
-                For Each p In Players
-                    Select Case p.Race.ToLowerInvariant()
-                        Case "elf"
-                            If String.IsNullOrWhiteSpace(p.Nickname) Then
-                                SelectComboByDisplayText(cmbElf, "AI")
-                            Else
-                                SelectComboByDisplayText(cmbElf, p.Nickname)
-                            End If
-                        Case "dwarf"
-                            If String.IsNullOrWhiteSpace(p.Nickname) Then
-                                SelectComboByDisplayText(cmbDwarf, "AI")
-                            Else
-                                SelectComboByDisplayText(cmbDwarf, p.Nickname)
-                            End If
-                        Case "orc"
-                            If String.IsNullOrWhiteSpace(p.Nickname) Then
-                                SelectComboByDisplayText(cmbOrc, "AI")
-                            Else
-                                SelectComboByDisplayText(cmbOrc, p.Nickname)
-                            End If
-                        Case "human"
-                            If String.IsNullOrWhiteSpace(p.Nickname) Then
-                                SelectComboByDisplayText(cmbHuman, "AI")
-                            Else
-                                SelectComboByDisplayText(cmbHuman, p.Nickname)
-                            End If
-                    End Select
-                Next
-            End If
-
+            CurrentMercOffer = state.CurrentMercOffer
 
             ' --- Rebuild runtime-only data ---
-            InitializeRaceUnits()             ' ensures AllRaces & SummonerRosters are alive
+            InitializeRaceUnits()
             If terrainCache Is Nothing OrElse terrainCache.Count = 0 Then CreateTerrainCache()
-            PostLoadFixups()                  ' rehydrate lists, repair nulls, hero/summoner sanity
+            PostLoadFixups()
 
-            ' --- Refresh UI ---
+            ' --- UI refresh ---
             lblHud.Text = $"Game: {gameName}" & vbCrLf &
-                      $"Turn: {currentTurnNumber}" & vbCrLf &
+                      $"Turn: {TurnNumber}" & vbCrLf &
                       $"Next Merc Cost: {MercPriceLevel}"
 
             pnlMap.Invalidate()
             pnlMap.Update()
-
             rtbPlayerSummary.Clear()
             rtbPlayerSummary.AppendText(GenerateEmpireSummary())
             UpdateArmiesReport()
 
-            ' --- Refresh Army Orders grid now that players are loaded ---
+            ' --- Orders grid and combos ---
             If Players IsNot Nothing AndAlso Players.Count > 0 Then
                 PopulateArmyOrdersGrid()
                 InitialiseMoveColumns()
             End If
-
             RestoreCustomerCombosFromPlayers()
-            isRestoringCombos = False   ' <--- re-enable handlers after load
+            isRestoringCombos = False
 
-            'Debug.WriteLine($"[LOAD] Loaded {latestFile}")
+            ' === If this was an explicit old-turn load, lock interface ===
+            If loadTurnNumber.HasValue Then
+                btnProcessTurn.Enabled = False
+                dgvOrders.Enabled = False
+                cmbElf.Enabled = False
+                cmbDwarf.Enabled = False
+                cmbOrc.Enabled = False
+                cmbHuman.Enabled = False
+                lblHud.Text &= vbCrLf & "(read-only)"
+                'ViewingArchivedTurn = True
+            Else
+                ' Normal load: re-enable everything just to be sure
+                btnProcessTurn.Enabled = True
+                dgvOrders.Enabled = True
+                cmbElf.Enabled = True
+                cmbDwarf.Enabled = True
+                cmbOrc.Enabled = True
+                cmbHuman.Enabled = True
+            End If
+
+            ' === Rebuild all player-related UI lists after loading ===
+            RefreshArmyOrdersGrid()
+
         Catch ex As Exception
             MessageBox.Show($"Error loading game: {ex.Message}")
         End Try
     End Sub
 
 
-    ' Guards event handlers while we programmatically change selections.
-    Private isRestoringCombos As Boolean = False
 
     ' Select an item in a ComboBox by the text it displays (works with strings or bound objects).
     Private Sub SelectComboByDisplayText(combo As ComboBox, displayText As String)
@@ -1105,7 +1212,7 @@ Public Class Form1
 
     Public Players As List(Of Player)
 
-    Private playerColors As Color() = {
+    Public playerColors As Color() = {
         Color.LightGreen,   ' Elf
         Color.LightSkyBlue, ' Dwarf
         Color.LightCoral,   ' Orc
@@ -1114,7 +1221,8 @@ Public Class Form1
 
     Private WithEvents printDoc As New PrintDocument
 
-    Private currentTurnNumber As Integer = 1  ' Update this as part of your turn logic
+    Public TurnNumber As Integer = 0
+    Public GameNumber As Integer = 0
 
     Public AllRaces As New List(Of RaceUnits)
 
@@ -1130,22 +1238,63 @@ Public Class Form1
 
 #End Region
 
-#Region "=== Form Lifecycle ==="
 
-#End Region
 
 #Region "=== New / Load Game ==="
+
     Private Sub btnNewGame_Click(sender As Object, e As EventArgs) Handles btnNewGame.Click
-        StartNewGame("Game1")   ' later we’ll allow naming / auto-numbering
+        ' --- Reset all player assignments to AI before creating a new game ---
+        isRestoringCombos = True
+        Try
+            cmbElf.SelectedIndex = 0
+            cmbDwarf.SelectedIndex = 0
+            cmbOrc.SelectedIndex = 0
+            cmbHuman.SelectedIndex = 0
+        Finally
+            isRestoringCombos = False
+        End Try
+
+        ' 1) Pick next number
+        Dim nextNum As Integer = GetNextAvailableGameNumber()
+        GameNumber = nextNum
+
+        ' 2) Create the folder name "Game###" and start the game
+        Dim folderName As String = FormatGameFolder(nextNum)
+        StartNewGame(folderName)   ' this will SaveGame(Turn000) immediately
+
+        ' 3) Refresh the combobox and select the newly created game
+        PopulateGameList()
+        SelectGameInCombo(folderName)   ' will trigger load via SelectedIndexChanged
         RefreshArmyOrdersGrid()
     End Sub
 
-    Private Sub btnLoadGame_Click(sender As Object, e As EventArgs) Handles btnLoadGame.Click
-        LoadGame("Game1")
-    End Sub
 
-    Private Sub btnSave_Click(sender As Object, e As EventArgs) Handles btnSave.Click
-        SaveGame("Game1")
+
+    ' Returns the next available integer (1-based) for a folder named "Game###"
+    Private Function GetNextAvailableGameNumber() As Integer
+        Dim savesRoot As String = Path.Combine(Application.StartupPath, "Saves")
+        If Not Directory.Exists(savesRoot) Then Directory.CreateDirectory(savesRoot)
+
+        Dim maxNum As Integer = 0
+        For Each folderPath In Directory.GetDirectories(savesRoot)
+            Dim name As String = Path.GetFileName(folderPath) ' e.g., "Game001"
+            If name.StartsWith("Game", StringComparison.OrdinalIgnoreCase) Then
+                Dim digits As String = New String(name.Where(AddressOf Char.IsDigit).ToArray())
+                Dim n As Integer
+                If Integer.TryParse(digits, n) AndAlso n > maxNum Then maxNum = n
+            End If
+        Next
+        Return maxNum + 1
+    End Function
+
+
+    Private Function FormatGameFolder(n As Integer) As String
+        Return $"Game{n:D3}"
+    End Function
+
+    Private Sub SelectGameInCombo(folderName As String)
+        Dim idx As Integer = cmbGameSelect.FindStringExact(folderName)
+        If idx >= 0 Then cmbGameSelect.SelectedIndex = idx
     End Sub
 
 
@@ -1153,7 +1302,7 @@ Public Class Form1
         ' --- Clear existing data ---
         Players = Nothing
         rtbInfo.Clear()
-        currentTurnNumber = 0
+        TurnNumber = 0
         MercPriceLevel = 50
         CurrentMercOffer = Nothing
 
@@ -1164,7 +1313,7 @@ Public Class Form1
         GenerateMap()
 
         ' --- Generate the first merc offer for turn 0 ---
-        CurrentMercOffer = GenerateMercenaryOffer(currentTurnNumber)
+        CurrentMercOffer = GenerateMercenaryOffer(TurnNumber)
         'Debug.WriteLine("[MERC] Initial offer generated at game start.")
 
         ' --- Mark all currently visible unit types as "seen" for all human players ---
@@ -1172,7 +1321,7 @@ Public Class Form1
 
         ' --- Update HUD ---
         lblHud.Text = $"Game: {gameName}" & vbCrLf &
-                  $"Turn: {currentTurnNumber}" & vbCrLf &
+                  $"Turn: {TurnNumber}" & vbCrLf &
                   $"Next Merc Cost: {MercPriceLevel}"
 
         ' --- Draw map ---
@@ -1183,21 +1332,6 @@ Public Class Form1
 
         'Debug.WriteLine($"[NEW GAME] {gameName} created successfully (Turn {currentTurnNumber}).")
     End Sub
-
-
-    Private Sub CreateTerrainCache()
-        ' Clear existing cache (in case called multiple times)
-        terrainCache.Clear()
-
-        Dim terrainNames As String() = {"plains.png", "forest.png", "hills.png", "mountain.png", "elfcitadel.png", "dwarfcitadel.png", "orccitadel.png", "humancitadel.png"}
-        For Each terrainName In terrainNames
-            Dim img As Image = GetEmbeddedImage(terrainName)
-            If img IsNot Nothing Then
-                terrainCache.Add(terrainName, img)
-            End If
-        Next
-    End Sub
-
 
     Public Sub InitializeRaceUnits()
         AllRaces = New List(Of RaceUnits)
@@ -3105,22 +3239,14 @@ Public Class Form1
         pnlMap.Invalidate()
     End Sub
 
-    Private Function GetEmbeddedImage(terrainName As String) As Image
-        ' terrainName: e.g., "forest.png", "plains.png"
-        Dim asm As Reflection.Assembly = Reflection.Assembly.GetExecutingAssembly()
-        Dim resourceName As String = "Conflict." & terrainName ' must match your embedded resource name
-
-        Using stream As IO.Stream = asm.GetManifestResourceStream(resourceName)
-            If stream IsNot Nothing Then
-                Return Image.FromStream(stream)
-            Else
-                Return Nothing
-            End If
-        End Using
-    End Function
-
     Private Sub btnProcessTurn_Click(sender As Object, e As EventArgs) Handles btnProcessTurn.Click
         rtbInfo.Clear()
+
+        CurrentReports = New TurnReports With {.TurnNumber = TurnNumber}
+        CurrentReports.Messages.Add("Elves sighted an orc warband in the north.")
+        CurrentReports.BattleReports.Add("Battle at (10,14): Elves defeated the Orcs.")
+
+
         ' BEFORE ANYTHING THIS TURN
         RecomputeEliminationForAllPlayers()
 
@@ -3166,22 +3292,22 @@ Public Class Form1
         rtbPlayerSummary.AppendText(GenerateEmpireSummary())
 
         ' --- 7. Generate new mercenary offer (for next turn) ---
-        HandleNewMercenaryOffer(currentTurnNumber)
+        HandleNewMercenaryOffer(TurnNumber)
 
         ' --- 8. Process market for this turn ---
-        ProcessMarketTurn(currentTurnNumber)
+        ProcessMarketTurn(TurnNumber)
 
         ' --- 9. Update army reports ---
         UpdateArmiesReport()
 
         ' --- 10. Increment for the next turn ---
-        currentTurnNumber += 1
+        TurnNumber += 1
         ' --- 11. Save the game as this completed turn ---
-        SaveGame("Game1")
+        SaveGame($"Game{GameNumber:D3}")
 
         ' --- 12. Update HUD text ---
         lblHud.Text =
-        $"Turn: {currentTurnNumber}" & vbCrLf &
+        $"Turn: {TurnNumber}" & vbCrLf &
         $"Next Merc Cost: {MercPriceLevel}"
 
         ' === FINAL sanity sweep ===
@@ -3236,75 +3362,6 @@ Public Class Form1
 
 #End Region
 
-    ' --- PrintDocument handler ---
-    Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs) Handles printDoc.PrintPage
-        Dim g As Graphics = e.Graphics
-        g.Clear(Color.White)
-
-        ' ===========================================================================
-        '  SAFETY NET – AUTO-UPDATE SEEN MONSTERS
-        ' ---------------------------------------------------------------------------
-        '  Why this exists:
-        '    • On Turn 0 the game is created, players are assigned manually,
-        '      and the GM might go straight to "Print" without first clicking "Save".
-        '    • Normally the discovery lists (seen-monsters files) are generated
-        '      inside SaveGame(), *after* players are assigned.
-        '    • If the GM forgets to Save before printing, those files will not exist
-        '      and the printed turn would show blank or incomplete monster info.
-        '
-        '  Solution:
-        '    We call UpdateSeenMonstersForAllPlayers() here as a precaution.
-        '    It’s harmless if already up-to-date, and ensures every printout
-        '    always reflects the latest armies and merc offers currently in memory.
-        ' ===========================================================================
-        Try
-            If Players IsNot Nothing AndAlso Players.Count > 0 Then
-                UpdateSeenMonstersForAllPlayers(Players)
-                'Debug.WriteLine("[PRINT] Seen-monsters list refreshed automatically before printing.")
-            End If
-        Catch ex As Exception
-            'Debug.WriteLine($"[PRINT] Auto-update of seen monsters failed: {ex.Message}")
-        End Try
-        ' ===========================================================================
-
-        ' --- Draw header and player info ---
-        DrawFrontPageHeaderAndPlayerInfo(g, e)
-
-        ' --- Draw map below header/player box ---
-        Dim headerHeight As Single = 60
-        Dim playerBoxHeight As Single = 80
-        Dim spacing As Single = 20
-        Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing
-
-        DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
-
-        ' Only one page
-        e.HasMorePages = False
-    End Sub
-
-
-    ' --- Helper to draw heading and player info ---
-    Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
-        ' --- Heading ---
-        Using font As New Font("Arial", 36, FontStyle.Bold)
-            Dim headingRect As New RectangleF(e.MarginBounds.Left, e.MarginBounds.Top, e.MarginBounds.Width, 50)
-            Dim sf As New StringFormat() With {.Alignment = StringAlignment.Center, .LineAlignment = StringAlignment.Center}
-            g.DrawString("CONFLICT", font, Brushes.Black, headingRect, sf)
-        End Using
-
-        ' --- Player info box ---
-        Dim playerBoxHeight As Single = 80
-        Dim playerBox As New RectangleF(e.MarginBounds.Left + 20, e.MarginBounds.Top + 60, 200, playerBoxHeight)
-        g.DrawRectangle(Pens.Black, Rectangle.Round(playerBox))
-
-        Using font As New Font("Arial", 12, FontStyle.Regular)
-            g.DrawString("Player Name:", font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 5)
-            g.DrawString("Address:", font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 25)
-            g.DrawString("Race: " & Players(0).Race, font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 45)
-            g.DrawString("Population: " & Players(0).Population.ToString(), font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 65)
-        End Using
-    End Sub
-
 
 #Region "=== Printing: Front Page ==="
 
@@ -3316,7 +3373,7 @@ Public Class Form1
 
 #End Region
 
-    Private Function IsCapital(x As Integer, y As Integer) As Boolean
+    Public Function IsCapital(x As Integer, y As Integer) As Boolean
         For Each kvp In capitals
             Dim playerIndex As Integer = kvp.Key
             Dim pt As Point = kvp.Value
@@ -3333,224 +3390,6 @@ Public Class Form1
         Return False
     End Function
 
-
-    Private Sub DrawCapitalForOwner(g As Graphics, ownerIndex As Integer, xPos As Single, yPos As Single, tileSize As Single)
-        Dim spriteName As String = Nothing
-
-        Select Case ownerIndex
-            Case 0 : spriteName = "elfcitadel.png"
-            Case 1 : spriteName = "dwarfcitadel.png"
-            Case 2 : spriteName = "orccitadel.png"
-            Case 3 : spriteName = "humancitadel.png"
-        End Select
-
-        If spriteName Is Nothing Then Exit Sub
-        If Not terrainCache.ContainsKey(spriteName) Then Exit Sub
-
-        Dim img As Image = terrainCache(spriteName)
-        g.DrawImage(img, xPos, yPos, tileSize, tileSize)
-    End Sub
-
-    Private Sub DrawMap(g As Graphics,
-                     Optional width As Single = -1,
-                     Optional height As Single = -1,
-                     Optional isPanel As Boolean = True,
-                     Optional e As PrintPageEventArgs = Nothing,
-                     Optional topOffset As Single = 0)
-
-        If terrainCache Is Nothing OrElse terrainCache.Count = 0 Then
-            ' nothing to draw yet
-            Exit Sub
-        End If
-
-        Dim mapSize As Integer = 25
-        Dim numberMargin As Single = 20
-
-        If width <= 0 Then width = pnlMap.ClientSize.Width
-        If height <= 0 Then height = pnlMap.ClientSize.Height
-
-        ' Compute tile size to fit map
-        Dim tileSize As Single
-        If isPanel Then
-            tileSize = Math.Min((width - 2 * numberMargin) / mapSize, (height - 2 * numberMargin) / mapSize)
-        Else
-            tileSize = Math.Min((width - 2 * numberMargin) / mapSize, (height - 12) / mapSize)
-        End If
-
-        Dim totalMapWidth As Single = tileSize * mapSize
-        Dim totalMapHeight As Single = tileSize * mapSize
-
-        ' Calculate offsets
-        Dim xOffset As Single
-        Dim yOffset As Single
-        If isPanel Then
-            xOffset = numberMargin + (width - 2 * numberMargin - totalMapWidth) / 2
-            yOffset = numberMargin + (height - 2 * numberMargin - totalMapHeight) / 2 + topOffset
-
-            ' Only clear panel drawing
-            g.Clear(Color.White)
-        Else
-            ' Printing: center map horizontally, push down by topOffset (includes header + player info)
-            xOffset = e.PageBounds.Left + (e.PageBounds.Width - totalMapWidth) / 2
-            yOffset = e.PageBounds.Top + topOffset
-            ' Do NOT clear printing graphics; header and player info already drawn
-        End If
-
-        ' --- Draw terrain and ownership ---
-        For x As Integer = 0 To mapSize - 1
-            For y As Integer = 0 To mapSize - 1
-                Dim terrainValue As Integer = Map(x, y, 0)
-                Dim terrainImage As Image = Nothing
-                Select Case terrainValue
-                    Case 0 : terrainImage = terrainCache("plains.png")
-                    Case 1 : terrainImage = terrainCache("forest.png")
-                    Case 2 : terrainImage = terrainCache("hills.png")
-                    Case 3 : terrainImage = terrainCache("mountain.png")
-                End Select
-
-                Dim ownerIndex As Integer = Map(x, y, 1)
-                Dim ownerColor As Color = Color.White
-                If ownerIndex >= 0 AndAlso ownerIndex < playerColors.Length Then ownerColor = playerColors(ownerIndex)
-
-                Dim xPos As Single = xOffset + x * tileSize
-                Dim yPos As Single = yOffset + y * tileSize
-                Dim w As Single = tileSize
-                Dim h As Single = tileSize
-
-                If isPanel AndAlso x = mapSize - 1 Then w = Math.Min(w, pnlMap.ClientSize.Width - (xOffset + x * tileSize))
-                If isPanel AndAlso y = mapSize - 1 Then h = Math.Min(h, pnlMap.ClientSize.Height - (yOffset + y * tileSize))
-
-                Using brush As New SolidBrush(ownerColor)
-                    g.FillRectangle(brush, xPos, yPos, w, h)
-                End Using
-
-                ' === Draw either terrain or citadel, depending on capital and owner status ===
-                Dim drewSomething As Boolean = False
-
-                If IsCapital(x, y) Then
-                    If ownerIndex >= 0 AndAlso ownerIndex < Players.Count Then
-                        Dim ownerPlayer As Player = Players(ownerIndex)
-                        If ownerPlayer IsNot Nothing AndAlso Not ownerPlayer.IsEliminated Then
-                            DrawCapitalForOwner(g, ownerIndex, xPos, yPos, tileSize)
-                            drewSomething = True
-                        End If
-                    End If
-                End If
-
-                ' Only draw terrain if no citadel was drawn
-                If Not drewSomething AndAlso terrainImage IsNot Nothing Then
-                    g.DrawImage(terrainImage, xPos, yPos, w, h)
-                End If
-
-            Next
-        Next
-
-        ' --- Draw grid numbers ---
-        Using font As New Font("Arial", 8)
-            Using brush As New SolidBrush(Color.Black)
-                Dim leftOffset As Single = xOffset - 18
-                Dim rightOffset As Single = xOffset + totalMapWidth + 4
-
-                For x As Integer = 0 To mapSize - 1
-                    Dim xNumPos As Single = xOffset + x * tileSize + tileSize / 2
-                    g.DrawString((x).ToString(), font, brush, xNumPos, yOffset - 12, New StringFormat() With {.Alignment = StringAlignment.Center})
-                    g.DrawString((x).ToString(), font, brush, xNumPos, yOffset + totalMapHeight + 2, New StringFormat() With {.Alignment = StringAlignment.Center})
-                Next
-
-                For y As Integer = 0 To mapSize - 1
-                    Dim yNumPos As Single = yOffset + y * tileSize + tileSize / 2
-                    g.DrawString((y).ToString(), font, brush, leftOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
-                    g.DrawString((y).ToString(), font, brush, rightOffset, yNumPos, New StringFormat() With {.LineAlignment = StringAlignment.Center})
-                Next
-            End Using
-        End Using
-
-        ' --- Draw grid lines ---
-        Using pen As New Pen(Color.Gray)
-            For i As Integer = 0 To mapSize
-                Dim yLine As Single = yOffset + i * tileSize
-                Dim xLine As Single = xOffset + i * tileSize
-
-                If isPanel AndAlso i = mapSize Then
-                    yLine = Math.Min(yLine, pnlMap.ClientSize.Height - 1)
-                    xLine = Math.Min(xLine, pnlMap.ClientSize.Width - 1)
-                End If
-
-                g.DrawLine(pen, xOffset, yLine, xOffset + totalMapWidth, yLine)
-                g.DrawLine(pen, xLine, yOffset, xLine, yOffset + totalMapHeight)
-            Next
-        End Using
-
-        ' --- Draw armies ---
-        ' (Remains unchanged)
-        Dim tileTotals As New Dictionary(Of Point, Integer)
-        Dim tileOwner As New Dictionary(Of Point, Integer)
-
-        For Each p In Players
-            If p Is Nothing OrElse p.IsEliminated OrElse p.Armies Is Nothing Then Continue For
-            For Each a In p.Armies
-                Dim pt As New Point(a.X, a.Y)
-                If tileTotals.ContainsKey(pt) Then
-                    tileTotals(pt) += a.TotalSoldiers
-                Else
-                    tileTotals(pt) = a.TotalSoldiers
-                    tileOwner(pt) = p.PlayerNumber
-                End If
-            Next
-        Next
-
-        For Each kvp In tileTotals
-            Dim x = kvp.Key.X
-            Dim y = kvp.Key.Y
-            Dim totalSoldiers = kvp.Value
-
-            Dim xPos As Single = xOffset + x * tileSize
-            Dim yPos As Single = yOffset + y * tileSize
-
-            ' Dim the terrain
-            Using dimBrush As New SolidBrush(Color.FromArgb(80, 0, 0, 0))
-                g.FillRectangle(dimBrush, xPos, yPos, tileSize, tileSize)
-            End Using
-
-            ' Highlight rectangle using army owner
-            Dim playerIndex As Integer = tileOwner(kvp.Key)
-            Dim borderColor As Color
-            Select Case playerIndex
-                Case 0 : borderColor = Color.FromArgb(173, 255, 47) ' Elf
-                Case 1 : borderColor = Color.Cyan ' Dwarf
-                Case 2 : borderColor = Color.Red ' Orc
-                Case 3 : borderColor = Color.Orange ' Human
-                Case Else : borderColor = Color.Gray
-            End Select
-
-            Using pen As New Pen(borderColor, Math.Max(1, tileSize * 0.1F))
-                g.DrawRectangle(pen, xPos + 0.5F, yPos + 0.5F, tileSize - 1, tileSize - 1)
-            End Using
-
-            ' Army number
-            Dim armyText As String
-            Dim baseFontSize As Single = Math.Min(tileSize * 0.5F, 12)
-            Dim fontSize As Single = baseFontSize
-
-            If totalSoldiers >= 1000000 Then
-                If totalSoldiers < 10000000 Then
-                    armyText = (totalSoldiers / 1000000.0).ToString("0.#") & "M"
-                Else
-                    armyText = (totalSoldiers \ 1000000).ToString() & "M"
-                End If
-            Else
-                armyText = Math.Max(1, CInt(Math.Round(totalSoldiers / 1000.0))).ToString()
-                If armyText.Length > 3 Then fontSize *= 0.75F
-            End If
-
-            Using font As New Font("Arial", fontSize, FontStyle.Bold)
-                Using brush As New SolidBrush(Color.White)
-                    Dim sf As New StringFormat() With {.Alignment = StringAlignment.Center, .LineAlignment = StringAlignment.Center}
-                    g.DrawString(armyText, font, brush, xPos + tileSize / 2, yPos + tileSize / 2, sf)
-                End Using
-            End Using
-        Next
-    End Sub
 
 
     Private Function GenerateTileName(terrainType As Integer, x As Integer, y As Integer) As String
@@ -4600,7 +4439,7 @@ Public Class Form1
     ' Deterministic small RNG per (turn, phase)
     Private Function PhaseRng(phaseIndex As Integer) As Random
         ' currentTurnNumber already exists in your Form1
-        Dim seed As Integer = (Math.Max(1, currentTurnNumber) * 97) + (phaseIndex * 17)
+        Dim seed As Integer = (Math.Max(1, TurnNumber) * 97) + (phaseIndex * 17)
         Return New Random(seed)
     End Function
 
@@ -5568,44 +5407,44 @@ Public Class Form1
     End Function
 
 
-    Private Sub btnKillPlayer_Click(sender As Object, e As EventArgs) Handles btnKillPlayer.Click
-        ' === DEBUG ONLY ===
-        Dim input As String = InputBox("Enter player number to eliminate (1–4):", "Eliminate Player", "1")
-        Dim idx As Integer
-        If Not Integer.TryParse(input, idx) Then
-            MessageBox.Show("Invalid number.")
-            Exit Sub
-        End If
-        idx -= 1 ' convert to zero-based index
+    'Private Sub btnKillPlayer_Click(sender As Object, e As EventArgs) Handles btnKillPlayer.Click
+    '    ' === DEBUG ONLY ===
+    '    Dim input As String = InputBox("Enter player number to eliminate (1–4):", "Eliminate Player", "1")
+    '    Dim idx As Integer
+    '    If Not Integer.TryParse(input, idx) Then
+    '        MessageBox.Show("Invalid number.")
+    '        Exit Sub
+    '    End If
+    '    idx -= 1 ' convert to zero-based index
 
-        If idx < 0 OrElse idx >= Players.Count Then
-            MessageBox.Show("That player number doesn't exist.")
-            Exit Sub
-        End If
+    '    If idx < 0 OrElse idx >= Players.Count Then
+    '        MessageBox.Show("That player number doesn't exist.")
+    '        Exit Sub
+    '    End If
 
-        Dim p As Player = Players(idx)
-        If p Is Nothing Then
-            MessageBox.Show("Player not found.")
-            Exit Sub
-        End If
+    '    Dim p As Player = Players(idx)
+    '    If p Is Nothing Then
+    '        MessageBox.Show("Player not found.")
+    '        Exit Sub
+    '    End If
 
-        ' === Force elimination ===
-        p.IsEliminated = True
-        'rtbGameInfo.AppendText($"[DEBUG] Forcibly eliminating {p.Race} (Player {p.PlayerNumber + 1})..." & vbCrLf)
+    '    ' === Force elimination ===
+    '    p.IsEliminated = True
+    '    'rtbGameInfo.AppendText($"[DEBUG] Forcibly eliminating {p.Race} (Player {p.PlayerNumber + 1})..." & vbCrLf)
 
-        ' === Full cleanup (neutralize tiles + wipe armies) ===
-        NeutralizePlayerMap(p)
-        NeutralizePlayerArmies(p)
+    '    ' === Full cleanup (neutralize tiles + wipe armies) ===
+    '    NeutralizePlayerMap(p)
+    '    NeutralizePlayerArmies(p)
 
-        ' === Run normal defeat logic just in case ===
-        CheckAndApplyDefeat(p)
+    '    ' === Run normal defeat logic just in case ===
+    '    CheckAndApplyDefeat(p)
 
-        ' === Refresh visuals ===
-        pnlMap.Invalidate()       ' Redraw map
-        UpdateArmiesReport()      ' Refresh army list
+    '    ' === Refresh visuals ===
+    '    pnlMap.Invalidate()       ' Redraw map
+    '    UpdateArmiesReport()      ' Refresh army list
 
-        MessageBox.Show($"{p.Race} eliminated for testing. Check map and panels.")
-    End Sub
+    '    MessageBox.Show($"{p.Race} eliminated for testing. Check map and panels.")
+    'End Sub
 
 
     ' ===========================================================
@@ -5898,37 +5737,21 @@ Public Class Form1
         MessageBox.Show("Assignments applied successfully!", "Assign", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub
 
-    Private Sub ApplyRaceColoursToCombos()
-        ' You can adjust these colours to your exact map palette
-        cmbElf.BackColor = Color.LightGreen
-        cmbElf.ForeColor = Color.Black
-
-        cmbDwarf.BackColor = Color.LightSkyBlue
-        cmbDwarf.ForeColor = Color.Black
-
-        cmbOrc.BackColor = Color.LightCoral
-        cmbOrc.ForeColor = Color.Black
-
-        cmbHuman.BackColor = Color.Yellow
-        cmbHuman.ForeColor = Color.Black
-    End Sub
-
-
 #End Region
-    ' === Army Orders System =====================================
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         CurrentForm = Me
+        SetupPrinting()
+        PopulateGameList()
         InitialiseSummonerNames(SummonerDefinitions)
+        InitialiseMarketCombos()
         LoadMonsterDescriptions()
         LoadCustomerGrid()
         PopulateCustomerDropdowns()
-        ApplyRaceColoursToCombos()
         InitialiseMoveColumns()
         dgvOrders.EditMode = DataGridViewEditMode.EditOnEnter
         dgvOrders.AllowUserToAddRows = False
     End Sub
-
 
 #Region "=== UI Events ===="
     Private Sub cmbElf_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbElf.SelectedIndexChanged
@@ -6113,7 +5936,6 @@ Public Class Form1
 
         End Select
     End Sub
-
 
 #End Region
 
