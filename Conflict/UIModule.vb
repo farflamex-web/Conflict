@@ -382,4 +382,33 @@ Module UIModule
         Next
         Return opts
     End Function
+
+    ' ----------------------------------------------------------------
+    ' Sync all player combo selections to the actual player objects
+    ' ----------------------------------------------------------------
+    Public Sub SyncPlayerAssignmentsToCombos()
+        If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
+
+        For Each p In CurrentForm.Players
+            If p Is Nothing Then Continue For
+            Dim race As String = p.Race.ToLowerInvariant()
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            Dim combo = TryCast(CurrentForm.Controls("cmb" & suffix), ComboBox)
+            If combo Is Nothing Then Continue For
+
+            Dim sel As String = If(combo.SelectedItem?.ToString(), "").Trim()
+
+            If String.IsNullOrEmpty(sel) OrElse sel.Equals("AI", StringComparison.OrdinalIgnoreCase) Then
+                p.Nickname = ""
+                p.AIControlled = True
+            Else
+                p.Nickname = sel
+                p.AIControlled = False
+            End If
+        Next
+    End Sub
+
+
+
 End Module

@@ -1066,20 +1066,25 @@ Public Class Form1
         Try
             If Players Is Nothing Then Exit Sub
 
-            Dim elfName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Elf", StringComparison.OrdinalIgnoreCase))?.Nickname
-            Dim dwarfName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Dwarf", StringComparison.OrdinalIgnoreCase))?.Nickname
-            Dim orcName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase))?.Nickname
-            Dim humanName = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Human", StringComparison.OrdinalIgnoreCase))?.Nickname
+            Dim elf = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Elf", StringComparison.OrdinalIgnoreCase))
+            Dim dwarf = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Dwarf", StringComparison.OrdinalIgnoreCase))
+            Dim orc = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Orc", StringComparison.OrdinalIgnoreCase))
+            Dim human = Players.FirstOrDefault(Function(p) p IsNot Nothing AndAlso p.Race.Equals("Human", StringComparison.OrdinalIgnoreCase))
 
-            ' Only select if we actually have a non-blank nickname.
-            If Not String.IsNullOrWhiteSpace(elfName) Then SelectComboByDisplayText(cmbElf, elfName)
-            If Not String.IsNullOrWhiteSpace(dwarfName) Then SelectComboByDisplayText(cmbDwarf, dwarfName)
-            If Not String.IsNullOrWhiteSpace(orcName) Then SelectComboByDisplayText(cmbOrc, orcName)
-            If Not String.IsNullOrWhiteSpace(humanName) Then SelectComboByDisplayText(cmbHuman, humanName)
+            ' === Explicitly select nickname or AI ===
+            SelectComboByDisplayText(cmbElf, If(String.IsNullOrWhiteSpace(elf?.Nickname), "AI", elf.Nickname))
+            SelectComboByDisplayText(cmbDwarf, If(String.IsNullOrWhiteSpace(dwarf?.Nickname), "AI", dwarf.Nickname))
+            SelectComboByDisplayText(cmbOrc, If(String.IsNullOrWhiteSpace(orc?.Nickname), "AI", orc.Nickname))
+            SelectComboByDisplayText(cmbHuman, If(String.IsNullOrWhiteSpace(human?.Nickname), "AI", human.Nickname))
+
         Finally
             isRestoringCombos = False
         End Try
+
+        ' After restoring, make sure the AI flags match
+        SyncPlayerAssignmentsToCombos()
     End Sub
+
 
     Private Sub PostLoadFixups()
         If Players Is Nothing Then Exit Sub
@@ -1979,7 +1984,8 @@ Public Class Form1
                             ' === Train command ===
                                 Case "TRAIN"
                                     ' Army trains: gain +10% TrainingLevel
-                                    a.TrainingLevel *= 1.1
+                                    ' Gain +10% training each time, no upper cap
+                                    a.TrainingLevel += 0.1R
 
                             ' === Stay still ===
                                 Case "STAY"
@@ -3680,7 +3686,7 @@ Public Class Form1
                     Next
 
                     ' --- Report ---
-                    Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot)
+                    Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot, allArmiesHere)
                     rtbInfo.AppendText(compactReport)
 
                     ' --- Cleanup dead stacks (safe, only mutates Units of each army) ---
@@ -4122,45 +4128,55 @@ Public Class Form1
     ' MAIN ENTRY: Enqueue one RECRUIT for this army if needed
     ' (called from your ProcessTurn() special step)
     ' ======================================================
+
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
         If player Is Nothing OrElse player.IsEliminated Then Exit Sub
-        If army Is Nothing OrElse player Is Nothing Then Exit Sub
-        If Not player.AIControlled Then Exit Sub
+        If army Is Nothing OrElse Not player.AIControlled Then Exit Sub
 
-        ' One-time reset for this player (first army we touch this tick)
+        ' Reset prediction once per player
         If armyIndex = 0 Then
             AIRecruit_ResetQueuedGain(player.PlayerNumber)
-        End If
-
-        ' Empire-level decision
-        If Not ShouldRecruitArmy(player) Then
-            'Debug.WriteLine($"[AI] {player.Race}: no recruitment (pred={GetPredictedTotalPower(player)}, enemyMax={GetStrongestEnemyPower(player)}).")
-            Exit Sub
-        End If
-
-        ' Choose a recruitable template
-        Dim pick As UnitStats = DecideRecruitmentUnit(player, army)
-        If pick Is Nothing Then
-            'Debug.WriteLine($"[AI] {player.Race}: no valid unit template to recruit.")
-            Exit Sub
-        End If
-        If String.IsNullOrWhiteSpace(pick.ShortName) Then
-            'Debug.WriteLine($"[AI] {player.Race}: template '{pick.Name}' lacks ShortName; cannot enqueue RECRUIT.")
-            Exit Sub
         End If
 
         ' Ensure MoveQueue exists
         If army.MoveQueue Is Nothing Then army.MoveQueue = New List(Of ArmyCommand)()
 
-        ' Enqueue command; your ProcessTurn special step will perform RecruitArmyUnits
+        ' --- Evaluate recruitment viability ---
+        Dim canRecruit As Boolean = ShouldRecruitArmy(player)
+
+        ' --- Decide whether to train or recruit ---
+        Dim doTrain As Boolean = False
+
+        If player.Population < 1000 Then
+            ' Too small to recruit safely
+            doTrain = True
+        ElseIf rnd.NextDouble() < 0.4 Then
+            ' ~40% chance to train even if recruitment possible
+            doTrain = True
+        ElseIf Not canRecruit Then
+            ' If empire already strong, occasional training instead
+            doTrain = rnd.NextDouble() < 0.3
+        End If
+
+        If doTrain Then
+            army.MoveQueue.Add(New ArmyCommand With {.Command = "TRAIN"})
+            Debug.WriteLine($"[AI] {player.Race}: chose TRAIN for Army {armyIndex + 1}.")
+            Exit Sub
+        End If
+
+        ' --- Perform recruitment ---
+        Dim pick As UnitStats = DecideRecruitmentUnit(player, army)
+        If pick Is Nothing OrElse String.IsNullOrWhiteSpace(pick.ShortName) Then Exit Sub
+
         army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = pick.ShortName})
 
-        ' Predict empire gain so later armies see a stronger projection (5% of current pop)
+        ' Predict empire gain so later armies see stronger projection (5% of pop)
         Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05R)))
         AddPredictedGain(player, maxPerTurn)
 
-        'Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} (short '{pick.ShortName}') for Army {armyIndex + 1}. PredPower now {GetPredictedTotalPower(player)}.")
+        Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} for Army {armyIndex + 1}.")
     End Sub
+
 
 #End Region
 
@@ -4188,8 +4204,10 @@ Public Class Form1
 
 
     Public Function GenerateCompactPhaseReport(battleLog As BattleLog,
-                                           mergedArmies As List(Of Army),
-                                           startSnapshot As List(Of Army)) As String
+                                               mergedArmies As List(Of Army),
+                                               startSnapshot As List(Of Army),
+                                               originalArmies As List(Of Army)) As String
+
         Dim sb As New Text.StringBuilder()
 
         ' ---------- helpers ----------
@@ -4232,18 +4250,41 @@ Public Class Form1
         sb.AppendLine("Start of Battle:")
         For i As Integer = 0 To startSnapshot.Count - 1
             Dim snapA = startSnapshot(i)
-            Dim parts = New List(Of String)
+            Dim liveA = mergedArmies(i)
 
-            ' Sort units by descending size for initial report
-            For Each u In snapA.Units.OrderByDescending(Function(x) x.Size)
-                parts.Add($"{u.Name} ({u.Size})")
-            Next
+            ' Try to match merged army to the first corresponding original army (by Race)
+            Dim originalA As Army =
+        originalArmies.FirstOrDefault(Function(oa) oa.Race.Equals(liveA.Race, StringComparison.OrdinalIgnoreCase))
 
-            Dim total0 As Integer = snapA.Units.Sum(Function(u) u.Size)
-            sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {total0}")
+            ' Use info from the original army if available
+            Dim armyRace As String = If(String.IsNullOrWhiteSpace(snapA.Race),
+                                If(originalA IsNot Nothing, originalA.Race, "Unknown"),
+                                snapA.Race)
 
-            If i < startSnapshot.Count - 1 Then sb.AppendLine()
+            Dim armyName As String = If(String.IsNullOrWhiteSpace(snapA.Name),
+                                If(originalA IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(originalA.Name),
+                                   originalA.Name,
+                                   "(Unnamed)"),
+                                snapA.Name)
+
+            Dim trainingValue As Double =
+        If(snapA.TrainingLevel > 0,
+           snapA.TrainingLevel,
+           If(originalA IsNot Nothing, originalA.TrainingLevel, 0))
+            Dim trainingPct As String = $"{trainingValue:P0}"
+
+            ' List the units and compute total
+            Dim parts As New List(Of String)
+            If snapA.Units IsNot Nothing Then
+                For Each u In snapA.Units.OrderByDescending(Function(x) x.Size)
+                    parts.Add($"{u.Name} ({u.Size})")
+                Next
+            End If
+            Dim totalUnits As Integer = If(snapA.Units IsNot Nothing, snapA.Units.Sum(Function(u) u.Size), 0)
+
+            sb.AppendLine($"{armyRace} Army : {armyName} : Training {trainingPct} : {String.Join(", ", parts)} | Total: {totalUnits}")
         Next
+
         sb.AppendLine(New String("-"c, 60))
 
         ' ---------- Phase-by-phase ----------

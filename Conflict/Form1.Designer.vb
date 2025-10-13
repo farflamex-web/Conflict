@@ -504,7 +504,7 @@ Partial Class Form1
         ' lblMercenaryBids
         ' 
         lblMercenaryBids.AutoSize = True
-        lblMercenaryBids.Location = New Point(1137, 801)
+        lblMercenaryBids.Location = New Point(1137, 799)
         lblMercenaryBids.Name = "lblMercenaryBids"
         lblMercenaryBids.Size = New Size(88, 15)
         lblMercenaryBids.TabIndex = 34
@@ -593,7 +593,7 @@ Partial Class Form1
         ' lblInvestments
         ' 
         lblInvestments.AutoSize = True
-        lblInvestments.Location = New Point(1287, 801)
+        lblInvestments.Location = New Point(1287, 799)
         lblInvestments.Name = "lblInvestments"
         lblInvestments.Size = New Size(71, 15)
         lblInvestments.TabIndex = 43
@@ -646,7 +646,7 @@ Partial Class Form1
         ' lblBuySummoners
         ' 
         lblBuySummoners.AutoSize = True
-        lblBuySummoners.Location = New Point(915, 801)
+        lblBuySummoners.Location = New Point(915, 799)
         lblBuySummoners.Name = "lblBuySummoners"
         lblBuySummoners.Size = New Size(94, 15)
         lblBuySummoners.TabIndex = 49
@@ -719,7 +719,7 @@ Partial Class Form1
         ' lblMarket
         ' 
         lblMarket.AutoSize = True
-        lblMarket.Location = New Point(1426, 800)
+        lblMarket.Location = New Point(1426, 798)
         lblMarket.Name = "lblMarket"
         lblMarket.Size = New Size(112, 15)
         lblMarket.TabIndex = 58
