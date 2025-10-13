@@ -3408,14 +3408,17 @@ Public Class Form1
     Private Sub btnPrint_Click(sender As Object, e As EventArgs) Handles btnPrint.Click
         ' Make sure the printing system is ready
         Printouts.CreateTerrainCache()
+        Printouts.SetupPrinting()
 
-        ' Use the PrintDocument that lives in the Printouts module
-        If Printouts.printDoc IsNot Nothing Then
-            Printouts.printDoc.Print()
-        Else
-            MessageBox.Show("Print document not initialised. (SetupPrinting must run first.)")
+        ' Use the PrintDocument from the Printouts module
+        If Printouts.printDoc Is Nothing Then
+            Debug.WriteLine("[PRINT] printDoc was Nothing — reinitialising.")
+            Printouts.SetupPrinting()
         End If
+
+        Printouts.printDoc.Print()
     End Sub
+
 
 
 
@@ -3701,6 +3704,18 @@ Public Class Form1
                 Next
             Next
         Next
+
+        ' === Post-battle training reset for wiped armies ===
+        For Each p In Players
+            If p.Armies Is Nothing Then Continue For
+            For Each a In p.Armies
+                If a Is Nothing Then Continue For
+                If a.Units Is Nothing OrElse a.Units.Sum(Function(u) u.Size) <= 0 Then
+                    a.TrainingLevel = 0
+                End If
+            Next
+        Next
+
 
         ' After all enumerations are complete, now it’s safe to eliminate players
         QueueEliminationChecksSafe()
@@ -4129,52 +4144,62 @@ Public Class Form1
     ' (called from your ProcessTurn() special step)
     ' ======================================================
 
+
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
         If player Is Nothing OrElse player.IsEliminated Then Exit Sub
         If army Is Nothing OrElse Not player.AIControlled Then Exit Sub
 
-        ' Reset prediction once per player
+        ' Reset once per player
         If armyIndex = 0 Then
             AIRecruit_ResetQueuedGain(player.PlayerNumber)
         End If
 
-        ' Ensure MoveQueue exists
         If army.MoveQueue Is Nothing Then army.MoveQueue = New List(Of ArmyCommand)()
 
-        ' --- Evaluate recruitment viability ---
-        Dim canRecruit As Boolean = ShouldRecruitArmy(player)
+        ' === 1. Core empire and army data ===
+        Dim isWeak As Boolean = ShouldRecruitArmy(player)
+        Dim armySize As Integer = army.TotalSoldiers
+        Dim doRecruit As Boolean = False
 
-        ' --- Decide whether to train or recruit ---
-        Dim doTrain As Boolean = False
-
+        ' === 2. Basic safety: small population never recruits ===
         If player.Population < 1000 Then
-            ' Too small to recruit safely
-            doTrain = True
-        ElseIf rnd.NextDouble() < 0.4 Then
-            ' ~40% chance to train even if recruitment possible
-            doTrain = True
-        ElseIf Not canRecruit Then
-            ' If empire already strong, occasional training instead
-            doTrain = rnd.NextDouble() < 0.3
+            doRecruit = False
+
+            ' === 3. Undersized armies always recruit (unless population is critically low) ===
+        ElseIf armySize < 500 AndAlso player.Population > 500 Then
+            doRecruit = True
+
+            ' === 4. Normal decision: recruit only if weak ===
+        ElseIf isWeak Then
+            doRecruit = True
+
+            ' === 5. Big empires may occasionally top up for variety ===
+        ElseIf player.Population > 10000 AndAlso rnd.NextDouble() < 0.2 Then
+            doRecruit = True
+
+            ' === 6. Everyone else trains ===
+        Else
+            doRecruit = False
         End If
 
-        If doTrain Then
+        ' === 7. Execute ===
+        If Not doRecruit Then
             army.MoveQueue.Add(New ArmyCommand With {.Command = "TRAIN"})
             Debug.WriteLine($"[AI] {player.Race}: chose TRAIN for Army {armyIndex + 1}.")
             Exit Sub
         End If
 
-        ' --- Perform recruitment ---
+        ' === 8. Perform recruitment ===
         Dim pick As UnitStats = DecideRecruitmentUnit(player, army)
         If pick Is Nothing OrElse String.IsNullOrWhiteSpace(pick.ShortName) Then Exit Sub
 
         army.MoveQueue.Add(New ArmyCommand With {.Command = "RECRUIT", .Parameter = pick.ShortName})
 
-        ' Predict empire gain so later armies see stronger projection (5% of pop)
+        ' Predict empire gain so other armies use updated projection (5% of population)
         Dim maxPerTurn As Integer = Math.Max(1, CInt(Math.Floor(player.Population * 0.05R)))
         AddPredictedGain(player, maxPerTurn)
 
-        Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} for Army {armyIndex + 1}.")
+        Debug.WriteLine($"[AI] {player.Race}: queued RECRUIT {pick.Name} for Army {armyIndex + 1}. (ArmySize={armySize}, Pop={player.Population})")
     End Sub
 
 
@@ -5190,7 +5215,7 @@ Public Class Form1
         Dim maxBudget As Integer = MercPriceLevel
 
         Dim mercFactions As String() = {
-        "WarriorMonks", "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
+        "Warrior Monks", "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
         "Cultists", "Demons", "Undead", "Golems", "Elementals",
         "Bandits", "Nomads", "Freeblades", "Sellswords"
     }
@@ -5736,7 +5761,7 @@ Public Class Form1
 #Region "=== Accounts ==="
 
     ' === Customer model ===
-    Private Class Customer
+    Public Class Customer
         Public Property Nickname As String       ' Unique identifier used across games
         Public Property Name As String           ' Full name
         Public Property Email As String
@@ -5768,7 +5793,7 @@ Public Class Form1
     End Sub
 
     ' === Customer grid data ===
-    Private customers As BindingList(Of Customer)
+    Public Customers As BindingList(Of Customer)
 
     Private Sub LoadCustomerGrid()
         customers = New BindingList(Of Customer)(LoadCustomers())
@@ -5872,8 +5897,6 @@ Public Class Form1
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         CurrentForm = Me
-        CreateTerrainCache()
-        SetupPrinting()
         PopulateGameList()
         InitialiseSummonerNames(SummonerDefinitions)
         InitialiseMarketCombos()

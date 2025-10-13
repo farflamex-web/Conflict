@@ -52,11 +52,21 @@ Module Printouts
         AddHandler printDoc.PrintPage, AddressOf printDoc_PrintPage
     End Sub
 
+    ' ============================================================
+    '  Diagnostic Print Page and Header Routine
+    ' ============================================================
     Public Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
-        Debug.WriteLine("[PRINT] printDoc_PrintPage fired.")
+        'Debug.WriteLine("[PRINT] printDoc_PrintPage fired.")
 
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
+
+        ' === Sanity check on CurrentForm ===
+        If CurrentForm Is Nothing Then
+            'Debug.WriteLine("[PRINT] ERROR: CurrentForm is Nothing.")
+            e.HasMorePages = False
+            Return
+        End If
 
         ' === Safety net for monster updates ===
         Try
@@ -64,21 +74,141 @@ Module Printouts
                 UpdateSeenMonstersForAllPlayers(CurrentForm.Players)
             End If
         Catch ex As Exception
+            'Debug.WriteLine("[PRINT] WARNING: Monster update failed - " & ex.Message)
         End Try
 
         ' === Draw report content ===
+        'Debug.WriteLine("[PRINT] Calling DrawFrontPageHeaderAndPlayerInfo...")
         DrawFrontPageHeaderAndPlayerInfo(g, e)
+        'Debug.WriteLine("[PRINT] Returned from DrawFrontPageHeaderAndPlayerInfo.")
 
-        Dim headerHeight As Single = 60
-        Dim playerBoxHeight As Single = 80
-        Dim spacing As Single = 20
-        Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing
+        ' === Map section ===
+        If CurrentForm.Map Is Nothing Then
+            'Debug.WriteLine("[PRINT] WARNING: Map is Nothing, skipping DrawMap.")
+        Else
+            ' === After drawing header ===
+            Dim headerHeight As Single = 60
+            Dim playerBoxHeight As Single = 80
+            Dim spacing As Single = 20
+            Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing
 
-        DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+            ' --- Shift the whole map down on paper by about 1 inch ---
+            topOffset += 100    ' about 1 inch at normal printer DPI
+
+            ' === Draw the map exactly as before ===
+            DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+
+        End If
 
         e.HasMorePages = False
+        'Debug.WriteLine("[PRINT] printDoc_PrintPage completed.")
     End Sub
 
+    Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
+        If CurrentForm Is Nothing Then Exit Sub
+        If CurrentForm.Players Is Nothing OrElse CurrentForm.Players.Count = 0 Then Exit Sub
+
+        Dim marginLeft As Single = e.MarginBounds.Left
+        Dim marginTop As Single = e.MarginBounds.Top
+        Dim pageWidth As Single = e.MarginBounds.Width
+
+        ' === Identify current player ===
+        Dim p As Player = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
+        If p Is Nothing Then p = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
+        If p Is Nothing Then
+            g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, marginLeft + 40, marginTop + 40)
+            Exit Sub
+        End If
+
+        ' === Try to find matching customer ===
+        Dim cust = CurrentForm.Customers?.FirstOrDefault(Function(c) _
+        c.Nickname IsNot Nothing AndAlso c.Nickname.Equals(p.Nickname, StringComparison.OrdinalIgnoreCase))
+
+        ' ------------------------------------------------------------
+        ' 1. COLOUR FANTASY TITLE
+        ' ------------------------------------------------------------
+        Dim titleRect As New RectangleF(marginLeft, marginTop, pageWidth, 60)
+        Dim sf As New StringFormat() With {.Alignment = StringAlignment.Center, .LineAlignment = StringAlignment.Center}
+
+        ' Choose a fantasy font if installed
+        Dim fontName As String = "Papyrus"
+        If Not FontFamily.Families.Any(Function(f) f.Name.Equals(fontName, StringComparison.OrdinalIgnoreCase)) Then
+            fontName = "Old English Text MT"
+            If Not FontFamily.Families.Any(Function(f) f.Name.Equals(fontName, StringComparison.OrdinalIgnoreCase)) Then
+                fontName = "Times New Roman"
+            End If
+        End If
+
+        Using fontTitle As New Font(fontName, 48, FontStyle.Bold, GraphicsUnit.Point)
+            ' Soft shadow
+            Using shadowBrush As New SolidBrush(Color.FromArgb(160, 60, 0, 0))
+                g.DrawString("CONFLICT", fontTitle, shadowBrush,
+                         New RectangleF(titleRect.Left + 3, titleRect.Top + 3, titleRect.Width, titleRect.Height), sf)
+            End Using
+
+            ' Red → Gold gradient main fill
+            Using gradBrush As New Drawing2D.LinearGradientBrush(titleRect,
+                                                             Color.DarkRed,
+                                                             Color.Gold,
+                                                             Drawing2D.LinearGradientMode.Horizontal)
+                g.DrawString("CONFLICT", fontTitle, gradBrush, titleRect, sf)
+            End Using
+        End Using
+
+        ' ------------------------------------------------------------
+        ' 2. PUBLISHER ADDRESS
+        ' ------------------------------------------------------------
+        Using fontAddr As New Font("Arial", 12, FontStyle.Italic)
+            g.DrawString("7 Trent Drive, Hucknall, Notts. NG15 6GR", fontAddr, Brushes.Black,
+                     New RectangleF(marginLeft, marginTop + 65, pageWidth, 20),
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
+        End Using
+
+        Dim yPosition As Single = marginTop + 110
+
+        ' ------------------------------------------------------------
+        ' 3. CUSTOMER NAME + ADDRESS
+        ' ------------------------------------------------------------
+        Using fontBody As New Font("Arial", 12)
+            Dim y As Single = yPosition
+            If cust IsNot Nothing Then
+                If Not String.IsNullOrWhiteSpace(cust.Name) Then
+                    g.DrawString(cust.Name, fontBody, Brushes.Black, marginLeft + 40, y)
+                    y += 20
+                End If
+                If Not String.IsNullOrWhiteSpace(cust.Address) Then
+                    Dim parts = cust.Address.Split({","c}, StringSplitOptions.RemoveEmptyEntries)
+                    For Each line In parts
+                        g.DrawString(line.Trim(), fontBody, Brushes.Black, marginLeft + 40, y)
+                        y += 20
+                    Next
+                End If
+            Else
+                g.DrawString("(Customer not found in file)", fontBody, Brushes.Black, marginLeft + 40, y)
+                y += 20
+            End If
+            yPosition = y + 10
+        End Using
+
+        ' ------------------------------------------------------------
+        ' 4. GAME DETAILS (RIGHT SIDE)
+        ' ------------------------------------------------------------
+        Using fontDetails As New Font("Arial", 12)
+            Dim rightX As Single = marginLeft + pageWidth - 260
+            Dim y As Single = marginTop + 120
+            g.DrawString($"Game No: {CurrentForm.GameNumber}", fontDetails, Brushes.Black, rightX, y) : y += 20
+            g.DrawString($"Turn No: {CurrentForm.TurnNumber}", fontDetails, Brushes.Black, rightX, y) : y += 20
+            g.DrawString($"Date: {DateTime.Now:dd MMM yyyy}", fontDetails, Brushes.Black, rightX, y) : y += 20
+            g.DrawString($"Race: {p.Race}", fontDetails, Brushes.Black, rightX, y) : y += 20
+        End Using
+
+        ' ------------------------------------------------------------
+        ' 5. DIVIDER LINE BEFORE MAP
+        ' ------------------------------------------------------------
+        Using pen As New Pen(Color.Black, 1)
+            g.DrawLine(pen, marginLeft, yPosition + 5, marginLeft + pageWidth, yPosition + 5)
+        End Using
+    End Sub
 
     Private Sub DrawCapitalForOwner(g As Graphics, ownerIndex As Integer, xPos As Single, yPos As Single, tileSize As Single)
         Dim spriteName As String = Nothing
@@ -299,29 +429,6 @@ Module Printouts
         Next
     End Sub
 
-
-
-    ' --- Helper to draw heading and player info ---
-    Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
-        ' --- Heading ---
-        Using font As New Font("Arial", 36, FontStyle.Bold)
-            Dim headingRect As New RectangleF(e.MarginBounds.Left, e.MarginBounds.Top, e.MarginBounds.Width, 50)
-            Dim sf As New StringFormat() With {.Alignment = StringAlignment.Center, .LineAlignment = StringAlignment.Center}
-            g.DrawString("CONFLICT", font, Brushes.Black, headingRect, sf)
-        End Using
-
-        ' --- Player info box ---
-        Dim playerBoxHeight As Single = 80
-        Dim playerBox As New RectangleF(e.MarginBounds.Left + 20, e.MarginBounds.Top + 60, 200, playerBoxHeight)
-        g.DrawRectangle(Pens.Black, Rectangle.Round(playerBox))
-
-        Using font As New Font("Arial", 12, FontStyle.Regular)
-            g.DrawString("Player Name:", font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 5)
-            g.DrawString("Address:", font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 25)
-            g.DrawString("Race: " & CurrentForm.Players(0).Race, font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 45)
-            g.DrawString("Population: " & CurrentForm.Players(0).Population.ToString(), font, Brushes.Black, playerBox.Left + 5, playerBox.Top + 65)
-        End Using
-    End Sub
 
     ' ------------------------------------------------------------
     '  Generate HTML turn reports for all active (non-AI) players
