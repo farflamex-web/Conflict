@@ -55,54 +55,62 @@ Module Printouts
     ' ============================================================
     '  Diagnostic Print Page and Header Routine
     ' ============================================================
-    Public Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
-        'Debug.WriteLine("[PRINT] printDoc_PrintPage fired.")
+
+    Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
+        Static pageIndex As Integer = 1
 
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
 
-        ' === Sanity check on CurrentForm ===
-        If CurrentForm Is Nothing Then
-            'Debug.WriteLine("[PRINT] ERROR: CurrentForm is Nothing.")
+        ' === Safety ===
+        If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then
             e.HasMorePages = False
+            pageIndex = 1
             Return
         End If
 
-        ' === Safety net for monster updates ===
-        Try
-            If CurrentForm.Players IsNot Nothing AndAlso CurrentForm.Players.Count > 0 Then
-                UpdateSeenMonstersForAllPlayers(CurrentForm.Players)
-            End If
-        Catch ex As Exception
-            'Debug.WriteLine("[PRINT] WARNING: Monster update failed - " & ex.Message)
-        End Try
-
-        ' === Draw report content ===
-        'Debug.WriteLine("[PRINT] Calling DrawFrontPageHeaderAndPlayerInfo...")
-        DrawFrontPageHeaderAndPlayerInfo(g, e)
-        'Debug.WriteLine("[PRINT] Returned from DrawFrontPageHeaderAndPlayerInfo.")
-
-        ' === Map section ===
-        If CurrentForm.Map Is Nothing Then
-            'Debug.WriteLine("[PRINT] WARNING: Map is Nothing, skipping DrawMap.")
-        Else
-            ' === After drawing header ===
-            Dim headerHeight As Single = 60
-            Dim playerBoxHeight As Single = 80
-            Dim spacing As Single = 20
-            Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing
-
-            ' --- Shift the whole map down on paper by about 1 inch ---
-            topOffset += 100    ' about 1 inch at normal printer DPI
-
-            ' === Draw the map exactly as before ===
-            DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
-
+        ' === Identify current player ===
+        Dim p As Player = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
+        If p Is Nothing Then p = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
+        If p Is Nothing Then
+            g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, 100, 100)
+            e.HasMorePages = False
+            pageIndex = 1
+            Return
         End If
 
-        e.HasMorePages = False
-        'Debug.WriteLine("[PRINT] printDoc_PrintPage completed.")
+        ' ------------------------------------------------------------
+        ' PAGE 1: Header + Map  (TEMPORARILY DISABLED to save ink/paper)
+        ' ------------------------------------------------------------
+        If pageIndex = 1 Then
+            ' === SKIPPED FOR TESTING ===
+            ' To re-enable later, just uncomment the next three blocks:
+
+            'DrawFrontPageHeaderAndPlayerInfo(g, e)
+            'If CurrentForm.Map IsNot Nothing Then
+            '    Dim headerHeight As Single = 60
+            '    Dim playerBoxHeight As Single = 80
+            '    Dim spacing As Single = 20
+            '    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
+            '    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+            'End If
+
+            ' still signal there’s another page so page 2 prints correctly
+            e.HasMorePages = True
+            pageIndex = 2
+            Return
+
+            ' ------------------------------------------------------------
+            ' PAGE 2: Empire Report
+            ' ------------------------------------------------------------
+        ElseIf pageIndex = 2 Then
+            DrawEmpireReport(g, e, p)
+            e.HasMorePages = False
+            pageIndex = 1
+            Return
+        End If
     End Sub
+
 
     Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
         If CurrentForm Is Nothing Then Exit Sub
@@ -433,7 +441,7 @@ Module Printouts
     ' ------------------------------------------------------------
     '  Generate HTML turn reports for all active (non-AI) players
     ' ------------------------------------------------------------
-    Public Sub GenerateAllPlayerReports()
+    Public Sub GenerateAllHTMLReports()
         If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
 
         ' === Create flat HTML folder next to Saves ===
@@ -481,12 +489,11 @@ Module Printouts
 
                 writer.WriteLine($"<h1>Conflict – Turn {turnNum}</h1>")
                 writer.WriteLine($"<h2>{p.Nickname} ({p.Race})</h2>")
-                writer.WriteLine($"<p><strong>Population:</strong> {p.Population}<br>")
-                writer.WriteLine($"<strong>Gold:</strong> {p.Gold}</p>")
                 writer.WriteLine("<hr>")
 
                 ' === Section skeletons ===
-                writer.WriteLine("<div class='section'><h2>Resources</h2><p>[Resource summary placeholder]</p></div>")
+                ' === Empire and Resource Report ===
+                AppendEmpireReportHTML(writer, p)
 
                 ' === Map section ===
                 If base64Map <> "" Then
@@ -535,6 +542,122 @@ Module Printouts
             Return ""
         End Try
     End Function
+
+    ' ============================================================
+    '  PAGE 2 – Empire Report
+    ' ============================================================
+
+    Private Sub DrawEmpireReport(g As Graphics, e As PrintPageEventArgs, p As Player)
+        Dim marginLeft As Single = e.MarginBounds.Left
+        Dim marginTop As Single = e.MarginBounds.Top
+        Dim pageWidth As Single = e.MarginBounds.Width
+        Dim y As Single = marginTop
+
+        Using titleFont As New Font("Arial", 22, FontStyle.Bold)
+            g.DrawString("Empire Report", titleFont, Brushes.DarkBlue, marginLeft + 10, y)
+        End Using
+        y += 40
+
+        Using bodyFont As New Font("Arial", 12)
+            ' === RACE / TERRAIN SECTION ===
+            g.DrawString($"Race: {p.Race}", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
+
+            ' --- Count owned squares + terrain ---
+            Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
+            For x = 0 To 24
+                For y2 = 0 To 24
+                    If CurrentForm.Map(x, y2, 1) = p.PlayerNumber Then
+                        counts(CurrentForm.Map(x, y2, 0)) += 1
+                    End If
+                Next
+            Next
+            Dim totalOwned As Integer = counts.Values.Sum()
+            g.DrawString($"Empire Size: {totalOwned} squares", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
+            g.DrawString($"   Plains: {counts(0)}   Forest: {counts(1)}   Hills: {counts(2)}   Mountain: {counts(3)}", bodyFont, Brushes.Black, marginLeft + 20, y)
+            y += 40
+
+            ' === POPULATION SECTION ===
+            g.DrawString("Population:", bodyFont, Brushes.Black, marginLeft + 10, y)
+            y += 25
+
+            ' --- Calculate percentage growth ---
+            Dim growthPercent As Double = 0
+            If p.Population - p.PopulationGrowthThisTurn <> 0 Then
+                growthPercent = (p.PopulationGrowthThisTurn / Math.Max(1, (p.Population - p.PopulationGrowthThisTurn))) * 100.0
+            End If
+
+            Using monoFont As New Font("Consolas", 12)
+                Dim sign As String = If(p.PopulationGrowthThisTurn >= 0, "+", "")
+                g.DrawString(
+                $"Total : {p.Population,10:N0}     Growth this Turn : {p.PopulationGrowthThisTurn,10:N0}  ({sign}{growthPercent,5:F1}%)",
+                monoFont, Brushes.Black, marginLeft + 40, y)
+                y += 40
+            End Using
+
+            ' === RESOURCE SECTION ===
+            g.DrawString("Resources:", bodyFont, Brushes.Black, marginLeft + 10, y)
+            y += 25
+
+            Using monoFont As New Font("Consolas", 12)
+                Dim lines As String() = {
+                $"Wood Total : {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}",
+                $"Iron Total : {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}",
+                $"Gold Total : {p.Gold,10:N0}     Collected : {p.GoldCollectedThisTurn,10:N0}"
+            }
+
+                For Each line In lines
+                    g.DrawString(line, monoFont, Brushes.Black, marginLeft + 40, y)
+                    y += 22
+                Next
+            End Using
+        End Using
+    End Sub
+
+
+    ' ============================================================
+    '  Empire Report for HTML
+    ' ============================================================
+
+    Private Sub AppendEmpireReportHTML(writer As StreamWriter, p As Player)
+        writer.WriteLine("<div class='section'><h2>Empire Report</h2>")
+        writer.WriteLine($"<p><strong>Race:</strong> {p.Race}</p>")
+
+        ' --- Terrain counts ---
+        Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
+        For x = 0 To 24
+            For y = 0 To 24
+                If CurrentForm.Map(x, y, 1) = p.PlayerNumber Then
+                    counts(CurrentForm.Map(x, y, 0)) += 1
+                End If
+            Next
+        Next
+        Dim totalOwned As Integer = counts.Values.Sum()
+        writer.WriteLine($"<p><strong>Empire Size:</strong> {totalOwned} squares<br>")
+        writer.WriteLine($"Plains: {counts(0)}, Forest: {counts(1)}, Hills: {counts(2)}, Mountain: {counts(3)}</p>")
+
+        ' === POPULATION TABLE ===
+        Dim growthPercent As Double = 0
+        If p.Population - p.PopulationGrowthThisTurn <> 0 Then
+            growthPercent = (p.PopulationGrowthThisTurn / Math.Max(1, (p.Population - p.PopulationGrowthThisTurn))) * 100.0
+        End If
+        Dim sign As String = If(p.PopulationGrowthThisTurn >= 0, "+", "")
+
+        writer.WriteLine("<h3>Population</h3>")
+        writer.WriteLine("<table>")
+        writer.WriteLine("<tr><th>Total</th><th>Growth This Turn</th><th>% Change</th></tr>")
+        writer.WriteLine($"<tr><td>{p.Population:N0}</td><td>{p.PopulationGrowthThisTurn:N0}</td><td>{sign}{growthPercent:F1}%</td></tr>")
+        writer.WriteLine("</table>")
+
+        ' === RESOURCE TABLE ===
+        writer.WriteLine("<h3>Resources</h3>")
+        writer.WriteLine("<table>")
+        writer.WriteLine("<tr><th>Resource</th><th>Total</th><th>Collected This Turn</th></tr>")
+        writer.WriteLine($"<tr><td>Wood</td><td>{p.Wood:N0}</td><td>{p.WoodCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Iron</td><td>{p.Iron:N0}</td><td>{p.IronCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Gold</td><td>{p.Gold:N0}</td><td>{p.GoldCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine("</table>")
+        writer.WriteLine("</div>")
+    End Sub
 
 
 End Module

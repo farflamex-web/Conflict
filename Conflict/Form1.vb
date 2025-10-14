@@ -734,6 +734,7 @@ Public Class Form1
         Public Property PlayerNumber As Integer
         Public Property Race As String ' Could be created on-the-fly whenever by using 'Races(PlayerNumber)' but storing it in advance for simplicity later.
         Public Property Population As Integer
+        Public Property PopulationGrowthThisTurn As Integer
         Public Property Armies As List(Of Army)
         Public Property FoodCollectedThisTurn As Integer
         Public Property Iron As Integer
@@ -3104,11 +3105,14 @@ Public Class Form1
 
 
     Public Sub GrowPopulationAndFeedEverybody()
-        Const POP_CAP As Double = 50000.0       ' soft ceiling where growth slows heavily
-        Const POP_GROWTH_RATE As Double = 0.05  ' base growth multiplier
+        Const POP_CAP As Double = 50000.0       ' Soft ceiling where growth slows heavily
+        Const POP_GROWTH_RATE As Double = 0.05  ' Base growth multiplier
 
         For Each p In Players
             If Not CanAct(p) Then Continue For
+
+            ' === Reset growth tracker for this turn ===
+            p.PopulationGrowthThisTurn = 0
 
             ' === 1. Calculate total food required for armies ===
             Dim armyFoodRequirement As Integer = 0
@@ -3140,10 +3144,10 @@ Public Class Form1
                 Dim foodRatio As Double = remainingFood / Math.Max(1, totalToFeed)
 
                 ' --- Add territory-based growth bonus ---
+                ' (acts as a multiplier, not a flat addition)
                 Dim tileBoost As Double = 1.0 + (ownedSquares / 100.0)   ' +1% per owned tile
 
                 ' --- Logistic slow-down factor ---
-                ' --- Logistic / exponential slow-down factor ---
                 Dim capacityFactor As Double = 1.0 / (1.0 + Math.Exp((p.Population - POP_CAP) / (POP_CAP / 4.0)))
                 If capacityFactor < 0 Then capacityFactor = 0
 
@@ -3152,12 +3156,12 @@ Public Class Form1
 
                 If growth > 0 Then
                     p.Population += growth
+                    p.PopulationGrowthThisTurn = growth
                     'Debug.WriteLine($"[POP] {p.Race} grew by {growth} (foodRatio={foodRatio:F2}, tiles={ownedSquares}, tileBoost={tileBoost:F2}, capFactor={capacityFactor:F2}, pop={p.Population})")
                 End If
             End If
         Next
     End Sub
-
 
 
 
@@ -3360,7 +3364,7 @@ Public Class Form1
 
         UpdateSeenMonstersForAllPlayers(Players)
 
-        Printouts.GenerateAllPlayerReports()
+        Printouts.GenerateAllHTMLReports()
 
     End Sub
 
@@ -6091,6 +6095,14 @@ Public Class Form1
 
         End Select
     End Sub
+
+    Private Sub btnSave_Click(sender As Object, e As EventArgs) Handles btnSave.Click
+        Dim gameName As String = TryCast(cmbGameSelect.SelectedItem, String)
+        If String.IsNullOrEmpty(gameName) Then Exit Sub
+        SaveGame(gameName)
+        Printouts.GenerateAllHTMLReports()
+    End Sub
+
 
 #End Region
 

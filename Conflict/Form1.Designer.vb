@@ -94,6 +94,7 @@ Partial Class Form1
         lblMarket = New Label()
         cmbGameSelect = New ComboBox()
         cmbTurn = New ComboBox()
+        btnSave = New Button()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -728,7 +729,7 @@ Partial Class Form1
         ' cmbGameSelect
         ' 
         cmbGameSelect.FormattingEnabled = True
-        cmbGameSelect.Location = New Point(672, 873)
+        cmbGameSelect.Location = New Point(672, 870)
         cmbGameSelect.Name = "cmbGameSelect"
         cmbGameSelect.Size = New Size(109, 23)
         cmbGameSelect.TabIndex = 59
@@ -736,16 +737,26 @@ Partial Class Form1
         ' cmbTurn
         ' 
         cmbTurn.FormattingEnabled = True
-        cmbTurn.Location = New Point(672, 902)
+        cmbTurn.Location = New Point(672, 897)
         cmbTurn.Name = "cmbTurn"
         cmbTurn.Size = New Size(109, 23)
         cmbTurn.TabIndex = 60
+        ' 
+        ' btnSave
+        ' 
+        btnSave.Location = New Point(673, 927)
+        btnSave.Name = "btnSave"
+        btnSave.Size = New Size(108, 23)
+        btnSave.TabIndex = 61
+        btnSave.Text = "Save  Game"
+        btnSave.UseVisualStyleBackColor = True
         ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
         AutoScaleMode = AutoScaleMode.Font
         ClientSize = New Size(1778, 971)
+        Controls.Add(btnSave)
         Controls.Add(cmbTurn)
         Controls.Add(cmbGameSelect)
         Controls.Add(lblMarket)
@@ -894,5 +905,6 @@ Partial Class Form1
     Friend WithEvents lblMarket As Label
     Friend WithEvents cmbGameSelect As ComboBox
     Friend WithEvents cmbTurn As ComboBox
+    Friend WithEvents btnSave As Button
 
 End Class
