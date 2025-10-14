@@ -247,7 +247,7 @@ Module Printouts
         If terrainCache Is Nothing OrElse terrainCache.Count = 0 Then Exit Sub
         If CurrentForm.Map Is Nothing OrElse CurrentForm.Players Is Nothing Then Exit Sub
 
-        Dim mapSize As Integer = 25
+        Dim mapSize As Integer = CurrentForm.Map.GetLength(0)
         Dim numberMargin As Single = 20
 
         ' --- Determine dimensions ---
@@ -286,8 +286,11 @@ Module Printouts
         End If
 
         ' --- Draw terrain and ownership ---
-        For x As Integer = 0 To mapSize - 1
-            For y As Integer = 0 To mapSize - 1
+        Dim mapWidth As Integer = CurrentForm.Map.GetLength(0)
+        Dim mapHeight As Integer = CurrentForm.Map.GetLength(1)
+
+        For x = 0 To mapWidth - 1
+            For y = 0 To mapHeight - 1
                 Dim terrainValue As Integer = CurrentForm.Map(x, y, 0)
                 Dim terrainImage As Image = Nothing
                 Select Case terrainValue
@@ -462,13 +465,20 @@ Module Printouts
     ' ------------------------------------------------------------
     Private Sub GenerateSinglePlayerReport(p As Player, htmlRoot As String, gameNum As Integer, turnNum As Integer)
         Try
-            ' === Build file name ===
-            Dim safeNick As String = p.Nickname.ToLower().Replace(" ", "_").Replace("""", "").Replace("'", "")
+            ' === Build file name with fallback for empty nickname ===
+            Dim rawNick As String = If(String.IsNullOrWhiteSpace(p.Nickname), $"player{p.PlayerNumber}", p.Nickname)
+            Dim safeNick As String = System.Text.RegularExpressions.Regex.Replace(rawNick.ToLower(), "[^a-z0-9_]", "")
             Dim fileName As String = $"{safeNick}_game{gameNum:D3}_turn{turnNum:D3}.html"
             Dim filePath As String = Path.Combine(htmlRoot, fileName)
 
             ' === Generate map image ===
             Dim base64Map As String = GetMapImageBase64(p, gameNum, turnNum)
+
+            ' === HTML encoding helper ===
+            Dim HtmlEncode As Func(Of String, String) = Function(s)
+                                                            If s Is Nothing Then Return ""
+                                                            Return System.Net.WebUtility.HtmlEncode(s)
+                                                        End Function
 
             ' === Basic HTML skeleton ===
             Using writer As New StreamWriter(filePath, append:=False)
@@ -476,7 +486,7 @@ Module Printouts
                 writer.WriteLine("<html lang='en'>")
                 writer.WriteLine("<head>")
                 writer.WriteLine($"<meta charset='UTF-8'>")
-                writer.WriteLine($"<title>Conflict Turn {turnNum} – {p.Nickname} ({p.Race})</title>")
+                writer.WriteLine($"<title>Conflict Turn {turnNum} – {HtmlEncode(p.Nickname)} ({HtmlEncode(p.Race)})</title>")
                 writer.WriteLine("<style>")
                 writer.WriteLine("body { font-family: Segoe UI, Arial, sans-serif; background-color: #fafafa; margin: 30px; }")
                 writer.WriteLine("h1 { color: #333; } h2 { border-bottom: 1px solid #ccc; padding-bottom: 4px; }")
@@ -488,7 +498,7 @@ Module Printouts
                 writer.WriteLine("<body>")
 
                 writer.WriteLine($"<h1>Conflict – Turn {turnNum}</h1>")
-                writer.WriteLine($"<h2>{p.Nickname} ({p.Race})</h2>")
+                writer.WriteLine($"<h2>{HtmlEncode(rawNick)} ({HtmlEncode(p.Race)})</h2>")
                 writer.WriteLine("<hr>")
 
                 ' === Section skeletons ===
@@ -498,7 +508,7 @@ Module Printouts
                 ' === Map section ===
                 If base64Map <> "" Then
                     writer.WriteLine("<div class='section'><h2>Map Overview</h2>")
-                    writer.WriteLine($"<img src='data:image/png;base64,{base64Map}' alt='Map for {p.Nickname}' style='border:1px solid #999; width:600px; height:600px;'>")
+                    writer.WriteLine($"<img src='data:image/png;base64,{base64Map}' alt='Map for {HtmlEncode(rawNick)}' style='border:1px solid #999; width:600px; height:600px;'>")
                     writer.WriteLine("</div>")
                 Else
                     writer.WriteLine("<div class='section'><h2>Map Overview</h2><p>[Map unavailable]</p></div>")
@@ -562,15 +572,20 @@ Module Printouts
             ' === RACE / TERRAIN SECTION ===
             g.DrawString($"Race: {p.Race}", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
 
-            ' --- Count owned squares + terrain ---
+            ' --- Count owned squares + terrain dynamically ---
+            Dim mapSizeX As Integer = CurrentForm.Map.GetLength(0)
+            Dim mapSizeY As Integer = CurrentForm.Map.GetLength(1)
+
             Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
-            For x = 0 To 24
-                For y2 = 0 To 24
+
+            For x = 0 To mapSizeX - 1
+                For y2 = 0 To mapSizeY - 1
                     If CurrentForm.Map(x, y2, 1) = p.PlayerNumber Then
                         counts(CurrentForm.Map(x, y2, 0)) += 1
                     End If
                 Next
             Next
+
             Dim totalOwned As Integer = counts.Values.Sum()
             g.DrawString($"Empire Size: {totalOwned} squares", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
             g.DrawString($"   Plains: {counts(0)}   Forest: {counts(1)}   Hills: {counts(2)}   Mountain: {counts(3)}", bodyFont, Brushes.Black, marginLeft + 20, y)
@@ -599,17 +614,34 @@ Module Printouts
             y += 25
 
             Using monoFont As New Font("Consolas", 12)
-                Dim lines As String() = {
-                $"Wood Total : {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}",
-                $"Iron Total : {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}",
-                $"Gold Total : {p.Gold,10:N0}     Collected : {p.GoldCollectedThisTurn,10:N0}"
-            }
+                ' --- Wood & Iron ---
+                g.DrawString($"Wood Total : {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}", monoFont, Brushes.Black, marginLeft + 40, y)
+                y += 22
+                g.DrawString($"Iron Total : {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}", monoFont, Brushes.Black, marginLeft + 40, y)
+                y += 32
 
-                For Each line In lines
-                    g.DrawString(line, monoFont, Brushes.Black, marginLeft + 40, y)
-                    y += 22
+                ' --- Gold Ledger Header ---
+                g.DrawString("Gold Ledger:", bodyFont, Brushes.Black, marginLeft + 10, y)
+                y += 25
+
+                ' --- Ledger lines ---
+                Dim goldLines As String() = {
+                    $"Collected from Population  : {p.GoldCollectedThisTurn,10:N0}",
+                    $"Investment Income          : {p.InvestmentIncomeThisTurn,10:N0}",
+                    $"Summoners Purchased        : -{p.SummonersBoughtCostThisTurn,10:N0}",
+                    $"Mercenaries Hired          : -{p.MercenariesHiredCostThisTurn,10:N0}",
+                    $"Mercenary Army Wages Paid  : -{p.WagesPaidThisTurn,10:N0}",
+                    New String("-"c, 55),
+                    $"Net Change This Turn       : {(p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn - p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn - p.MercenariesHiredCostThisTurn),10:N0}",
+                    $"Gold Total After Turn      : {p.Gold,10:N0}"
+                }
+
+                For Each line In goldLines
+                    g.DrawString(line, monoFont, Brushes.Black, marginLeft + 60, y)
+                    y += 20
                 Next
             End Using
+
         End Using
     End Sub
 
@@ -622,15 +654,20 @@ Module Printouts
         writer.WriteLine("<div class='section'><h2>Empire Report</h2>")
         writer.WriteLine($"<p><strong>Race:</strong> {p.Race}</p>")
 
-        ' --- Terrain counts ---
+        ' --- Terrain counts (dynamic map size) ---
+        Dim mapSizeX As Integer = CurrentForm.Map.GetLength(0)
+        Dim mapSizeY As Integer = CurrentForm.Map.GetLength(1)
+
         Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
-        For x = 0 To 24
-            For y = 0 To 24
+
+        For x = 0 To mapSizeX - 1
+            For y = 0 To mapSizeY - 1
                 If CurrentForm.Map(x, y, 1) = p.PlayerNumber Then
                     counts(CurrentForm.Map(x, y, 0)) += 1
                 End If
             Next
         Next
+
         Dim totalOwned As Integer = counts.Values.Sum()
         writer.WriteLine($"<p><strong>Empire Size:</strong> {totalOwned} squares<br>")
         writer.WriteLine($"Plains: {counts(0)}, Forest: {counts(1)}, Hills: {counts(2)}, Mountain: {counts(3)}</p>")
@@ -654,8 +691,23 @@ Module Printouts
         writer.WriteLine("<tr><th>Resource</th><th>Total</th><th>Collected This Turn</th></tr>")
         writer.WriteLine($"<tr><td>Wood</td><td>{p.Wood:N0}</td><td>{p.WoodCollectedThisTurn:N0}</td></tr>")
         writer.WriteLine($"<tr><td>Iron</td><td>{p.Iron:N0}</td><td>{p.IronCollectedThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Gold</td><td>{p.Gold:N0}</td><td>{p.GoldCollectedThisTurn:N0}</td></tr>")
         writer.WriteLine("</table>")
+
+        ' === GOLD LEDGER ===
+        writer.WriteLine("<h3>Gold Ledger</h3>")
+        writer.WriteLine("<table>")
+        writer.WriteLine("<tr><th>Source / Expense</th><th>Amount</th></tr>")
+        writer.WriteLine($"<tr><td>Collected from Population</td><td>{p.GoldCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Investment Income</td><td>{p.InvestmentIncomeThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Summoners Purchased</td><td>-{p.SummonersBoughtCostThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Mercenaries Hired</td><td>-{p.MercenariesHiredCostThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Mercenary Army Wages Paid</td><td>-{p.WagesPaidThisTurn:N0}</td></tr>")
+        writer.WriteLine("<tr><td colspan='2'><hr></td></tr>")
+        Dim netChange As Integer = p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn - p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn - p.MercenariesHiredCostThisTurn
+        writer.WriteLine($"<tr><td><strong>Net Change This Turn</strong></td><td><strong>{netChange:N0}</strong></td></tr>")
+        writer.WriteLine($"<tr><td><strong>Gold Total After Turn</strong></td><td><strong>{p.Gold:N0}</strong></td></tr>")
+        writer.WriteLine("</table>")
+
         writer.WriteLine("</div>")
     End Sub
 

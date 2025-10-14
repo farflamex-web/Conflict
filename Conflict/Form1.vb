@@ -119,7 +119,6 @@ Imports Microsoft.VisualBasic.FileIO
 Imports Newtonsoft.Json
 
 Public Class Form1
-
     ' Represents everything stored in a save file
     Public Class GameState
         Public Property TurnNumber As Integer
@@ -129,6 +128,7 @@ Public Class Form1
         Public Property CurrentMercOffer As MercenaryArmy
     End Class
 
+    Public Shared CurrentMercOffer As MercenaryArmy
 
 
 #Region "=== Constants and Enums ==="
@@ -164,6 +164,45 @@ Public Class Form1
 #End Region
 
 #Region "=== Nested Classes ==="
+
+    Public Class MercenaryArmy
+        Public Property Name As String
+        Public Property Faction As String
+        Public Property Units As New List(Of MercenaryStack)() ' mix of normal and hero entries
+        Public Property MinBid As Integer
+        Public Property TrainingBonus As Double = 0.0    ' 0 = none, 0.1 = +10%, etc.
+
+        Public ReadOnly Property TotalSize As Integer
+            Get
+                ' Heroes count as 1, normal stacks use Count
+                Return Units.Sum(Function(s) If(s.Hero IsNot Nothing, 1, s.Count))
+            End Get
+        End Property
+
+        Public Overrides Function ToString() As String
+            Dim parts As New List(Of String)
+
+            For Each s In Units
+                If s.Hero IsNot Nothing Then
+                    parts.Add($"{s.Hero.Name} (Level {s.Hero.Level})")
+                ElseIf s.Template IsNot Nothing Then
+                    parts.Add($"{s.Template.Name} ({s.Count})")
+                End If
+            Next
+
+            Return $"{Faction} Mercenary Band — {String.Join(", ", parts)} | Total: {TotalSize}, Min Bid: {MinBid} gold"
+        End Function
+    End Class
+
+    Public Class MercenaryStack
+        ' For normal merc units
+        Public Property Template As Form1.UnitStats
+        Public Property Count As Integer
+
+        ' For hero mercs (summoners, champions, etc.)
+        Public Property Hero As Form1.Unit
+
+    End Class
 
     Public Class Army
         Public Property X As Integer
@@ -215,23 +254,17 @@ Public Class Form1
         Public Property CanCharge As Boolean
         Public Property CanChase As Boolean
         Public Property Flying As Boolean
-
         Public Property Race As String
         Public Property Size As Integer
-
         ' --- Hero / Summoner flags ---
         Public Property IsHero As Boolean = False
         Public Property HeroType As String ' e.g. "Summoner", "Champion", "Sorcerer"
-
         Public Property SummonerFaction As String
         Public Property Level As Integer = 0
-
         Public Property IsMercenary As Boolean = False
-
         Public Sub New()
             ' required for JSON deserialization
         End Sub
-
 
         ' === Constructors ===
 
@@ -300,10 +333,7 @@ Public Class Form1
             Me.Level = 1   ' <--- Always start at Level 1
         End Sub
 
-
-
         ' === Effective stat helpers ===
-
         Public Function GetEffectiveHP() As Integer
             If IsHero AndAlso Level > 0 Then
                 Return 5 * Level
@@ -321,8 +351,6 @@ Public Class Form1
         End Function
 
     End Class
-
-
 
     Public Class UnitStats
         Public Property Name As String
@@ -346,8 +374,6 @@ Public Class Form1
         Public Property TrainingBonus As Double = 0.0    ' default 0 = untrained
 
     End Class
-
-
     Public Class TurnReports
         Public Property TurnNumber As Integer
         Public Property Notes As New List(Of String)
@@ -357,7 +383,6 @@ Public Class Form1
         Public Property Messages As New List(Of String)
         Public Property Summaries As New List(Of String)
     End Class
-
 
     ' === Central definition for all summoners ===
     Public Class SummonerInfo
@@ -385,7 +410,6 @@ Public Class Form1
         New SummonerInfo With {.Name = "Beastmaster", .AllowedRace = "Human", .RosterKey = "Beastmaster"},
         New SummonerInfo With {.Name = "Dragonlord", .AllowedRace = "Human", .RosterKey = "Dragonlord"}
 }
-
     Private ReadOnly Property SummonerRosters As Dictionary(Of String, List(Of UnitStats))
         Get
             Dim dict As New Dictionary(Of String, List(Of UnitStats))(StringComparer.OrdinalIgnoreCase)
@@ -461,107 +485,62 @@ Public Class Form1
         Next
     End Sub
 
+    ' === AI version ===
     Private Sub BuySummoner(p As Player)
         If p Is Nothing OrElse p.IsEliminated Then Exit Sub
 
-        ' === 1) Find all summoners this race can hire ===
         Dim allowed = SummonerDefinitions.
         Where(Function(s) s.AllowedRace.Equals(p.Race, StringComparison.OrdinalIgnoreCase)).
         ToList()
+        If allowed.Count = 0 Then Exit Sub
 
-        If allowed.Count = 0 Then
-            'Debug.WriteLine($"[SUMMONER] No summoners available for {p.Race}.")
-            Exit Sub
-        End If
+        Dim def As SummonerInfo = allowed(rnd.Next(allowed.Count))
+        Dim targetArmy As Army =
+        If(p.Armies?.FirstOrDefault(), New Army With {.Race = p.Race, .X = 0, .Y = 0})
+        If Not p.Armies.Contains(targetArmy) Then p.Armies.Add(targetArmy)
 
-        ' === 2) Pick a random summoner ===
-        Dim chosen As SummonerInfo = allowed(rnd.Next(allowed.Count))
-        Dim baseSummonerKey As String = chosen.Name
-        Dim baseSummonerName As String = chosen.Name
-
-        ' === 3) Calculate gold cost ===
-        Dim ownedHeroes As Integer =
-        p.Armies.SelectMany(Function(a) a.Units).
-                 Count(Function(u) u IsNot Nothing AndAlso u.IsHero)
-
-        Dim cost As Integer = CInt(1000 * Math.Pow(3, ownedHeroes))
-
-        If p.Gold < cost Then
-            'Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford {baseSummonerName}. Needs {cost}, has {p.Gold}.")
-            Exit Sub
-        End If
-
-        ' === 4) Pay ===
-        p.Gold -= cost
-
-        ' === 5) Create hero ===
-        Dim fullName As String = GenerateSummonerName(p.Race, baseSummonerName)
-        Dim summonerUnit As New Unit("Summoner", fullName, p.Race)
-        summonerUnit.SummonerFaction = baseSummonerKey
-
-        ' Safety if ctor doesn’t auto-fill
-        'summonerUnit.IsHero = True
-        'summonerUnit.HeroType = "Summoner"
-        'summonerUnit.Level = 1
-
-        ' === 6) Place into first army (or make new one) ===
-        Dim targetArmy As Army = Nothing
-        If p.Armies IsNot Nothing AndAlso p.Armies.Count > 0 Then
-            targetArmy = p.Armies(0)
-        Else
-            targetArmy = New Army With {.Race = p.Race, .X = 0, .Y = 0}
-            If p.Armies Is Nothing Then p.Armies = New List(Of Army)
-            p.Armies.Add(targetArmy)
-        End If
-
-        targetArmy.Units.Add(summonerUnit)
-
-        'Debug.WriteLine($"[SUMMONER] {p.Race} (Player {p.PlayerNumber + 1}) bought {fullName} (Level 1) for {cost} gold. Prior heroes: {ownedHeroes}.")
+        FinaliseSummonerPurchase(p, def, targetArmy)
     End Sub
 
-    ' ------------------------------------------------------------
-    ' Manual (player) version of BuySummoner — uses selected values
-    ' ------------------------------------------------------------
+    ' === Player version ===
     Private Sub AttemptBuySummoner(p As Player, def As SummonerInfo, targetArmy As Army)
-        'Debug.WriteLine($"[SUMMONER] AttemptBuySummoner started for {p.Race} -> {def.Name}")
         If p Is Nothing OrElse def Is Nothing OrElse targetArmy Is Nothing Then Exit Sub
+        FinaliseSummonerPurchase(p, def, targetArmy)
+    End Sub
 
-        'Debug.WriteLine($"[SUMMONER] Gold={p.Gold}")
-        ' === 1) Calculate cost based on existing heroes ===
+
+    ' === Shared core ===
+    Private Sub FinaliseSummonerPurchase(p As Player, def As SummonerInfo, targetArmy As Army)
+        ' Calculate hero cost based on owned heroes
         Dim ownedHeroes As Integer =
         p.Armies.SelectMany(Function(a) a.Units).
                  Count(Function(u) u IsNot Nothing AndAlso u.IsHero)
-
         Dim cost As Integer = CInt(1000 * Math.Pow(3, ownedHeroes))
 
-        ' === 2) Check affordability ===
-        If p.Gold < cost Then
-            'Debug.WriteLine($"[SUMMONER] {p.Race} cannot afford {def.Name}. Needs {cost}, has {p.Gold}.")
-            Exit Sub
-        End If
+        ' Check affordability
+        If p.Gold < cost Then Exit Sub
 
-        'Debug.WriteLine($"[SUMMONER] Deducting {cost} gold; heroes owned={ownedHeroes}")
-        ' === 3) Pay ===
+        ' Pay and record
         p.Gold -= cost
+        p.SummonersBoughtCostThisTurn = cost
 
-        ' === 4) Create unit ===
+        ' Create the summoner
         Dim fullName As String = GenerateSummonerName(p.Race, def.Name)
-        Dim summonerUnit As New Unit("Summoner", fullName, p.Race)
-        summonerUnit.SummonerFaction = def.RosterKey
-        summonerUnit.IsHero = True
-        summonerUnit.HeroType = "Summoner"
-        summonerUnit.Level = 1
+        Dim summonerUnit As New Unit("Summoner", fullName, p.Race) With {
+        .SummonerFaction = def.RosterKey,
+        .IsHero = True,
+        .HeroType = "Summoner",
+        .Level = 1
+    }
 
-        ' === 5) Add to target army ===
+        ' Add to army
         If targetArmy.Units Is Nothing Then targetArmy.Units = New List(Of Unit)
         targetArmy.Units.Add(summonerUnit)
-        'Debug.WriteLine($"[SUMMONER] Added {def.Name} to {targetArmy.Name}. Units now: {targetArmy.Units.Count}")
-        'Debug.WriteLine($"[SUMMONER] {p.Race} bought {fullName} for {targetArmy.Name} at {cost} gold. Remaining: {p.Gold}.")
     End Sub
+
 
     ' ------------------------------------------------------------
     ' Read the Buy Summoner UI and apply it to each player
-
     Private Sub ApplySummonerPurchases()
         If Players Is Nothing Then Exit Sub
 
@@ -635,8 +614,6 @@ Public Class Form1
             cmbArmy.SelectedIndex = -1
         Next
     End Sub
-
-
     Private Sub ProcessSummoners()
         For Each p In Players
             If p.Armies Is Nothing Then Continue For
@@ -714,8 +691,6 @@ Public Class Form1
             'Debug.WriteLine("Guard triggered in SummonCreaturesForUnit — possible bad roster config.")
         End If
     End Sub
-
-
     Public Class RaceUnits
         Public Property RaceName As String
         Public Property Units As List(Of UnitStats)
@@ -728,7 +703,6 @@ Public Class Form1
             Return Units(idx)
         End Function
     End Class
-
     Public Class Player
         Public Property Nickname As String
         Public Property PlayerNumber As Integer
@@ -745,6 +719,10 @@ Public Class Form1
         Public Property MountsCollectedThisTurn As Integer
         Public Property Gold As Integer
         Public Property GoldCollectedThisTurn As Integer
+        Public Property WagesPaidThisTurn As Integer
+        Public Property InvestmentIncomeThisTurn As Integer
+        Public Property SummonersBoughtCostThisTurn As Integer
+        Public Property MercenariesHiredCostThisTurn As Integer
         Public Property Mithril As Integer
         Public Property MithrilCollectedThisTurn As Integer
         Public Property AIControlled As Boolean
@@ -821,6 +799,59 @@ Public Class Form1
         Catch ex As Exception
             MessageBox.Show($"Error saving game: {ex.Message}")
         End Try
+    End Sub
+
+
+    Private Sub ApplyMercBids()
+        If Players Is Nothing Then Exit Sub
+
+        For Each p In CurrentForm.Players
+            If p Is Nothing OrElse p.IsEliminated Then Continue For
+
+            Dim race As String = p.Race.ToLowerInvariant()
+            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
+
+            ' --- Find controls for this player ---
+            Dim numBid As NumericUpDown = TryCast(Me.Controls("numMercBid" & suffix), NumericUpDown)
+            Dim cmbArmy As ComboBox = TryCast(Me.Controls("cmbArmy" & suffix & "Merc"), ComboBox)
+
+            If numBid Is Nothing OrElse cmbArmy Is Nothing Then Continue For
+
+            ' --- Read the numeric bid ---
+            Dim bidAmount As Integer = CInt(numBid.Value)
+
+            ' --- Clamp to available gold ---
+            If bidAmount > p.Gold Then
+                bidAmount = p.Gold
+                numBid.Value = bidAmount  ' optional: visually update
+                'Debug.WriteLine($"[MERC] {p.Race} bid reduced to {bidAmount} (max gold available).")
+            End If
+
+            p.CurrentBid = bidAmount
+
+            ' --- Skip if no bid ---
+            If bidAmount <= 0 Then
+                p.TargetArmyForMercs = Nothing
+                Continue For
+            End If
+
+            ' --- Resolve the target army ---
+            Dim targetArmy As Army = Nothing
+            Dim selectedItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
+
+            If selectedItem IsNot Nothing AndAlso selectedItem.Index >= 0 AndAlso selectedItem.Index < p.Armies.Count Then
+                targetArmy = p.Armies(selectedItem.Index)
+            ElseIf Not String.IsNullOrWhiteSpace(cmbArmy.Text) Then
+                targetArmy = p.Armies.FirstOrDefault(Function(a) a.Name.Equals(cmbArmy.Text, StringComparison.OrdinalIgnoreCase))
+            End If
+
+            ' --- Store the chosen army ---
+            p.TargetArmyForMercs = targetArmy
+
+            ' --- Reset UI for next turn ---
+            numBid.Value = 0
+            cmbArmy.SelectedIndex = -1
+        Next
     End Sub
 
 
@@ -2724,30 +2755,13 @@ Public Class Form1
         End Select
     End Function
 
-    Private Function GetCombatGrid(a As Army) As List(Of Point)
-        Dim points As New List(Of Point)
-        Dim maxX As Integer = Map.GetLength(0) - 1
-        Dim maxY As Integer = Map.GetLength(1) - 1
-        For dx As Integer = -2 To 2
-            For dy As Integer = -2 To 2
-                Dim x = a.X + dx
-                Dim y = a.Y + dy
-                If x >= 0 AndAlso x <= maxX AndAlso y >= 0 AndAlso y <= maxY Then
-                    points.Add(New Point(x, y))
-                End If
-            Next
-        Next
-        Return points
-    End Function
-
-
 
 #End Region
 
     ' ===========================================================
     ' === SAFE VERSION (for combat phase) =======================
     ' ===========================================================
-    Private Sub QueueEliminationChecksSafe()
+    Public Sub QueueEliminationChecksSafe()
         If Players Is Nothing Then Exit Sub
 
         ' Collect defeated players first (don’t modify inside this loop)
@@ -2933,18 +2947,12 @@ Public Class Form1
         p.Armies.Clear()
     End Sub
 
-
-
-
     ' convenience guard
-    Private Function CanAct(p As Player) As Boolean
+    Public Function CanAct(p As Player) As Boolean
         Return (p IsNot Nothing AndAlso Not p.IsEliminated)
     End Function
 
-
-
 #Region "=== Gameplay Logic ==="
-
 
     Public Sub CollectResources()
         Dim rows As Integer = Map.GetLength(0)
@@ -3083,6 +3091,7 @@ Public Class Form1
                 Dim blocks As Integer = p.PendingInvestment \ 1000
                 p.Investments += blocks
                 p.Gold -= p.PendingInvestment
+                p.InvestmentIncomeThisTurn -= p.PendingInvestment
                 p.PendingInvestment = 0
             End If
 
@@ -3092,17 +3101,13 @@ Public Class Form1
             ' === 2. Add income from previous investments ===
             If p.Investments > 0 Then
                 p.GoldCollectedThisTurn += (p.Investments * 100)
+                p.InvestmentIncomeThisTurn = p.Investments * 100
             End If
 
             ' === 3. Apply total to player's gold ===
             p.Gold += p.GoldCollectedThisTurn
-
-
-            ' === Debug output ===
-            'Debug.WriteLine($"[RESOURCE] {p.Race}: +{p.FoodCollectedThisTurn} food, +{p.WoodCollectedThisTurn} wood, +{p.IronCollectedThisTurn} iron, +{p.MountsCollectedThisTurn} mounts, +{p.MithrilCollectedThisTurn} mithril (tiles={ownedSquares})")
         Next
     End Sub
-
 
     Public Sub GrowPopulationAndFeedEverybody()
         Const POP_CAP As Double = 50000.0       ' Soft ceiling where growth slows heavily
@@ -3163,12 +3168,9 @@ Public Class Form1
         Next
     End Sub
 
-
-
 #End Region
 
 #Region "=== Map Generation ==="
-
     Public Sub GenerateMap()
         Dim width As Integer = Map.GetLength(0)
         Dim height As Integer = Map.GetLength(1)
@@ -3265,10 +3267,7 @@ Public Class Form1
         Next
     End Sub
 
-
-
 #End Region
-
 
 #Region "=== UI Events ==="
 
@@ -3286,7 +3285,6 @@ Public Class Form1
         CurrentReports = New TurnReports With {.TurnNumber = TurnNumber}
         CurrentReports.Messages.Add("Elves sighted an orc warband in the north.")
         CurrentReports.BattleReports.Add("Battle at (10,14): Elves defeated the Orcs.")
-
 
         ' BEFORE ANYTHING THIS TURN
         RecomputeEliminationForAllPlayers()
@@ -3367,7 +3365,6 @@ Public Class Form1
         Printouts.GenerateAllHTMLReports()
 
     End Sub
-
     Private Sub HandleNewMercenaryOffer(turnNumber As Integer)
         ''' <summary>
         ''' Handles generation and logging of a new mercenary offer for the current turn.
@@ -3382,7 +3379,6 @@ Public Class Form1
         Dim offerWages As Integer = CalculateMercenaryOfferWages(CurrentMercOffer)
         Debug.WriteLine($"Turn {turnNumber}: New Mercenary Offer = {CurrentMercOffer}, Wages = {offerWages} gold/turn")
     End Sub
-
 
     Private Sub ProcessMarketTurn(currentTurnNumber As Integer)
         ' Clear RTB at start of turn
@@ -3401,13 +3397,7 @@ Public Class Form1
         TheMarket.ResetTradeLogs()
     End Sub
 
-
-
-
 #End Region
-
-
-#Region "=== Printing: Front Page ==="
 
     Private Sub btnPrint_Click(sender As Object, e As EventArgs) Handles btnPrint.Click
         ' Make sure the printing system is ready
@@ -3422,11 +3412,6 @@ Public Class Form1
 
         Printouts.printDoc.Print()
     End Sub
-
-
-
-
-#End Region
 
     Public Function IsCapital(x As Integer, y As Integer) As Boolean
         For Each kvp In capitals
@@ -3444,8 +3429,6 @@ Public Class Form1
         Next
         Return False
     End Function
-
-
 
     Private Function GenerateTileName(terrainType As Integer, x As Integer, y As Integer) As String
         ' --- Unique pools for each terrain, no overlaps ---
@@ -3488,496 +3471,6 @@ Public Class Form1
         Dim suffix As String = suffixes(rand.Next(suffixes.Length))
 
         Return prefix & suffix
-    End Function
-
-    Public Sub ResolveCombat()
-        Dim armiesAlreadyInBattle As New HashSet(Of Army)()
-        Dim processedLocations As New HashSet(Of Point)()
-
-        ' === Always enumerate snapshots to avoid "collection modified" ===
-        Dim playersSnapshot As List(Of Player) =
-        If(Players, New List(Of Player)()) _
-        .Where(Function(pp) pp IsNot Nothing AndAlso Not pp.IsEliminated AndAlso pp.Armies IsNot Nothing) _
-        .ToList()
-
-        ' Loop through each player (snapshot)
-        For Each p As Player In playersSnapshot
-            ' Snapshot this player's armies (live list may change due to retreats/elims)
-            Dim armiesOfP As List(Of Army) = If(p.Armies, New List(Of Army)()).ToList()
-
-            For Each a As Army In armiesOfP
-                If a Is Nothing Then Continue For
-                ' Skip armies that cannot fight or already battled
-                If a.TotalSoldiers <= 0 OrElse armiesAlreadyInBattle.Contains(a) Then Continue For
-
-                Dim grid As List(Of Point) = GetCombatGrid(a)
-                If grid Is Nothing OrElse grid.Count = 0 Then Continue For
-
-                ' Snapshot grid too (GetCombatGrid could be dynamic)
-                For Each pt As Point In grid.ToList()
-                    If processedLocations.Contains(pt) Then Continue For
-
-                    ' --- Gather all armies on this tile that can fight (via snapshots) ---
-                    Dim allArmiesHere As New List(Of Army)
-
-                    For Each pl As Player In playersSnapshot
-                        Dim plArmies As List(Of Army) = If(pl.Armies, New List(Of Army)()).ToList()
-                        For Each ar As Army In plArmies
-                            If ar Is Nothing Then Continue For
-                            If ar.TotalSoldiers <= 0 Then Continue For
-                            If armiesAlreadyInBattle.Contains(ar) Then Continue For
-
-                            Dim arGrid As List(Of Point) = GetCombatGrid(ar)
-                            If arGrid IsNot Nothing AndAlso arGrid.Contains(pt) Then
-                                allArmiesHere.Add(ar)
-                            End If
-                        Next
-                    Next
-
-                    ' Debug line to confirm how many armies are found at this tile
-                    Console.WriteLine($"[COMBAT] Tile {pt.X},{pt.Y} has {allArmiesHere.Count} armies engaged.")
-
-                    ' Need at least 2 distinct sides
-                    Dim distinctPlayers As New HashSet(Of String)(
-                    allArmiesHere.Where(Function(ar) ar IsNot Nothing).Select(Function(ar) ar.Race),
-                    StringComparer.OrdinalIgnoreCase
-                )
-                    If distinctPlayers.Count < 2 Then Continue For
-
-                    processedLocations.Add(pt)
-
-                    ' --- Merge armies per player temporarily for battle ---
-                    Dim mergedArmies As New List(Of Army)
-                    Dim mergedToOriginal As New Dictionary(Of Army, List(Of Army))()
-
-                    For Each race As String In distinctPlayers.ToList()
-                        Dim playerArmies As List(Of Army) =
-                        allArmiesHere.Where(Function(ar) ar.Race.Equals(race, StringComparison.OrdinalIgnoreCase)).ToList()
-
-                        ' Guard: skip if somehow empty
-                        If playerArmies.Count = 0 Then Continue For
-
-                        Dim mergedArmy As New Army With {
-                        .Race = race,
-                        .X = playerArmies(0).X,
-                        .Y = playerArmies(0).Y
-                    }
-
-                        ' Copy units from each source army into the merged army (clone stacks)
-                        For Each ua As Army In playerArmies
-                            For Each u As Unit In ua.Units.ToList()
-                                mergedArmy.Units.Add(New Unit(u)) ' clone constructor
-                            Next
-                        Next
-
-                        mergedArmies.Add(mergedArmy)
-                        mergedToOriginal(mergedArmy) = playerArmies
-                    Next
-
-                    ' --- Immutable pre-battle snapshot BEFORE Battle() mutates anything ---
-                    Dim startSnapshot As List(Of Army) = CloneArmiesForSnapshot(mergedArmies)
-
-                    ' --- Conduct battle ---
-                    Dim battleLog As BattleLog = Battle(mergedArmies)
-                    If battleLog Is Nothing Then Continue For
-
-                    ' --- Distribute casualties back proportionally to original armies ---
-                    For Each mergedArmy As Army In mergedArmies.ToList()
-                        Dim originalArmies As List(Of Army) = mergedToOriginal(mergedArmy)
-
-                        For Each mergedUnit As Unit In mergedArmy.Units.ToList()
-                            ' Total size of this unit across all original armies (pre-battle)
-                            Dim totalOriginalSize As Integer =
-                            originalArmies.Sum(Function(origArmy) origArmy.Units.
-                                Where(Function(u) u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type).
-                                Sum(Function(u) u.Size))
-
-                            If totalOriginalSize = 0 Then Continue For
-
-                            ' Sum casualties this specific merged unit took across all phases (by reference)
-                            Dim mergedCasualties As Integer = 0
-                            For Each phaseList In battleLog.PhaseEntries.Values.ToList()
-                                For Each e In phaseList.ToList()
-                                    If Object.ReferenceEquals(e.Defender, mergedUnit) Then
-                                        mergedCasualties += e.Casualties
-                                    End If
-                                Next
-                            Next
-                            If mergedCasualties <= 0 Then Continue For
-
-                            ' === EXACT ALLOCATION (floor + largest remainder) ===
-                            Dim targets As New List(Of Tuple(Of Unit, Integer))() ' (unitRef, preSize)
-                            For Each origArmy In originalArmies
-                                For Each u In origArmy.Units.ToList()
-                                    If u.Name = mergedUnit.Name AndAlso u.Type = mergedUnit.Type Then
-                                        targets.Add(Tuple.Create(u, u.Size))
-                                    End If
-                                Next
-                            Next
-                            If targets.Count = 0 Then Continue For
-
-                            Dim shares(targets.Count - 1) As Integer
-                            Dim remainders As New List(Of Tuple(Of Integer, Double))()
-                            Dim assigned As Integer = 0
-
-                            For i As Integer = 0 To targets.Count - 1
-                                Dim pre As Integer = targets(i).Item2
-                                Dim exact As Double = mergedCasualties * (pre / CDbl(totalOriginalSize))
-                                Dim flo As Integer = CInt(Math.Floor(exact))
-                                flo = Math.Min(flo, pre)
-                                shares(i) = flo
-                                assigned += flo
-                                remainders.Add(Tuple.Create(i, exact - flo))
-                            Next
-
-                            Dim remainder As Integer = mergedCasualties - assigned
-                            If remainder > 0 Then
-                                remainders = remainders.OrderByDescending(Function(t) t.Item2).ThenBy(Function(t) t.Item1).ToList()
-                                Dim k As Integer = 0
-                                While remainder > 0 AndAlso remainders.Count > 0
-                                    Dim idx As Integer = remainders(k Mod remainders.Count).Item1
-                                    Dim pre As Integer = targets(idx).Item2
-                                    If shares(idx) < pre Then
-                                        shares(idx) += 1
-                                        remainder -= 1
-                                        k += 1
-                                    Else
-                                        ' drop capped index from rotation
-                                        remainders.RemoveAt(k Mod remainders.Count)
-                                    End If
-                                End While
-                            End If
-
-                            ' Apply shares to live unit refs
-                            For i As Integer = 0 To targets.Count - 1
-                                Dim uRef As Unit = targets(i).Item1
-                                Dim take As Integer = shares(i)
-                                If take > uRef.Size Then take = uRef.Size
-                                uRef.Size -= take
-                            Next
-                            ' === END EXACT ALLOCATION ===
-                        Next
-                    Next
-
-                    ' --- Determine winning race from post-battle merged totals ---
-                    Dim winningRace As String = Nothing
-                    Dim raceTotals = mergedArmies _
-                    .GroupBy(Function(ma) ma.Race, StringComparer.OrdinalIgnoreCase) _
-                    .Select(Function(g) New With {
-                        .Race = g.Key,
-                        .Total = g.Sum(Function(ma) ma.TotalSoldiers)
-                    }) _
-                    .OrderByDescending(Function(x) x.Total) _
-                    .ToList()
-
-                    If raceTotals.Count > 0 Then
-                        Dim top = raceTotals(0)
-                        If raceTotals.Count = 1 OrElse top.Total > raceTotals(1).Total Then
-                            winningRace = top.Race
-                        End If
-                    End If
-
-                    ' --- Retreat losers on the live armies (does not remove lists) ---
-                    If Not String.IsNullOrEmpty(winningRace) Then
-                        For Each army As Army In allArmiesHere.ToList()
-                            If Not army.Race.Equals(winningRace, StringComparison.OrdinalIgnoreCase) Then
-                                SendArmyBackToSpawn(army)      ' must NOT remove army from its owner's list
-                                battleLog.RecordRetreat(army)
-                            End If
-                        Next
-                    End If
-
-                    ' --- Mark these live armies as having battled ---
-                    For Each army As Army In allArmiesHere.ToList()
-                        armiesAlreadyInBattle.Add(army)
-                    Next
-
-                    ' --- Report ---
-                    Dim compactReport As String = GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot, allArmiesHere)
-                    rtbInfo.AppendText(compactReport)
-
-                    ' --- Cleanup dead stacks (safe, only mutates Units of each army) ---
-                    For Each army As Army In allArmiesHere.ToList()
-                        army.Units.RemoveAll(Function(u) u.Size <= 0)
-                    Next
-
-                    ' Do NOT recompute eliminations here; queue them and apply after loops
-                    ' (prevents collection mutation mid-enumeration)
-
-                    ' *** Removed "Exit For" to allow all armies on same tile to be processed ***
-                Next
-            Next
-        Next
-
-        ' === Post-battle training reset for wiped armies ===
-        For Each p In Players
-            If p.Armies Is Nothing Then Continue For
-            For Each a In p.Armies
-                If a Is Nothing Then Continue For
-                If a.Units Is Nothing OrElse a.Units.Sum(Function(u) u.Size) <= 0 Then
-                    a.TrainingLevel = 0
-                End If
-            Next
-        Next
-
-
-        ' After all enumerations are complete, now it’s safe to eliminate players
-        QueueEliminationChecksSafe()
-    End Sub
-
-
-
-    Public Function Battle(battleArmies As List(Of Army)) As BattleLog
-        ' --- Filter armies with soldiers remaining ---
-        Dim activeArmies As List(Of Army) = battleArmies.Where(Function(a) a.TotalSoldiers > 0).ToList()
-        If activeArmies.Count = 0 Then Return Nothing
-
-        Dim battleLog As New BattleLog(activeArmies)
-
-        ' --- Run the first three phases exactly as before ---
-        For Each phaseName In New String() {"Ranged", "Charge", "Melee"}
-            ' Snapshot of units for proportional damage (phase-start sizes)
-            Dim unitSnapshot As New Dictionary(Of Unit, Integer)
-            For Each army In activeArmies
-                For Each u In army.Units
-                    unitSnapshot(u) = u.Size
-                Next
-            Next
-
-            ' Apply proportional damage for each defending army from all attackers
-            For Each defArmy In activeArmies
-                Dim attackers As List(Of Unit) = activeArmies.
-                                             Where(Function(a) a IsNot defArmy).
-                                             SelectMany(Function(a) a.Units).ToList()
-                Dim attackerArmies As List(Of Army) = activeArmies.Where(Function(a) a IsNot defArmy).ToList()
-                ApplyProportionalDamage(defArmy, attackerArmies, phaseName, unitSnapshot, battleLog)
-            Next
-        Next
-
-        ' === Decide winner/losers after Melee (phase 3) ===
-        ' Compute current strengths post-casualties
-        If activeArmies.Count < 2 Then
-            ' Nothing to chase if only one side remains
-            Return battleLog
-        End If
-
-        Dim maxStrength As Integer = activeArmies.Max(Function(a) a.TotalSoldiers)
-        Dim topArmies = activeArmies.Where(Function(a) a.TotalSoldiers = maxStrength).ToList()
-
-        ' If tie for strongest -> no chase
-        If topArmies.Count <> 1 Then
-            Return battleLog
-        End If
-
-        Dim winner As Army = topArmies(0)
-        Dim losers As List(Of Army) = activeArmies.Where(Function(a) a IsNot winner).ToList()
-
-        ' Winner's LC only
-        Dim winnerLC As List(Of Unit) = winner.Units.
-            Where(Function(u) u.CanChase AndAlso u.Size > 0).ToList()
-
-        ' If no LC or no losers -> no chase
-        If winnerLC.Count = 0 OrElse losers.Count = 0 Then
-            Return battleLog
-        End If
-
-        ' --- CHASE PHASE (only winner LC attacks, only losers defend) ---
-        ' Build a fresh snapshot at start of Chase (sizes after Melee)
-        Dim chaseSnapshot As New Dictionary(Of Unit, Integer)
-        For Each army In activeArmies
-            For Each u In army.Units
-                chaseSnapshot(u) = u.Size
-            Next
-        Next
-
-        ' Each losing army takes proportional damage from winner LC
-        For Each defArmy In losers
-            ApplyProportionalDamage(defArmy, {winner}.ToList(), "Chase", chaseSnapshot, battleLog)
-        Next
-
-        Return battleLog
-    End Function
-
-
-    Public Sub ClearArmyMoveQueue(army As Army)
-        ''' <summary>
-        ''' Clears all remaining moves in the army's MoveQueue.
-        ''' This is used after an army is sent back to spawn,
-        ''' since any queued moves are no longer relevant.
-        ''' </summary>
-
-        If army.MoveQueue IsNot Nothing Then
-            army.MoveQueue.Clear()
-        End If
-    End Sub
-
-
-    Public Sub ApplyProportionalDamage(defArmy As Army,
-                                   attackerArmies As List(Of Army),
-                                   phase As String,
-                                   unitSnapshot As Dictionary(Of Unit, Integer),
-                                   battleLog As BattleLog)
-
-        ' --- Initialize dictionary to accumulate casualties per defender unit ---
-        Dim calculatedCasualties As New Dictionary(Of Unit, Long)
-        For Each defUnit In defArmy.Units
-            calculatedCasualties(defUnit) = 0
-        Next
-
-        ' --- Flatten attackers for iteration ---
-        Dim attackingUnits As List(Of Unit) = attackerArmies.SelectMany(Function(a) a.Units).ToList()
-
-        ' --- Loop over each attacker ---
-        For Each atkUnit In attackingUnits
-            Dim atkSize As Integer = unitSnapshot(atkUnit) ' snapshot for attacker's size
-            Dim atkValue As Integer = 0
-            Dim atkExplanation As String = ""
-
-            ' Determine attack value based on phase
-            Select Case phase.ToLower()
-                Case "ranged"
-                    If atkUnit.Ranged > 0 Then
-                        atkValue = atkUnit.Ranged
-                        atkExplanation = $"{atkUnit.Ranged} ranged"
-                    Else
-                        Continue For
-                    End If
-
-                Case "charge"
-                    If atkUnit.CanCharge Then
-                        atkValue = atkUnit.Melee
-                        atkExplanation = $"{atkUnit.Melee} melee (charge phase)"
-                    Else
-                        Continue For
-                    End If
-
-                Case "melee"
-                    atkValue = atkUnit.Melee
-                    atkExplanation = $"{atkUnit.Melee} melee"
-
-                Case "chase"
-                    If atkUnit.CanChase Then
-                        atkValue = atkUnit.Melee
-                        If atkUnit.Flying Then
-                            atkValue *= 2
-                            atkExplanation = $"{atkUnit.Melee} melee (flying, double in chase)"
-                        Else
-                            atkExplanation = $"{atkUnit.Melee} melee for chase"
-                        End If
-                    Else
-                        Continue For
-                    End If
-            End Select
-
-            ' === Find this unit's army (for training level lookup) ===
-            Dim atkArmy As Army = attackerArmies.FirstOrDefault(Function(a) a.Units.Contains(atkUnit))
-
-            ' === Apply attacker training bonus ===
-            If atkArmy IsNot Nothing AndAlso atkArmy.TrainingLevel > 0 Then
-                Dim atkBonus As Double = 1.0 + atkArmy.TrainingLevel
-                atkValue = CInt(Math.Round(atkValue * atkBonus))
-                atkExplanation &= $" +{atkArmy.TrainingLevel:P0} training"
-            End If
-
-            ' --- Total HP-weighted size of defenders ---
-            Dim totalDefWeight As Double = defArmy.Units.Sum(Function(u) unitSnapshot(u) * u.GetEffectiveHP())
-            If totalDefWeight = 0 Then Continue For
-
-            ' --- Apply proportional damage to each defender unit ---
-            For Each defUnit In defArmy.Units
-                Dim sizeBefore As Integer = unitSnapshot(defUnit)
-                Dim unitWeight As Double = sizeBefore * defUnit.GetEffectiveHP()
-
-                ' Raw damage proportional to weight
-                Dim rawDamage As Double = atkValue * atkSize * (unitWeight / totalDefWeight)
-
-                ' Mitigation fraction + explanation
-                Dim mitResult = GetUnitMitigation(defUnit)
-                Dim mitigationValue As Double = mitResult.Mitigation
-                Dim mitigationExplanation As String = mitResult.Explanation
-
-                ' === Apply defender training bonus (reduces damage slightly) ===
-                If defArmy.TrainingLevel > 0 Then
-                    ' Defensive training bonus is half as strong as attack training
-                    Dim defBonus As Double = Math.Min(defArmy.TrainingLevel * 0.5, 0.9)
-                    mitigationValue = 1 - ((1 - mitigationValue) * (1 - defBonus))
-                    mitigationExplanation &= $" +{defArmy.TrainingLevel:P0} training"
-                End If
-
-                ' Final damage after mitigation, with global casualty multiplier
-                Const CASUALTY_MULTIPLIER As Double = 3.0
-                Dim finalDamage As Double = rawDamage * (1 - mitigationValue) * CASUALTY_MULTIPLIER
-
-                ' --- Calculate casualties (clamped to remaining men this phase) ---
-                Dim casualtiesRaw As Integer = CInt(Math.Floor(finalDamage / defUnit.GetEffectiveHP()))
-                Dim alreadyAllocated As Integer = CInt(calculatedCasualties(defUnit))
-                Dim remainingThisPhase As Integer = Math.Max(0, sizeBefore - alreadyAllocated)
-                Dim casualties As Integer = Math.Min(remainingThisPhase, casualtiesRaw)
-
-                ' --- Record entry in BattleLog (using clamped casualties) ---
-                If battleLog IsNot Nothing AndAlso casualties > 0 Then
-                    Dim entry As New BattleEntry With {
-                    .Attacker = atkUnit,
-                    .Defender = defUnit,
-                    .Phase = phase,
-                    .SizeBefore = sizeBefore,
-                    .SizeAfter = Math.Max(0, sizeBefore - (alreadyAllocated + casualties)),
-                    .RawDamage = rawDamage,
-                    .Mitigation = mitigationValue,
-                    .MitigationExplanation = mitigationExplanation,
-                    .FinalDamage = finalDamage,
-                    .Casualties = casualties,
-                    .RawDamageExplanation = $"Damage from {atkUnit.Name} ({atkExplanation})",
-                    .AttackerSizeAtPhaseStart = atkSize
-                }
-
-                    If Not battleLog.PhaseEntries.ContainsKey(phase) Then
-                        battleLog.PhaseEntries(phase) = New List(Of BattleEntry)
-                    End If
-                    battleLog.PhaseEntries(phase).Add(entry)
-                End If
-
-                ' Accumulate casualties for simultaneous application
-                calculatedCasualties(defUnit) += casualties
-            Next
-        Next
-
-        ' --- Apply all accumulated casualties to real unit sizes ---
-        For Each kvp In calculatedCasualties
-            kvp.Key.Size -= CInt(kvp.Value)
-            If kvp.Key.Size < 0 Then kvp.Key.Size = 0
-
-            ' Optional: mark/report dead now
-            If kvp.Key.Size = 0 Then
-                'Debug.WriteLine($"[BATTLE] {kvp.Key.Name} wiped out in {phase} phase")
-            End If
-        Next
-
-        ' ✅ Note: Do not remove units here. Cleanup will happen at the end of ResolveBattle.
-    End Sub
-
-
-
-    Public Function GetUnitMitigation(unit As Unit) As (Mitigation As Double, Explanation As String)
-        Dim mitigation As Double = 0.0
-        Dim parts As New List(Of String)
-
-        ' DefencePoints mitigation — use effective value for heroes
-        Dim effectiveDef As Integer = unit.GetEffectiveDefencePoints()
-        If effectiveDef > 0 Then
-            Dim defMit As Double = effectiveDef * 0.05
-            mitigation += defMit
-            parts.Add($"{effectiveDef * 5}% defence points")
-        End If
-
-        ' Cap total mitigation at 70%
-        If mitigation > 0.7 Then
-            mitigation = 0.7
-            parts.Add("(capped at 70%)")
-        End If
-
-        Dim explanation As String = If(parts.Count > 0, String.Join(" + ", parts), "No mitigation")
-        Return (mitigation, explanation)
     End Function
 
 
@@ -4147,8 +3640,6 @@ Public Class Form1
     ' MAIN ENTRY: Enqueue one RECRUIT for this army if needed
     ' (called from your ProcessTurn() special step)
     ' ======================================================
-
-
     Public Sub AIRecruitArmy(army As Army, player As Player, armyIndex As Integer)
         If player Is Nothing OrElse player.IsEliminated Then Exit Sub
         If army Is Nothing OrElse Not player.AIControlled Then Exit Sub
@@ -4208,10 +3699,6 @@ Public Class Form1
 
 
 #End Region
-
-
-
-
 
     Private Function IsCaptureValidOrthogonal(x As Integer, y As Integer, playerNumber As Integer) As Boolean
         Dim mapSizeX As Integer = Map.GetLength(0)
@@ -4514,17 +4001,6 @@ Public Class Form1
 
 
 
-    Private Function CloneArmiesForSnapshot(src As List(Of Army)) As List(Of Army)
-        Dim clone As New List(Of Army)
-        For Each a In src
-            Dim na As New Army With {.Race = a.Race, .X = a.X, .Y = a.Y}
-            For Each u In a.Units
-                na.Units.Add(New Unit(u)) ' use the clone constructor
-            Next
-            clone.Add(na)
-        Next
-        Return clone
-    End Function
 
 
 
@@ -5023,468 +4499,6 @@ Public Class Form1
 
 
 
-#Region "Mercenary Stuff"
-
-    Public Shared CurrentMercOffer As MercenaryArmy
-
-    Private MercPriceLevel As Integer = 0
-
-    Public Class MercenaryStack
-        ' For normal merc units
-        Public Property Template As UnitStats
-        Public Property Count As Integer
-
-        ' For hero mercs (summoners, champions, etc.)
-        Public Property Hero As Unit
-
-    End Class
-
-    Public Class MercenaryArmy
-        Public Property Name As String
-        Public Property Faction As String
-        Public Property Units As New List(Of MercenaryStack)() ' mix of normal and hero entries
-        Public Property MinBid As Integer
-        Public Property TrainingBonus As Double = 0.0    ' 0 = none, 0.1 = +10%, etc.
-
-
-        Public ReadOnly Property TotalSize As Integer
-            Get
-                ' Heroes count as 1, normal stacks use Count
-                Return Units.Sum(Function(s) If(s.Hero IsNot Nothing, 1, s.Count))
-            End Get
-        End Property
-
-        Public Overrides Function ToString() As String
-            Dim parts As New List(Of String)
-
-            For Each s In Units
-                If s.Hero IsNot Nothing Then
-                    parts.Add($"{s.Hero.Name} (Level {s.Hero.Level})")
-                ElseIf s.Template IsNot Nothing Then
-                    parts.Add($"{s.Template.Name} ({s.Count})")
-                End If
-            Next
-
-            Return $"{Faction} Mercenary Band — {String.Join(", ", parts)} | Total: {TotalSize}, Min Bid: {MinBid} gold"
-        End Function
-    End Class
-
-    Private Sub ApplyMercBids()
-        If Players Is Nothing Then Exit Sub
-
-        For Each p In Players
-            If p Is Nothing OrElse p.IsEliminated Then Continue For
-
-            Dim race As String = p.Race.ToLowerInvariant()
-            Dim suffix As String = Char.ToUpper(race(0)) & race.Substring(1).ToLower()
-
-            ' --- Find controls for this player ---
-            Dim numBid As NumericUpDown = TryCast(Me.Controls("numMercBid" & suffix), NumericUpDown)
-            Dim cmbArmy As ComboBox = TryCast(Me.Controls("cmbArmy" & suffix & "Merc"), ComboBox)
-
-            If numBid Is Nothing OrElse cmbArmy Is Nothing Then Continue For
-
-            ' --- Read the numeric bid ---
-            Dim bidAmount As Integer = CInt(numBid.Value)
-
-            ' --- Clamp to available gold ---
-            If bidAmount > p.Gold Then
-                bidAmount = p.Gold
-                numBid.Value = bidAmount  ' optional: visually update
-                'Debug.WriteLine($"[MERC] {p.Race} bid reduced to {bidAmount} (max gold available).")
-            End If
-
-            p.CurrentBid = bidAmount
-
-            ' --- Skip if no bid ---
-            If bidAmount <= 0 Then
-                p.TargetArmyForMercs = Nothing
-                Continue For
-            End If
-
-            ' --- Resolve the target army ---
-            Dim targetArmy As Army = Nothing
-            Dim selectedItem As ArmyListItem = TryCast(cmbArmy.SelectedItem, ArmyListItem)
-
-            If selectedItem IsNot Nothing AndAlso selectedItem.Index >= 0 AndAlso selectedItem.Index < p.Armies.Count Then
-                targetArmy = p.Armies(selectedItem.Index)
-            ElseIf Not String.IsNullOrWhiteSpace(cmbArmy.Text) Then
-                targetArmy = p.Armies.FirstOrDefault(Function(a) a.Name.Equals(cmbArmy.Text, StringComparison.OrdinalIgnoreCase))
-            End If
-
-            ' --- Store the chosen army ---
-            p.TargetArmyForMercs = targetArmy
-
-            ' --- Reset UI for next turn ---
-            numBid.Value = 0
-            cmbArmy.SelectedIndex = -1
-        Next
-    End Sub
-
-    Private Sub AwardMercenariesToPlayer(offer As MercenaryArmy, winner As Player)
-        If offer Is Nothing OrElse winner Is Nothing Then Exit Sub
-        If winner.Armies Is Nothing OrElse winner.Armies.Count = 0 Then Exit Sub
-
-        ' === Determine target army ===
-        Dim target As Army = Nothing
-
-        ' Human players: use the army chosen via ApplyMercBids (if still valid)
-        If Not winner.AIControlled AndAlso winner.TargetArmyForMercs IsNot Nothing Then
-            Dim idx As Integer = winner.Armies.IndexOf(winner.TargetArmyForMercs)
-            If idx >= 0 Then target = winner.Armies(idx)
-        End If
-
-        ' AI players: random army 0..2 (safe if fewer than 3 armies)
-        If target Is Nothing AndAlso winner.AIControlled Then
-            Dim rnd As New Random()
-            Dim upper As Integer = Math.Min(3, winner.Armies.Count) ' Next upper bound is exclusive
-            Dim randIndex As Integer = rnd.Next(0, upper)           ' 0..2 if 3+, otherwise 0..Count-1
-            target = winner.Armies(randIndex)
-        End If
-
-        ' Fallback
-        If target Is Nothing Then target = winner.Armies(0)
-
-        ' Ensure Units list exists
-        If target.Units Is Nothing Then target.Units = New List(Of Unit)()
-
-        ' Build a concise composition string as we add/merge
-        Dim parts As New List(Of String)
-
-        ' Track total men and total training effect
-        Dim totalNewMen As Integer = 0
-        Dim weightedTraining As Double = 0.0
-
-        For Each s In offer.Units
-            If s Is Nothing Then Continue For
-
-            If s.Hero IsNot Nothing Then
-                ' === Hero mercenary ===
-                s.Hero.IsMercenary = True
-                target.Units.Add(s.Hero)
-                parts.Add($"{s.Hero.Name} (Lvl {s.Hero.Level})")
-
-            ElseIf s.Template IsNot Nothing Then
-                ' === Normal mercenary ===
-                Dim t As UnitStats = s.Template
-                Dim count As Integer = s.Count
-                totalNewMen += count
-
-                ' Accumulate weighted training bonus if this template has one
-                If t.TrainingBonus > 0 Then
-                    weightedTraining += t.TrainingBonus * count
-                End If
-
-                ' Merge if this type already exists
-                Dim existing = target.Units.FirstOrDefault(Function(u) u.Name = t.Name AndAlso u.Type = t.Type)
-                If existing IsNot Nothing Then
-                    existing.Size += count
-                    existing.IsMercenary = True
-                Else
-                    Dim newU As New Unit(t, winner.Race, count)
-                    newU.IsMercenary = True
-                    target.Units.Add(newU)
-                End If
-
-                parts.Add($"{t.Name} x{count}")
-            End If
-        Next
-
-        ' === Apply combined training from unit-level bonuses ===
-        If totalNewMen > 0 AndAlso weightedTraining > 0 Then
-            Dim oldMen As Integer = target.TotalSoldiers
-            Dim totalMen As Integer = Math.Max(1, oldMen + totalNewMen)
-            Dim averageNewTraining As Double = weightedTraining / totalNewMen
-            Dim combined As Double = ((target.TrainingLevel * oldMen) + (averageNewTraining * totalNewMen)) / totalMen
-            target.TrainingLevel = combined
-            Debug.WriteLine($"[MERC] Combined merc training {averageNewTraining:P0}; new army training level = {target.TrainingLevel:P0}")
-        End If
-
-        ' === Debug: where it went and what it was ===
-        Dim armyIndex As Integer = winner.Armies.IndexOf(target)
-        If armyIndex < 0 Then armyIndex = 0
-        Debug.WriteLine($"[MERC] Awarded to {winner.Race} (Player {winner.PlayerNumber + 1}) → Army #{armyIndex + 1} '{target.Name}' at ({target.X},{target.Y}). Faction: {offer.Faction}")
-        Debug.WriteLine($"[MERC] Composition: {String.Join(", ", parts)}")
-
-        ' Cleanup selection for next turn
-        winner.TargetArmyForMercs = Nothing
-    End Sub
-
-
-    Private Function GenerateMercenaryOffer(turnNumber As Integer) As MercenaryArmy
-        Dim rnd As New Random()
-
-        ' === 1. Budget scales directly with current market level ===
-        ' MercPriceLevel starts at 50 and increases by 50 each time an army is bought.
-        Dim maxBudget As Integer = MercPriceLevel
-
-        Dim mercFactions As String() = {
-        "Warrior Monks", "Skulkrin", "Barbarians", "Werecreatures", "Harpies",
-        "Cultists", "Demons", "Undead", "Golems", "Elementals",
-        "Bandits", "Nomads", "Freeblades", "Sellswords"
-    }
-
-        Dim mercArmyNormal As MercenaryArmy = Nothing
-        Dim outerGuard As Integer = 1000 ' prevent infinite faction loop
-
-        Do While outerGuard > 0
-            outerGuard -= 1
-
-            ' === 2. Pick a random faction ===
-            Dim faction As String = mercFactions(rnd.Next(mercFactions.Length))
-            Dim roster As RaceUnits = AllRaces.FirstOrDefault(Function(r) r.RaceName.Equals(faction, StringComparison.OrdinalIgnoreCase))
-            If roster Is Nothing OrElse roster.Units.Count = 0 Then Continue Do
-
-            mercArmyNormal = New MercenaryArmy With {
-            .Faction = faction,
-            .Units = New List(Of MercenaryStack),
-            .MinBid = MercPriceLevel        ' Minimum bid equals the current market level
-        }
-
-            Dim remaining As Integer = maxBudget
-            Dim cheapestPower As Integer = roster.Units.Min(Function(u) u.Power)
-            Dim hasFodder As Boolean = roster.Units.Any(Function(u) u.Power <= 2)
-
-            ' --- Allowed block sizes ---
-            Dim blockSizes As Integer()
-            If hasFodder Then
-                blockSizes = {10} ' Only groups of 10 for fodder-based factions
-            Else
-                blockSizes = {10, 5, 1} ' fallback allowed for elite units
-            End If
-
-            Dim pickedAnything As Boolean = False
-            Dim innerGuard As Integer = 10000
-
-            ' === 3. Randomly assemble units up to the budget ===
-            Do While remaining >= cheapestPower AndAlso innerGuard > 0
-                innerGuard -= 1
-
-                ' Weighted bias toward earlier (usually weaker) units
-                Dim weighted As New List(Of UnitStats)
-                For i As Integer = 0 To roster.Units.Count - 1
-                    Dim u = roster.Units(i)
-                    Dim weight As Integer = Math.Max(1, (roster.Units.Count - i) * 5)
-                    For n As Integer = 1 To weight
-                        weighted.Add(u)
-                    Next
-                Next
-
-                Dim pick As UnitStats = weighted(rnd.Next(weighted.Count))
-
-                ' Skip units that don't fit budget
-                If pick.Power <= 0 OrElse pick.Power > remaining Then Continue Do
-
-                ' Find largest block that fits
-                Dim count As Integer = 0
-                For Each b In blockSizes
-                    If pick.Power * b <= remaining Then
-                        count = b
-                        Exit For
-                    End If
-                Next
-
-                If count = 0 Then Continue Do
-
-                ' Add to army
-                Dim existing = mercArmyNormal.Units.FirstOrDefault(Function(s) s.Template IsNot Nothing AndAlso s.Template.Name = pick.Name)
-                If existing IsNot Nothing Then
-                    existing.Count += count
-                Else
-                    mercArmyNormal.Units.Add(New MercenaryStack With {.Template = pick, .Count = count})
-                End If
-
-                pickedAnything = True
-                remaining -= pick.Power * count
-            Loop
-
-            If innerGuard = 0 Then
-                'Debug.WriteLine("Guard triggered in GenerateMercenaryOffer inner loop — possible bad roster config.")
-            End If
-
-            ' === 4. Guarantee at least one unit ===
-            If Not pickedAnything Then
-                If cheapestPower > maxBudget Then
-                    mercArmyNormal = Nothing
-                    Continue Do
-                End If
-
-                Dim cheapest = roster.Units.Where(Function(u) u.Power <= maxBudget).OrderBy(Function(u) u.Power).First()
-                mercArmyNormal.Units.Add(New MercenaryStack With {.Template = cheapest, .Count = 1})
-            End If
-
-            ' === 5. Return the completed mercenary army ===
-            If mercArmyNormal.Units.Count > 0 Then Exit Do
-        Loop
-
-        If outerGuard = 0 Then
-            'Debug.WriteLine("Guard triggered in GenerateMercenaryOffer outer loop — possible issue with faction selection.")
-        End If
-
-        ' === Reveal this new mercenary offer to all human players ===
-        RevealMercenaryOffer(mercArmyNormal, Players)
-
-        Return mercArmyNormal
-    End Function
-
-
-    Private Sub ResolveMercenaryAuction(bids As Dictionary(Of Player, Integer))
-        ' === 1. Validate offer ===
-        If CurrentMercOffer Is Nothing OrElse CurrentMercOffer.Units.Count = 0 Then Exit Sub
-
-
-
-        ' === 2. Handle no bids ===
-        If bids Is Nothing OrElse bids.Count = 0 Then
-            'Debug.WriteLine("No bids received; mercenary offer dismissed.")
-            CurrentMercOffer = Nothing
-            Exit Sub
-        End If
-
-        ' === 3. Filter invalid bids ===
-        Dim candidateBids = bids.
-        Where(Function(kv) kv.Value >= CurrentMercOffer.MinBid AndAlso
-                         kv.Key IsNot Nothing AndAlso
-                         kv.Key.Gold >= kv.Value).
-        ToList()
-
-        If candidateBids.Count = 0 Then
-            'Debug.WriteLine("No valid bids (must meet MinBid and be within available gold); mercenary offer dismissed.")
-            CurrentMercOffer = Nothing
-            Exit Sub
-        End If
-
-        ' === 4. Winner selection ===
-        Dim topAmount = candidateBids.Max(Function(kv) kv.Value)
-        Dim topBidders = candidateBids.Where(Function(kv) kv.Value = topAmount).ToList()
-
-        Dim winnerKV As KeyValuePair(Of Player, Integer)
-        If topBidders.Count = 1 Then
-            winnerKV = topBidders(0)
-        Else
-            ' Tie-breaker: richest bidder, then lowest PlayerNumber
-            winnerKV = topBidders.
-            OrderByDescending(Function(kv) kv.Key.Gold).
-            ThenBy(Function(kv) kv.Key.PlayerNumber).
-            First()
-        End If
-
-        Dim winner As Player = winnerKV.Key
-        Dim amount As Integer = winnerKV.Value
-
-        ' === 5. Deduct gold and award ===
-        winner.Gold -= amount
-        If winner.Gold < 0 Then winner.Gold = 0
-
-        AwardMercenariesToPlayer(CurrentMercOffer, winner)
-        'Debug.WriteLine($"Mercenaries hired by Player {winner.PlayerNumber} ({winner.Race}) for {amount} gold!")
-
-        ' === 6. Market inflation: raise price level by 50 ===
-        MercPriceLevel += 50
-        'If MercPriceLevel > 2000 Then MercPriceLevel = 2000  ' Don't want a cap.
-
-        ' === 7. Clear current offer ===
-        CurrentMercOffer = Nothing
-    End Sub
-
-    Private Sub ResolveBiddingPhase()
-        ' Resolve last turn's mercenary auction
-        If CurrentMercOffer IsNot Nothing Then
-            Dim bids As New Dictionary(Of Player, Integer)
-
-            For Each p In Players
-                ' AI generates its bid now if none set
-                If p.AIControlled AndAlso p.CurrentBid <= 0 Then
-                    p.CurrentBid = GenerateAIBid(p, CurrentMercOffer)
-                End If
-
-                ' Only accept valid bids
-                If p.CurrentBid > 0 AndAlso p.CurrentBid <= p.Gold Then
-                    ' --- Wage cap check ---
-                    If CanAffordMercenaries(p, CurrentMercOffer) Then
-                        bids(p) = p.CurrentBid
-                    Else
-                        Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bid {p.CurrentBid} but cannot afford wages. Bid rejected.")
-                    End If
-                End If
-            Next
-
-            ResolveMercenaryAuction(bids)
-
-            ' Reset bids
-            For Each p In Players
-                p.CurrentBid = 0
-            Next
-        End If
-    End Sub
-
-    Private Function CanAffordMercenaries(p As Player, offer As MercenaryArmy) As Boolean
-        If p Is Nothing OrElse offer Is Nothing Then Return False
-
-        ' Current ongoing wages for this player
-        Dim currentWages As Integer = CalculateMercenaryWages(p)
-
-        ' Wages for the offered army (sum of Power × Count)
-        Dim newWages As Integer = 0
-        For Each s In offer.Units
-            If s Is Nothing Then Continue For
-
-            If s.Hero IsNot Nothing Then
-                ' Hero wage = their Power value
-                ' newWages += s.Hero.Power
-            ElseIf s.Template IsNot Nothing Then
-                newWages += s.Template.Power * s.Count
-            End If
-        Next
-
-        ' Projected total wages if this army is added
-        Dim projected As Integer = currentWages + newWages
-
-        ' Gold income per turn = population / 10
-        Dim income As Integer = p.Population \ 10
-
-        ' Can only afford if projected wages fit into income
-        Return projected <= income
-    End Function
-
-    Private Function GenerateAIBid(p As Player, offer As MercenaryArmy) As Integer
-        If p Is Nothing OrElse offer Is Nothing OrElse offer.Units.Count = 0 Then
-            Return 0
-        End If
-
-        ' === 1. Skip if broke ===
-        If p.Gold <= 0 Then Return 0
-
-        Dim rnd As New Random()
-
-        ' === 2. Enforce minimum bid requirement ===
-        Dim minBid As Integer = Math.Max(offer.MinBid, 1)
-
-        ' If AI cannot meet the minimum bid, skip bidding
-        If p.Gold < minBid Then
-            'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) cannot afford MinBid {minBid}.")
-            Return 0
-        End If
-
-        ' === 3. Add a small random aggression multiplier (10–30%) ===
-        Dim aggression As Double = 1.0 + (rnd.NextDouble() * 0.3)  ' between 1.0 and 1.3
-        Dim desiredBid As Integer = CInt(minBid * aggression)
-
-        ' === 4. Cap at available gold ===
-        Dim finalBid As Integer = Math.Min(desiredBid, p.Gold)
-
-        ' Ensure at least the MinBid
-        If finalBid < minBid Then finalBid = minBid
-
-        'Debug.WriteLine($"[MERC] {p.Race} (Player {p.PlayerNumber + 1}) bids {finalBid} gold (MinBid {minBid}, aggression {aggression:F2}).")
-
-        Return finalBid
-    End Function
-
-
-#End Region
-
-
     Private Sub UpdateArmiesReport()
         rtbArmies.Clear()
 
@@ -5515,56 +4529,6 @@ Public Class Form1
             Next
         Next
     End Sub
-    Private Function CalculateMercenaryWages(p As Player) As Integer
-        If p Is Nothing OrElse p.Armies Is Nothing Then Return 0
-
-        Dim wages As Integer = 0
-
-        For Each a In p.Armies
-            If a.Units Is Nothing Then Continue For
-            For Each u In a.Units
-                If u IsNot Nothing AndAlso u.IsMercenary Then
-                    wages += u.Power * u.Size
-                    'Debug.WriteLine($"[WAGE-CHECK] {p.Race} army at ({a.X},{a.Y}): {u.Name} x{u.Size} costing {u.Power * u.Size}")
-                End If
-            Next
-        Next
-
-        Return wages
-    End Function
-
-    Private Sub PayMercenaryWages()
-        For Each p In Players
-            If Not CanAct(p) Then Continue For
-            Dim wages As Integer = CalculateMercenaryWages(p)
-            p.LastMercWages = wages
-
-            If wages > 0 Then
-                p.Gold -= wages
-                If p.Gold < 0 Then p.Gold = 0 ' prevent negative gold
-
-                'Debug.WriteLine($"[WAGES] {p.Race} (Player {p.PlayerNumber + 1}) paid {wages} gold in mercenary wages. Remaining gold: {p.Gold}")
-            End If
-        Next
-    End Sub
-
-    ' === Helper: calculate wages for a mercenary offer before hire ===
-    Private Function CalculateMercenaryOfferWages(offer As MercenaryArmy) As Integer
-        If offer Is Nothing OrElse offer.Units Is Nothing Then Return 0
-
-        Dim wages As Integer = 0
-        For Each s In offer.Units
-            If s Is Nothing Then Continue For
-
-            If s.Hero IsNot Nothing Then
-                wages += s.Hero.Power
-            ElseIf s.Template IsNot Nothing Then
-                wages += s.Template.Power * s.Count
-            End If
-        Next
-
-        Return wages
-    End Function
 
 
     'Private Sub btnKillPlayer_Click(sender As Object, e As EventArgs) Handles btnKillPlayer.Click
@@ -5800,7 +4764,7 @@ Public Class Form1
     Public Customers As BindingList(Of Customer)
 
     Private Sub LoadCustomerGrid()
-        customers = New BindingList(Of Customer)(LoadCustomers())
+        Customers = New BindingList(Of Customer)(LoadCustomers())
 
         dgvCustomers.AutoGenerateColumns = False
         dgvCustomers.Columns.Clear()
@@ -5811,7 +4775,7 @@ Public Class Form1
         dgvCustomers.Columns.Add(MakeTextCol("Address", "Address", False, 220))
         dgvCustomers.Columns.Add(MakeTextCol("Notes", "Notes", False, 220))
 
-        dgvCustomers.DataSource = customers
+        dgvCustomers.DataSource = Customers
     End Sub
 
     Private Function MakeTextCol(prop As String, header As String, [ReadOnly] As Boolean, width As Integer) As DataGridViewTextBoxColumn
@@ -5828,7 +4792,7 @@ Public Class Form1
 
         ' Validation: every customer must have a unique nickname
         Dim seen As New HashSet(Of String)(StringComparer.OrdinalIgnoreCase)
-        For Each c In customers
+        For Each c In Customers
             If String.IsNullOrWhiteSpace(c.Nickname) Then
                 MessageBox.Show("Every customer must have a nickname.", "Save", MessageBoxButtons.OK, MessageBoxIcon.Warning)
                 Return
@@ -5840,7 +4804,7 @@ Public Class Form1
             seen.Add(c.Nickname)
         Next
 
-        SaveCustomers(customers.ToList())
+        SaveCustomers(Customers.ToList())
         PopulateCustomerDropdowns()
         MessageBox.Show("Customers saved successfully!", "Save", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub

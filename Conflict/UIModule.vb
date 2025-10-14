@@ -106,11 +106,14 @@ Module UIModule
             End If
             If a Is Nothing Then Continue For
 
-            If Not String.IsNullOrWhiteSpace(order.ArmyName) AndAlso
-               Not a.Name.Equals(order.ArmyName, StringComparison.OrdinalIgnoreCase) Then
-                Dim newName As String = StrConv(order.ArmyName.Trim(), VbStrConv.ProperCase)
+            If Not String.IsNullOrWhiteSpace(order.ArmyName) AndAlso Not a.Name.Equals(order.ArmyName, StringComparison.OrdinalIgnoreCase) Then
+                Dim trimmed As String = order.ArmyName.Trim()
+                Dim newName As String = If(trimmed.Length > 0,
+                   System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(trimmed.ToLower()),
+                   String.Empty)
                 a.Name = newName
             End If
+
 
             If a.MoveQueue Is Nothing Then a.MoveQueue = New List(Of ArmyCommand)
             a.MoveQueue.Clear()
