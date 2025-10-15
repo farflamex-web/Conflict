@@ -12,13 +12,23 @@ Imports System.Windows.Forms
 Imports Conflict.Form1
 Imports Conflict.UIModule   ' for CurrentForm, etc.
 Imports System.Drawing.Printing
-
+Imports System.Text
 
 Module Printouts
+
+    ' Resume position inside the current battle (line index)
+    Private battleLineIndex As Integer = 0
 
     Public printDoc As PrintDocument
 
     Public terrainCache As New Dictionary(Of String, Image)
+
+    Private hasDrawnBattleHeader As Boolean = False
+
+    ' Track print flow/state
+    Private pageIndex As Integer = 1
+    Private battleReportIndex As Integer = 0
+    Private currentPrintPlayer As Player = Nothing
 
     Public Sub CreateTerrainCache()
         ' Clear existing cache (in case called multiple times)
@@ -49,67 +59,118 @@ Module Printouts
 
     Public Sub SetupPrinting()
         printDoc = New PrintDocument()
+        AddHandler printDoc.BeginPrint, AddressOf printDoc_BeginPrint
         AddHandler printDoc.PrintPage, AddressOf printDoc_PrintPage
     End Sub
+
+    Private Sub printDoc_BeginPrint(sender As Object, e As PrintEventArgs)
+        pageIndex = 1
+        battleReportIndex = 0
+        battleLineIndex = 0
+        currentPrintPlayer = Nothing
+        hasDrawnBattleHeader = False
+    End Sub
+
+
 
     ' ============================================================
     '  Diagnostic Print Page and Header Routine
     ' ============================================================
 
     Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
-        Static pageIndex As Integer = 1
-
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
+
+        ' Emergency runaway page limiter
+        If pageIndex > 10 Then
+            g.DrawString("Printing aborted: too many pages.", New Font("Arial", 12), Brushes.Black, 100, 100)
+            e.HasMorePages = False
+            pageIndex = 1
+            battleReportIndex = 0
+            currentPrintPlayer = Nothing
+            Return
+        End If
 
         ' === Safety ===
         If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then
             e.HasMorePages = False
             pageIndex = 1
+            battleReportIndex = 0
+            currentPrintPlayer = Nothing
             Return
         End If
 
-        ' === Identify current player ===
-        Dim p As Player = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
-        If p Is Nothing Then p = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
-        If p Is Nothing Then
+        ' === Identify current player once per job ===
+        If currentPrintPlayer Is Nothing Then
+            currentPrintPlayer = CurrentForm.Players.
+            FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
+            If currentPrintPlayer Is Nothing Then
+                currentPrintPlayer = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
+            End If
+        End If
+
+        If currentPrintPlayer Is Nothing Then
             g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, 100, 100)
             e.HasMorePages = False
             pageIndex = 1
+            battleReportIndex = 0
             Return
         End If
 
-        ' ------------------------------------------------------------
-        ' PAGE 1: Header + Map  (TEMPORARILY DISABLED to save ink/paper)
-        ' ------------------------------------------------------------
-        If pageIndex = 1 Then
-            ' === SKIPPED FOR TESTING ===
-            ' To re-enable later, just uncomment the next three blocks:
+        Select Case pageIndex
+            Case 1
+                ' --- PAGE 1: HEADER + MAP (currently disabled to save ink) ---
+                'DrawFrontPageHeaderAndPlayerInfo(g, e)
+                'If CurrentForm.Map IsNot Nothing Then
+                '    Dim headerHeight As Single = 60
+                '    Dim playerBoxHeight As Single = 80
+                '    Dim spacing As Single = 20
+                '    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
+                '    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+                'End If
 
-            'DrawFrontPageHeaderAndPlayerInfo(g, e)
-            'If CurrentForm.Map IsNot Nothing Then
-            '    Dim headerHeight As Single = 60
-            '    Dim playerBoxHeight As Single = 80
-            '    Dim spacing As Single = 20
-            '    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
-            '    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
-            'End If
+                ' Move on to page 2
+                e.HasMorePages = True
+                pageIndex = 2
+                Return
 
-            ' still signal there’s another page so page 2 prints correctly
-            e.HasMorePages = True
-            pageIndex = 2
-            Return
+            Case 2
+                ' --- PAGE 2: EMPIRE REPORT ---
+                DrawEmpireReport(g, e, currentPrintPlayer)
 
-            ' ------------------------------------------------------------
-            ' PAGE 2: Empire Report
-            ' ------------------------------------------------------------
-        ElseIf pageIndex = 2 Then
-            DrawEmpireReport(g, e, p)
-            e.HasMorePages = False
-            pageIndex = 1
-            Return
-        End If
+                ' Move on to page 3 (Battle Reports)
+                e.HasMorePages = True
+                pageIndex = 3
+                Return
+
+            Case 3
+                ' --- PAGE 3+: BATTLE REPORTS (may span multiple pages) ---
+                Dim morePages As Boolean = DrawBattleReportsPage(g, e, currentPrintPlayer)
+
+                If morePages Then
+                    ' still more battle pages left to print
+                    e.HasMorePages = True
+                    pageIndex = 3
+                Else
+                    ' all done — reset counters safely
+                    e.HasMorePages = False
+                    pageIndex = 1
+                    battleReportIndex = 0
+                    currentPrintPlayer = Nothing
+                End If
+                Return
+
+            Case Else
+                ' unexpected state safety
+                e.HasMorePages = False
+                pageIndex = 1
+                battleReportIndex = 0
+                currentPrintPlayer = Nothing
+                Return
+        End Select
     End Sub
+
+
 
 
     Private Sub DrawFrontPageHeaderAndPlayerInfo(g As Graphics, e As PrintPageEventArgs)
@@ -516,6 +577,28 @@ Module Printouts
 
                 writer.WriteLine("<div class='section'><h2>Armies</h2><p>[Army list placeholder]</p></div>")
                 writer.WriteLine("<div class='section'><h2>Events</h2><p>[Recent events placeholder]</p></div>")
+                ' === Battle Reports Section ===
+                If CurrentForm.CurrentReports IsNot Nothing AndAlso CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso CurrentForm.CurrentReports.BattleReports.Count > 0 Then
+                    writer.WriteLine("<div class='section'><h2>Battle Reports</h2>")
+                    For Each battleText In CurrentForm.CurrentReports.BattleReports
+                        ' Determine involved races
+                        Dim involved As New List(Of String)
+                        If battleText.Contains("Elf") Then involved.Add("Elf")
+                        If battleText.Contains("Dwarf") Then involved.Add("Dwarf")
+                        If battleText.Contains("Human") Then involved.Add("Human")
+                        If battleText.Contains("Orc") Then involved.Add("Orc")
+
+                        ' Generate per-player version
+                        Dim htmlText As String = GetBattleReportForPlayer(p, battleText, involved)
+                        ' Encode to HTML with preserved line breaks
+                        Dim encoded = System.Net.WebUtility.HtmlEncode(htmlText).Replace(vbCrLf, "<br>").Replace(vbLf, "<br>")
+                        writer.WriteLine($"<pre style='font-family:Consolas;font-size:12px;background:#f7f7f7;padding:10px;border:1px solid #ddd;'>{encoded}</pre>")
+                    Next
+                    writer.WriteLine("</div>")
+                Else
+                    writer.WriteLine("<div class='section'><h2>Battle Reports</h2><p>No battles occurred this turn.</p></div>")
+                End If
+
                 writer.WriteLine("<div class='section'><h2>Notes</h2><p>[Additional notes placeholder]</p></div>")
 
                 writer.WriteLine($"<p style='font-size:11px;color:#888;'>Generated automatically on {DateTime.Now:dd MMM yyyy HH:mm}</p>")
@@ -528,6 +611,41 @@ Module Printouts
             Debug.WriteLine($"[HTML TURN ERROR] {p.Nickname}: {ex.Message}")
         End Try
     End Sub
+
+    ' ------------------------------------------------------------
+    '  Returns a battle report text tailored to the given player.
+    '  If the player was involved, they get the full report.
+    '  Otherwise, they get a short summary (observer version).
+    ' ------------------------------------------------------------
+    Private Function GetBattleReportForPlayer(p As Player, battle As String, involvedRaces As List(Of String)) As String
+        Dim sb As New System.Text.StringBuilder()
+
+        Dim isInvolved As Boolean = involvedRaces.Any(Function(r) p.Race.Equals(r, StringComparison.OrdinalIgnoreCase))
+
+        If isInvolved Then
+            ' --- Full version for participants ---
+            sb.AppendLine(battle)
+        Else
+            ' --- Short summary for observers ---
+            Dim lines = battle.Split({vbCrLf, vbLf}, StringSplitOptions.RemoveEmptyEntries)
+            Dim firstLine As String = lines.FirstOrDefault()
+            Dim victoryLine As String = lines.FirstOrDefault(Function(l) l.Contains("Victory", StringComparison.OrdinalIgnoreCase))
+            Dim lossLines = lines.Where(Function(l) l.StartsWith("Losses:", StringComparison.OrdinalIgnoreCase)).ToList()
+
+            sb.AppendLine("Battle summary:")
+            If Not String.IsNullOrEmpty(firstLine) Then sb.AppendLine(" " & firstLine)
+            If Not String.IsNullOrEmpty(victoryLine) Then sb.AppendLine(" " & victoryLine)
+            For Each l In lossLines
+                sb.AppendLine(" " & l)
+            Next
+            sb.AppendLine()
+        End If
+
+        Return sb.ToString()
+    End Function
+
+
+
 
     Private Function GetMapImageBase64(p As Player, gameNum As Integer, turnNum As Integer) As String
         Try
@@ -644,6 +762,203 @@ Module Printouts
 
         End Using
     End Sub
+
+
+    ' ============================================================
+    '  DrawBattleReportsPage – coloured/styled, line-by-line, paginated (with wrapping)
+    '  - Prints "Battle Reports" header only once (first battle page)
+    '  - Colours "{Race} Army ..." lines by race
+    ' ============================================================
+    Private Function DrawBattleReportsPage(g As Graphics, e As PrintPageEventArgs, p As Player) As Boolean
+        Dim marginLeft As Single = e.MarginBounds.Left
+        Dim marginTop As Single = e.MarginBounds.Top
+        Dim pageWidth As Single = e.MarginBounds.Width
+        Dim pageRight As Single = e.MarginBounds.Right
+        Dim pageBottom As Single = e.MarginBounds.Bottom
+        Dim y As Single = marginTop
+
+        ' Fonts
+        Using titleFont As New Font("Georgia", 16, FontStyle.Bold),
+          sectionFont As New Font("Consolas", 10, FontStyle.Bold),
+          bodyFont As New Font("Consolas", 9, FontStyle.Regular)
+
+            ' Brushes / Pens
+            Dim blue As Brush = Brushes.RoyalBlue
+            Dim red As Brush = Brushes.Firebrick
+            Dim black As Brush = Brushes.Black
+            Dim gray As Pen = New Pen(Color.LightGray, 1.0F)
+
+            ' Race colour map
+            Dim raceBrush As New Dictionary(Of String, Brush)(StringComparer.OrdinalIgnoreCase) From {
+            {"Elf", Brushes.ForestGreen},
+            {"Dwarf", Brushes.RoyalBlue},
+            {"Orc", Brushes.Firebrick},
+            {"Human", Brushes.Goldenrod}
+        }
+
+            ' Wrap/measure config
+            Dim fmt As New StringFormat(StringFormatFlags.LineLimit) With {
+            .Trimming = StringTrimming.None
+        }
+
+            ' ---- Page Title (ONLY on the first battle page) ----
+            If Not hasDrawnBattleHeader Then
+                g.DrawString("Battle Reports", titleFont, blue, marginLeft, y)
+                y += titleFont.GetHeight(g) + 10
+                hasDrawnBattleHeader = True
+            End If
+
+            ' Safety
+            If CurrentForm.CurrentReports Is Nothing _
+           OrElse CurrentForm.CurrentReports.BattleReports Is Nothing _
+           OrElse CurrentForm.CurrentReports.BattleReports.Count = 0 Then
+
+                g.DrawString("No battles occurred this turn.", bodyFont, black, marginLeft, y)
+                battleReportIndex = 0
+                battleLineIndex = 0
+                Return False
+            End If
+
+            Dim battles = CurrentForm.CurrentReports.BattleReports
+            Dim i As Integer = battleReportIndex
+
+            While i < battles.Count
+                Dim battleText As String = battles(i)
+
+                ' Determine involved races (simple keywords)
+                Dim involved As New List(Of String)
+                If battleText.IndexOf("Elf", StringComparison.OrdinalIgnoreCase) >= 0 Then involved.Add("Elf")
+                If battleText.IndexOf("Dwarf", StringComparison.OrdinalIgnoreCase) >= 0 Then involved.Add("Dwarf")
+                If battleText.IndexOf("Human", StringComparison.OrdinalIgnoreCase) >= 0 Then involved.Add("Human")
+                If battleText.IndexOf("Orc", StringComparison.OrdinalIgnoreCase) >= 0 Then involved.Add("Orc")
+
+                ' Tailored text for the player (full if involved, summary otherwise)
+                Dim reportText As String = GetBattleReportForPlayer(p, battleText, involved)
+
+                ' Normalize CRLF -> LF and split into logical lines
+                Dim lines As String() = reportText.Replace(vbCrLf, vbLf).Split(New String() {vbLf}, StringSplitOptions.None)
+
+                ' Continue where we left off if resuming same battle
+                Dim lineIdx As Integer = If(i = battleReportIndex, battleLineIndex, 0)
+
+                While lineIdx < lines.Length
+                    Dim raw As String = lines(lineIdx)
+                    Dim line As String = If(raw IsNot Nothing, raw, String.Empty)
+                    Dim trimmed As String = line.Trim()
+
+                    ' Decide styling per logical line
+                    Dim useFont As Font = bodyFont
+                    Dim useBrush As Brush = black
+                    Dim extraSpacing As Single = 0.0F
+                    Dim isSeparator As Boolean = False
+
+                    ' Separator rules (----- or ====)
+                    If trimmed.Length >= 5 AndAlso
+                   (trimmed.All(Function(c) c = "-"c) OrElse trimmed.All(Function(c) c = "="c)) Then
+                        isSeparator = True
+                    End If
+
+                    ' “Battle at (x,y): …” → blue
+                    If Not isSeparator AndAlso trimmed.StartsWith("Battle at (", StringComparison.OrdinalIgnoreCase) Then
+                        useFont = sectionFont
+                        useBrush = blue
+                        extraSpacing = 4.0F
+                    End If
+
+                    ' Phase headers → blue
+                    If Not isSeparator Then
+                        Dim t As String = trimmed
+                        If t.Equals("Ranged Phase", StringComparison.OrdinalIgnoreCase) OrElse
+                       t.Equals("Charge Phase", StringComparison.OrdinalIgnoreCase) OrElse
+                       t.Equals("Melee Phase", StringComparison.OrdinalIgnoreCase) OrElse
+                       t.Equals("Chase Phase", StringComparison.OrdinalIgnoreCase) Then
+                            useFont = sectionFont
+                            useBrush = blue
+                            extraSpacing = 2.0F
+                        End If
+                    End If
+
+                    ' Start/Final/Summary → red
+                    If Not isSeparator Then
+                        Dim t As String = trimmed
+                        If t.StartsWith("Start of Battle", StringComparison.OrdinalIgnoreCase) OrElse
+                       t.Equals("Final Army Status", StringComparison.OrdinalIgnoreCase) OrElse
+                       t.Equals("End of Battle Summary", StringComparison.OrdinalIgnoreCase) Then
+                            useFont = sectionFont
+                            useBrush = red
+                            extraSpacing = 4.0F
+                        End If
+                    End If
+
+                    ' "{Race} Army ..." lines (top and final sections) → colour by race
+                    If Not isSeparator Then
+                        ' Match: ^(Elf|Dwarf|Orc|Human)\s+Army\b
+                        Dim m = System.Text.RegularExpressions.Regex.Match(trimmed, "^(Elf|Dwarf|Orc|Human)\s+Army\b",
+                                                                       System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                        If m.Success Then
+                            Dim race As String = m.Groups(1).Value
+                            If raceBrush.ContainsKey(race) Then
+                                useFont = sectionFont
+                                useBrush = raceBrush(race)
+                                extraSpacing = Math.Max(extraSpacing, 2.0F)
+                            End If
+                        End If
+                    End If
+
+                    ' ---- WRAPPED MEASURE + PAGINATION + DRAW ----
+                    If isSeparator Then
+                        ' Use a single-line height for the rule
+                        Dim lineHeight As Single = bodyFont.GetHeight(g)
+                        If y + lineHeight > pageBottom Then
+                            battleReportIndex = i
+                            battleLineIndex = lineIdx
+                            Return True
+                        End If
+                        Dim midY As Single = y + lineHeight * 0.5F
+                        g.DrawLine(gray, marginLeft, midY, pageRight, midY)
+                        y += lineHeight + extraSpacing
+
+                    Else
+                        ' Measure wrapped height for this logical line within the printable width
+                        Dim needed As SizeF
+                        If trimmed.Length = 0 Then
+                            needed = New SizeF(pageWidth, useFont.GetHeight(g))
+                        Else
+                            needed = g.MeasureString(line, useFont, CInt(pageWidth), fmt)
+                        End If
+
+                        ' Paginate if this wrapped block would overflow
+                        If y + needed.Height > pageBottom Then
+                            battleReportIndex = i
+                            battleLineIndex = lineIdx
+                            Return True
+                        End If
+
+                        ' Draw wrapped text inside bounded rectangle
+                        Dim rect As New RectangleF(marginLeft, y, pageWidth, needed.Height)
+                        g.DrawString(line, useFont, useBrush, rect, fmt)
+                        y += needed.Height + extraSpacing
+                    End If
+
+                    lineIdx += 1
+                End While
+
+                ' Finished this battle: small gap before next
+                y += 10
+                i += 1
+
+                ' Advance pointers for the next battle
+                battleLineIndex = 0
+                battleReportIndex = i
+            End While
+
+            ' All battles printed
+            battleReportIndex = 0
+            battleLineIndex = 0
+            Return False
+        End Using
+    End Function
+
 
 
     ' ============================================================

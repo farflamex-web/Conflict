@@ -1,6 +1,8 @@
 ﻿
 Imports Conflict.Form1
 Imports Conflict.UIModule
+Imports System.Globalization
+
 Module Battles
 
     Public Sub ResolveCombat()
@@ -206,13 +208,35 @@ Module Battles
                     Next
 
                     ' --- Report ---
-                    Dim compactReport As String = CurrentForm.GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot, allArmiesHere)
+                    Dim header As String =
+                        $"Battle at ({pt.X},{pt.Y}): {String.Join(" vs ", distinctPlayers)}" & vbCrLf &
+                        New String("="c, 60) & vbCrLf
+
+                    Dim compactReport As String = header &
+                        GenerateCompactPhaseReport(battleLog, mergedArmies, startSnapshot, allArmiesHere)
+
+                    ' Show it on-screen
                     CurrentForm.rtbInfo.AppendText(compactReport)
+
+                    ' === NEW: Add to turn reports for printing ===
+                    If CurrentForm.CurrentReports Is Nothing Then
+                        CurrentForm.CurrentReports = New TurnReports With {.TurnNumber = CurrentForm.TurnNumber}
+                    End If
+                    If CurrentForm.CurrentReports.BattleReports Is Nothing Then
+                        CurrentForm.CurrentReports.BattleReports = New List(Of String)
+                    End If
+
+                    ' Avoid duplicates if same location processed twice
+                    Dim key As String = $"({pt.X},{pt.Y})"
+                    If Not CurrentForm.CurrentReports.BattleReports.Any(Function(t) t.Contains(key)) Then
+                        CurrentForm.CurrentReports.BattleReports.Add(compactReport)
+                    End If
 
                     ' --- Cleanup dead stacks (safe, only mutates Units of each army) ---
                     For Each army As Army In allArmiesHere.ToList()
                         army.Units.RemoveAll(Function(u) u.Size <= 0)
                     Next
+
 
                     ' Do NOT recompute eliminations here; queue them and apply after loops
                     ' (prevents collection mutation mid-enumeration)
@@ -519,5 +543,302 @@ Module Battles
         Next
         Return clone
     End Function
+
+
+    Public Function GenerateCompactPhaseReport(battleLog As BattleLog,
+                                           mergedArmies As List(Of Army),
+                                           startSnapshot As List(Of Army),
+                                           originalArmies As List(Of Army)) As String
+
+        Dim sb As New Text.StringBuilder()
+
+        ' ---- number formatter (comma thousands) ----
+        Dim Fmt As Func(Of Long, String) =
+        Function(n As Long) n.ToString("N0", CultureInfo.InvariantCulture)
+
+        ' ---------- helpers ----------
+        Dim KeyOf As Func(Of Unit, String) =
+        Function(u As Unit) u.Name & "|" & CInt(u.Type).ToString()
+
+        ' Map each merged-army Unit reference -> its owning merged Army
+        Dim ownerByUnit As New Dictionary(Of Unit, Army)
+        For Each ma In mergedArmies
+            For Each u In ma.Units
+                ownerByUnit(u) = ma
+            Next
+        Next
+
+        ' Build stable unit order + starting sizes...
+        Dim unitOrderByArmy As New Dictionary(Of Army, List(Of Unit))()
+        Dim startSizesByArmy As New Dictionary(Of Army, List(Of Integer))()
+        Dim indexByUnitRef As New Dictionary(Of Army, Dictionary(Of Unit, Integer))()
+
+        For i As Integer = 0 To startSnapshot.Count - 1
+            Dim snapA = startSnapshot(i)
+            Dim liveA = mergedArmies(i)
+
+            unitOrderByArmy(liveA) = New List(Of Unit)(
+            snapA.Units.Select(Function(u) New Unit(u) With {.Size = u.Size})
+        )
+            startSizesByArmy(liveA) = New List(Of Integer)(snapA.Units.Select(Function(u) u.Size))
+
+            Dim idxMapRef As New Dictionary(Of Unit, Integer)()
+            For j As Integer = 0 To liveA.Units.Count - 1
+                idxMapRef(liveA.Units(j)) = j
+            Next
+            indexByUnitRef(liveA) = idxMapRef
+        Next
+
+        ' ---------- Start of Battle ----------
+        sb.AppendLine("Start of Battle:")
+        For i As Integer = 0 To startSnapshot.Count - 1
+            Dim snapA = startSnapshot(i)
+            Dim liveA = mergedArmies(i)
+
+            Dim originalA As Army =
+            originalArmies.FirstOrDefault(Function(oa) oa.Race.Equals(liveA.Race, StringComparison.OrdinalIgnoreCase))
+
+            Dim armyRace As String = If(String.IsNullOrWhiteSpace(snapA.Race),
+                                    If(originalA IsNot Nothing, originalA.Race, "Unknown"),
+                                    snapA.Race)
+
+            Dim armyName As String = If(String.IsNullOrWhiteSpace(snapA.Name),
+                                    If(originalA IsNot Nothing AndAlso Not String.IsNullOrWhiteSpace(originalA.Name),
+                                       originalA.Name,
+                                       "(Unnamed)"),
+                                    snapA.Name)
+
+            Dim trainingValue As Double =
+            If(snapA.TrainingLevel > 0,
+               snapA.TrainingLevel,
+               If(originalA IsNot Nothing, originalA.TrainingLevel, 0))
+            Dim trainingPct As String = $"{trainingValue:P0}"
+
+            ' Units list with thousands separators
+            Dim parts As New List(Of String)
+            If snapA.Units IsNot Nothing Then
+                For Each u In snapA.Units.OrderByDescending(Function(x) x.Size)
+                    parts.Add($"{u.Name} ({Fmt(CLng(u.Size))})")
+                Next
+            End If
+            Dim totalUnits As Long = If(snapA.Units IsNot Nothing, CLng(snapA.Units.Sum(Function(u) u.Size)), 0)
+
+            sb.AppendLine($"{armyRace} Army : {armyName} : Training {trainingPct} : {String.Join(", ", parts)} | Total: {Fmt(totalUnits)}")
+        Next
+
+        sb.AppendLine(New String("-"c, 60))
+
+        ' ---------- Phase-by-phase ----------
+        Dim currentSizesByArmy As New Dictionary(Of Army, Integer())()
+        For Each liveA In mergedArmies
+            currentSizesByArmy(liveA) = startSizesByArmy(liveA).ToArray()
+        Next
+
+        Dim phases As String() = {"Ranged", "Charge", "Melee", "Chase"}
+
+        For Each phase In phases
+            If Not PhaseHadCasualties(battleLog, phase) Then Continue For
+
+            sb.AppendLine($"{phase} Phase")
+
+            ' === Losses summary by race ===
+            If battleLog IsNot Nothing AndAlso battleLog.PhaseEntries.ContainsKey(phase) Then
+                Dim raceLosses = battleLog.PhaseEntries(phase).
+                GroupBy(Function(e) ownerByUnit(e.Defender).Race).
+                Select(Function(g) $"{g.Key} ({Fmt(CLng(g.Sum(Function(e) e.Casualties)))})").
+                ToList()
+
+                If raceLosses.Any() Then
+                    sb.AppendLine("Losses: " & String.Join(", ", raceLosses))
+                    sb.AppendLine()
+                End If
+            End If
+
+            ' === Main Casualties (top 5 + heroes) ===
+            If battleLog IsNot Nothing AndAlso battleLog.PhaseEntries.ContainsKey(phase) Then
+                Dim grouped = battleLog.PhaseEntries(phase).
+                GroupBy(Function(e)
+                            Dim owningRace As String = ownerByUnit(e.Defender).Race
+                            Return $"{e.Defender.Name}|{CInt(e.Defender.Type)}|{owningRace}"
+                        End Function).
+                Select(Function(g) New With {
+                    .Name = g.First().Defender.Name,
+                    .Race = ownerByUnit(g.First().Defender).Race,
+                    .Casualties = g.Sum(Function(e) e.Casualties),
+                    .IsHero = g.First().Defender.IsHero,
+                    .Level = g.First().Defender.Level,
+                    .Killed = False
+                }).
+                Where(Function(x) x.Casualties > 0).
+                OrderByDescending(Function(x) x.Casualties).
+                Take(5).
+                ToList()
+
+                ' Always include hero losses
+                Dim heroLosses = battleLog.PhaseEntries(phase).
+                Where(Function(e) e.Defender.IsHero AndAlso e.Casualties > 0).
+                Select(Function(e)
+                           Dim race = ownerByUnit(e.Defender).Race
+                           Dim owningArmy As Army = ownerByUnit(e.Defender)
+                           Dim idx As Integer = -1
+                           Dim killed As Boolean = False
+
+                           If indexByUnitRef.ContainsKey(owningArmy) AndAlso
+                              indexByUnitRef(owningArmy).TryGetValue(e.Defender, idx) Then
+                               Dim arr = currentSizesByArmy(owningArmy)
+                               If idx >= 0 AndAlso idx < arr.Length AndAlso arr(idx) = 0 Then
+                                   killed = True
+                               End If
+                           End If
+
+                           Return New With {
+                               .Name = e.Defender.Name,
+                               .Race = race,
+                               .Casualties = e.Casualties,
+                               .IsHero = True,
+                               .Level = e.Defender.Level,
+                               .Killed = killed
+                           }
+                       End Function).ToList()
+
+                For Each h In heroLosses
+                    If Not grouped.Any(Function(x) x.Name = h.Name AndAlso x.Race = h.Race) Then
+                        grouped.Add(h)
+                    End If
+                Next
+
+                If grouped.Any() Then
+                    sb.AppendLine("Main Casualties:")
+                    For Each g In grouped
+                        If g.IsHero Then
+                            If g.Killed Then
+                                sb.AppendLine($" *** HERO KILLED - {g.Name.ToUpper()} ({g.Race.ToUpper()}) - LEVEL {g.Level} ***")
+                            Else
+                                sb.AppendLine($" - {g.Name} ({g.Race}) lost {Fmt(CLng(g.Casualties))} [HERO Lvl {g.Level}]")
+                            End If
+                        Else
+                            sb.AppendLine($" - {g.Name} ({g.Race}) lost {Fmt(CLng(g.Casualties))}")
+                        End If
+                    Next
+                    sb.AppendLine("------------")
+                    sb.AppendLine()
+                End If
+            End If
+
+            ' === Apply casualties to working copy ===
+            If battleLog IsNot Nothing AndAlso battleLog.PhaseEntries.ContainsKey(phase) Then
+                For Each entry In battleLog.PhaseEntries(phase)
+                    Dim owningArmy As Army = Nothing
+                    If ownerByUnit.TryGetValue(entry.Defender, owningArmy) Then
+                        Dim arr = currentSizesByArmy(owningArmy)
+
+                        Dim idx As Integer = -1
+                        If indexByUnitRef.ContainsKey(owningArmy) AndAlso
+                       indexByUnitRef(owningArmy).TryGetValue(entry.Defender, idx) Then
+                            ' found
+                        Else
+                            For j As Integer = 0 To owningArmy.Units.Count - 1
+                                If Object.ReferenceEquals(owningArmy.Units(j), entry.Defender) Then
+                                    idx = j : Exit For
+                                End If
+                            Next
+                        End If
+
+                        If idx >= 0 AndAlso idx < arr.Length Then
+                            Dim before As Integer = arr(idx)
+                            Dim after As Integer = Math.Max(0, before - entry.Casualties)
+                            arr(idx) = after
+                        End If
+                    End If
+                Next
+            End If
+        Next
+
+        ' ---------- Final Army Status ----------
+        sb.AppendLine("End of Battle:")
+        For i As Integer = 0 To startSnapshot.Count - 1
+            Dim snapA = startSnapshot(i)
+            Dim liveA = mergedArmies(i)
+            Dim names = unitOrderByArmy(liveA)
+            Dim sizes = currentSizesByArmy(liveA)
+
+            Dim parts As New List(Of String)
+            Dim sorted = names.Select(Function(u, idx) New With {.Unit = u, .Size = sizes(idx)}).
+                           OrderByDescending(Function(x) x.Size).
+                           ToList()
+
+            For Each pair In sorted
+                If pair.Size <= 0 Then
+                    parts.Add($"{pair.Unit.Name} (0 - DEAD)")
+                Else
+                    parts.Add($"{pair.Unit.Name} ({Fmt(CLng(pair.Size))})")
+                End If
+            Next
+
+            Dim totalNow As Long = sizes.Sum(Function(v) CLng(v))
+            sb.AppendLine($"{snapA.Race} Army: {String.Join(", ", parts)} | Total: {Fmt(totalNow)}")
+
+            If i < startSnapshot.Count - 1 Then sb.AppendLine()
+        Next
+        sb.AppendLine(New String("-"c, 60))
+
+        ' ---------- Retreats ----------
+        If battleLog IsNot Nothing AndAlso battleLog.Retreats IsNot Nothing AndAlso battleLog.Retreats.Count > 0 Then
+            sb.AppendLine("--- Retreats ---")
+            Dim seen As New HashSet(Of Army)
+            For Each ra In battleLog.Retreats
+                If Not seen.Contains(ra) Then
+                    sb.AppendLine($"Army of {ra.Race} sent back to home at ({ra.X},{ra.Y}). Remaining soldiers: {Fmt(CLng(ra.TotalSoldiers))}")
+                    seen.Add(ra)
+                End If
+            Next
+            sb.AppendLine()
+        End If
+
+        ' ---------- Result ----------
+        Dim resultText As String = ""
+        Dim retreatRaces As New HashSet(Of String)(
+        If(battleLog Is Nothing, Enumerable.Empty(Of String)(), battleLog.Retreats.Select(Function(a) a.Race)),
+        StringComparer.OrdinalIgnoreCase
+    )
+
+        Dim survivors = mergedArmies.Where(Function(ma) Not retreatRaces.Contains(ma.Race)).ToList()
+
+        If survivors.Count = 1 AndAlso retreatRaces.Count >= 1 Then
+            resultText = $"{survivors(0).Race} Victory"
+        ElseIf survivors.Count = 0 AndAlso retreatRaces.Count >= 1 Then
+            resultText = "Draw (All armies forced to retreat)"
+        Else
+            resultText = "Battle unresolved (multiple survivors)"
+        End If
+
+        sb.AppendLine("End of Battle Summary")
+        sb.AppendLine(resultText)
+
+        Return sb.ToString()
+    End Function
+
+
+    Private Function PhaseHadCasualties(battleLog As BattleLog, phase As String) As Boolean
+        If battleLog Is Nothing Then Return False
+        If Not battleLog.PhaseEntries.ContainsKey(phase) Then Return False
+        Dim list = battleLog.PhaseEntries(phase)
+        If list Is Nothing OrElse list.Count = 0 Then Return False
+        Return list.Sum(Function(e) e.Casualties) > 0
+    End Function
+
+    ' Deterministic small RNG per (turn, phase)
+    Private Function PhaseRng(phaseIndex As Integer) As Random
+        ' currentTurnNumber already exists in your Form1
+        Dim seed As Integer = (Math.Max(1, CurrentForm.TurnNumber) * 97) + (phaseIndex * 17)
+        Return New Random(seed)
+    End Function
+
+    ' Number formatting helper
+    Private Function Fmt(n As Double) As String
+        Return Math.Round(n).ToString("N0")
+    End Function
+
+
 
 End Module
