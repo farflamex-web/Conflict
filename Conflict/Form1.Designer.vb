@@ -43,15 +43,6 @@ Partial Class Form1
         cmbElf = New ComboBox()
         lblElf = New Label()
         dgvOrders = New DataGridView()
-        colPlayer = New DataGridViewTextBoxColumn()
-        colArmy = New DataGridViewTextBoxColumn()
-        Move1 = New DataGridViewComboBoxColumn()
-        Move2 = New DataGridViewComboBoxColumn()
-        Move3 = New DataGridViewComboBoxColumn()
-        Move4 = New DataGridViewComboBoxColumn()
-        Move5 = New DataGridViewComboBoxColumn()
-        colRecruitUnit = New DataGridViewComboBoxColumn()
-        colRecruitAmount = New DataGridViewTextBoxColumn()
         lblElf2 = New Label()
         chkBuySummonerElf = New CheckBox()
         cmbSummonerElf = New ComboBox()
@@ -95,6 +86,15 @@ Partial Class Form1
         cmbGameSelect = New ComboBox()
         cmbTurn = New ComboBox()
         btnSave = New Button()
+        colPlayer = New DataGridViewTextBoxColumn()
+        colArmy = New DataGridViewTextBoxColumn()
+        Move1 = New DataGridViewTextBoxColumn()
+        Move2 = New DataGridViewTextBoxColumn()
+        Move3 = New DataGridViewTextBoxColumn()
+        Move4 = New DataGridViewTextBoxColumn()
+        Move5 = New DataGridViewTextBoxColumn()
+        colRecruitUnit = New DataGridViewComboBoxColumn()
+        colRecruitAmount = New DataGridViewTextBoxColumn()
         CType(dgvCustomers, ComponentModel.ISupportInitialize).BeginInit()
         grp.SuspendLayout()
         CType(dgvOrders, ComponentModel.ISupportInitialize).BeginInit()
@@ -301,62 +301,6 @@ Partial Class Form1
         dgvOrders.Name = "dgvOrders"
         dgvOrders.Size = New Size(940, 341)
         dgvOrders.TabIndex = 17
-        ' 
-        ' colPlayer
-        ' 
-        colPlayer.HeaderText = "Player"
-        colPlayer.Name = "colPlayer"
-        colPlayer.ReadOnly = True
-        ' 
-        ' colArmy
-        ' 
-        colArmy.HeaderText = "Army"
-        colArmy.Name = "colArmy"
-        ' 
-        ' Move1
-        ' 
-        Move1.HeaderText = "Move1"
-        Move1.Name = "Move1"
-        Move1.Resizable = DataGridViewTriState.True
-        Move1.SortMode = DataGridViewColumnSortMode.Automatic
-        ' 
-        ' Move2
-        ' 
-        Move2.HeaderText = "Move2"
-        Move2.Name = "Move2"
-        Move2.Resizable = DataGridViewTriState.True
-        Move2.SortMode = DataGridViewColumnSortMode.Automatic
-        ' 
-        ' Move3
-        ' 
-        Move3.HeaderText = "Move3"
-        Move3.Name = "Move3"
-        Move3.Resizable = DataGridViewTriState.True
-        Move3.SortMode = DataGridViewColumnSortMode.Automatic
-        ' 
-        ' Move4
-        ' 
-        Move4.HeaderText = "Move4"
-        Move4.Name = "Move4"
-        Move4.Resizable = DataGridViewTriState.True
-        Move4.SortMode = DataGridViewColumnSortMode.Automatic
-        ' 
-        ' Move5
-        ' 
-        Move5.HeaderText = "Move5"
-        Move5.Name = "Move5"
-        Move5.Resizable = DataGridViewTriState.True
-        Move5.SortMode = DataGridViewColumnSortMode.Automatic
-        ' 
-        ' colRecruitUnit
-        ' 
-        colRecruitUnit.HeaderText = "Unit Type"
-        colRecruitUnit.Name = "colRecruitUnit"
-        ' 
-        ' colRecruitAmount
-        ' 
-        colRecruitAmount.HeaderText = "Amount"
-        colRecruitAmount.Name = "colRecruitAmount"
         ' 
         ' lblElf2
         ' 
@@ -751,6 +695,67 @@ Partial Class Form1
         btnSave.Text = "Save  Game"
         btnSave.UseVisualStyleBackColor = True
         ' 
+        ' colPlayer
+        ' 
+        colPlayer.HeaderText = "Player"
+        colPlayer.Name = "colPlayer"
+        colPlayer.ReadOnly = True
+        ' 
+        ' colArmy
+        ' 
+        colArmy.HeaderText = "Army"
+        colArmy.Name = "colArmy"
+        ' 
+        ' Move1
+        ' 
+        Move1.HeaderText = "Move1"
+        Move1.Name = "Move1"
+        Move1.ReadOnly = True
+        Move1.Resizable = DataGridViewTriState.True
+        Move1.SortMode = DataGridViewColumnSortMode.NotSortable
+        ' 
+        ' Move2
+        ' 
+        Move2.HeaderText = "Move2"
+        Move2.Name = "Move2"
+        Move2.ReadOnly = True
+        Move2.Resizable = DataGridViewTriState.True
+        Move2.SortMode = DataGridViewColumnSortMode.NotSortable
+        ' 
+        ' Move3
+        ' 
+        Move3.HeaderText = "Move3"
+        Move3.Name = "Move3"
+        Move3.ReadOnly = True
+        Move3.Resizable = DataGridViewTriState.True
+        Move3.SortMode = DataGridViewColumnSortMode.NotSortable
+        ' 
+        ' Move4
+        ' 
+        Move4.HeaderText = "Move4"
+        Move4.Name = "Move4"
+        Move4.ReadOnly = True
+        Move4.Resizable = DataGridViewTriState.True
+        Move4.SortMode = DataGridViewColumnSortMode.NotSortable
+        ' 
+        ' Move5
+        ' 
+        Move5.HeaderText = "Move5"
+        Move5.Name = "Move5"
+        Move5.ReadOnly = True
+        Move5.Resizable = DataGridViewTriState.True
+        Move5.SortMode = DataGridViewColumnSortMode.NotSortable
+        ' 
+        ' colRecruitUnit
+        ' 
+        colRecruitUnit.HeaderText = "Unit Type"
+        colRecruitUnit.Name = "colRecruitUnit"
+        ' 
+        ' colRecruitAmount
+        ' 
+        colRecruitAmount.HeaderText = "Amount"
+        colRecruitAmount.Name = "colRecruitAmount"
+        ' 
         ' Form1
         ' 
         AutoScaleDimensions = New SizeF(7F, 15F)
@@ -854,15 +859,6 @@ Partial Class Form1
     Friend WithEvents cmbElf As ComboBox
     Friend WithEvents lblElf As Label
     Friend WithEvents dgvOrders As DataGridView
-    Friend WithEvents colPlayer As DataGridViewTextBoxColumn
-    Friend WithEvents colArmy As DataGridViewTextBoxColumn
-    Friend WithEvents Move1 As DataGridViewComboBoxColumn
-    Friend WithEvents Move2 As DataGridViewComboBoxColumn
-    Friend WithEvents Move3 As DataGridViewComboBoxColumn
-    Friend WithEvents Move4 As DataGridViewComboBoxColumn
-    Friend WithEvents Move5 As DataGridViewComboBoxColumn
-    Friend WithEvents colRecruitUnit As DataGridViewComboBoxColumn
-    Friend WithEvents colRecruitAmount As DataGridViewTextBoxColumn
     Friend WithEvents lblElf2 As Label
     Friend WithEvents chkBuySummonerElf As CheckBox
     Friend WithEvents cmbSummonerElf As ComboBox
@@ -906,5 +902,14 @@ Partial Class Form1
     Friend WithEvents cmbGameSelect As ComboBox
     Friend WithEvents cmbTurn As ComboBox
     Friend WithEvents btnSave As Button
+    Friend WithEvents colPlayer As DataGridViewTextBoxColumn
+    Friend WithEvents colArmy As DataGridViewTextBoxColumn
+    Friend WithEvents Move1 As DataGridViewTextBoxColumn
+    Friend WithEvents Move2 As DataGridViewTextBoxColumn
+    Friend WithEvents Move3 As DataGridViewTextBoxColumn
+    Friend WithEvents Move4 As DataGridViewTextBoxColumn
+    Friend WithEvents Move5 As DataGridViewTextBoxColumn
+    Friend WithEvents colRecruitUnit As DataGridViewComboBoxColumn
+    Friend WithEvents colRecruitAmount As DataGridViewTextBoxColumn
 
 End Class

@@ -767,7 +767,7 @@ Module Printouts
     ' ============================================================
     '  DrawBattleReportsPage – coloured/styled, line-by-line, paginated (with wrapping)
     '  - Prints "Battle Reports" header only once (first battle page)
-    '  - Colours "{Race} Army ..." lines by race
+    '  - Colours "{Race} Army ..." lines and "{Race} Victory" by race
     ' ============================================================
     Private Function DrawBattleReportsPage(g As Graphics, e As PrintPageEventArgs, p As Player) As Boolean
         Dim marginLeft As Single = e.MarginBounds.Left
@@ -883,7 +883,7 @@ Module Printouts
                         Dim t As String = trimmed
                         If t.StartsWith("Start of Battle", StringComparison.OrdinalIgnoreCase) OrElse
                        t.Equals("Final Army Status", StringComparison.OrdinalIgnoreCase) OrElse
-                       t.Equals("End of Battle Summary", StringComparison.OrdinalIgnoreCase) Then
+                       t.Equals("End of Battle", StringComparison.OrdinalIgnoreCase) Then
                             useFont = sectionFont
                             useBrush = red
                             extraSpacing = 4.0F
@@ -892,11 +892,10 @@ Module Printouts
 
                     ' "{Race} Army ..." lines (top and final sections) → colour by race
                     If Not isSeparator Then
-                        ' Match: ^(Elf|Dwarf|Orc|Human)\s+Army\b
-                        Dim m = System.Text.RegularExpressions.Regex.Match(trimmed, "^(Elf|Dwarf|Orc|Human)\s+Army\b",
-                                                                       System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                        If m.Success Then
-                            Dim race As String = m.Groups(1).Value
+                        Dim mArmy = System.Text.RegularExpressions.Regex.Match(trimmed, "^(Elf|Dwarf|Orc|Human)\s+Army\b",
+                                            System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                        If mArmy.Success Then
+                            Dim race As String = mArmy.Groups(1).Value
                             If raceBrush.ContainsKey(race) Then
                                 useFont = sectionFont
                                 useBrush = raceBrush(race)
@@ -905,9 +904,22 @@ Module Printouts
                         End If
                     End If
 
+                    ' "{Race} Victory" line → colour by race
+                    If Not isSeparator Then
+                        Dim mVic = System.Text.RegularExpressions.Regex.Match(trimmed, "^(Elf|Dwarf|Orc|Human)\s+Victory\b",
+                                           System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                        If mVic.Success Then
+                            Dim race As String = mVic.Groups(1).Value
+                            If raceBrush.ContainsKey(race) Then
+                                useFont = sectionFont
+                                useBrush = raceBrush(race)
+                                extraSpacing = Math.Max(extraSpacing, 4.0F)
+                            End If
+                        End If
+                    End If
+
                     ' ---- WRAPPED MEASURE + PAGINATION + DRAW ----
                     If isSeparator Then
-                        ' Use a single-line height for the rule
                         Dim lineHeight As Single = bodyFont.GetHeight(g)
                         If y + lineHeight > pageBottom Then
                             battleReportIndex = i
@@ -919,7 +931,6 @@ Module Printouts
                         y += lineHeight + extraSpacing
 
                     Else
-                        ' Measure wrapped height for this logical line within the printable width
                         Dim needed As SizeF
                         If trimmed.Length = 0 Then
                             needed = New SizeF(pageWidth, useFont.GetHeight(g))
@@ -927,14 +938,12 @@ Module Printouts
                             needed = g.MeasureString(line, useFont, CInt(pageWidth), fmt)
                         End If
 
-                        ' Paginate if this wrapped block would overflow
                         If y + needed.Height > pageBottom Then
                             battleReportIndex = i
                             battleLineIndex = lineIdx
                             Return True
                         End If
 
-                        ' Draw wrapped text inside bounded rectangle
                         Dim rect As New RectangleF(marginLeft, y, pageWidth, needed.Height)
                         g.DrawString(line, useFont, useBrush, rect, fmt)
                         y += needed.Height + extraSpacing

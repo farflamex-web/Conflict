@@ -1966,6 +1966,19 @@ Public Class Form1
                     If isSpecial Then
                         a.HasUsedSpecial = True
 
+                        ' --- Default to TRAIN only if the army has no Move5 command ---
+                        If Not p.AIControlled AndAlso stepIndex >= a.MoveQueue.Count Then
+                            ' Only add TRAIN if no RECRUIT or TRAIN command already present
+                            Dim hasSpecial As Boolean = a.MoveQueue.Any(Function(c)
+                                                                            Dim cmd = c.Command?.ToUpperInvariant()
+                                                                            Return cmd = "RECRUIT" OrElse cmd = "TRAIN"
+                                                                        End Function)
+                            If Not hasSpecial Then
+                                a.MoveQueue.Add(New ArmyCommand With {.Command = "TRAIN"})
+                            End If
+                        End If
+
+
                         ' If there's no command at this special index, let AI add one now (includes baseline revive)
                         If p.AIControlled AndAlso stepIndex >= a.MoveQueue.Count Then
                             Dim aiArmyIndex As Integer = p.Armies.IndexOf(a)
@@ -4382,6 +4395,7 @@ Public Class Form1
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
         CurrentForm = Me
+        Me.KeyPreview = True
         PopulateGameList()
         InitialiseSummonerNames(SummonerDefinitions)
         InitialiseMarketCombos()
@@ -4394,6 +4408,28 @@ Public Class Form1
     End Sub
 
 #Region "=== UI Events ===="
+
+    Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
+        Dim key As Keys = (keyData And Keys.KeyCode)
+
+        ' Allow typing normally when editing amount cells or anything else
+        If dgvOrders.IsCurrentCellInEditMode Then
+            Return MyBase.ProcessCmdKey(msg, keyData)
+        End If
+
+        Select Case key
+            Case Keys.F1, Keys.F2, Keys.F3, Keys.F4, Keys.F5, Keys.F6, Keys.F7, Keys.F8, Keys.R, Keys.T
+                UIModule.ApplyDirectionHotkeyToHoveredCell(key)
+                Return True
+        End Select
+
+        Return MyBase.ProcessCmdKey(msg, keyData)
+    End Function
+
+
+
+
+
     Private Sub cmbElf_SelectedIndexChanged(sender As Object, e As EventArgs) Handles cmbElf.SelectedIndexChanged
         If isRestoringCombos Then Exit Sub
         UpdatePlayerAssignment("elf", cmbElf)

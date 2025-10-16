@@ -12,6 +12,237 @@ Module UIModule
     ' Reference to main game form (set once in Form1_Load)
     Public CurrentForm As Form1
 
+    ' === MAX helpers for Amount column in dgvOrders ===
+    Private Const AmountColumnName As String = "colRecruitAmount"
+    Private maxHandlersWired As Boolean = False
+    Private amountEditor As TextBox ' active editor textbox for Amount cell
+    Private isEditingOrders As Boolean = False
+
+    Public Sub WireOrdersGridMaxShortcuts()
+        If CurrentForm Is Nothing OrElse CurrentForm.dgvOrders Is Nothing Then Exit Sub
+
+        ' Always reattach in case grid was rebuilt after a turn
+        RemoveHandler CurrentForm.dgvOrders.EditingControlShowing, AddressOf OrdersGrid_EditingControlShowing
+        RemoveHandler CurrentForm.dgvOrders.CellDoubleClick, AddressOf OrdersGrid_CellDoubleClick
+        RemoveHandler CurrentForm.dgvOrders.KeyDown, AddressOf OrdersGrid_KeyDown
+        RemoveHandler CurrentForm.dgvOrders.CellBeginEdit, AddressOf dgvOrders_CellBeginEdit
+        RemoveHandler CurrentForm.dgvOrders.CellEndEdit, AddressOf dgvOrders_CellEndEdit
+        RemoveHandler CurrentForm.dgvOrders.GotFocus, AddressOf dgvOrders_GotFocus
+
+        AddHandler CurrentForm.dgvOrders.EditingControlShowing, AddressOf OrdersGrid_EditingControlShowing
+        AddHandler CurrentForm.dgvOrders.CellDoubleClick, AddressOf OrdersGrid_CellDoubleClick
+        AddHandler CurrentForm.dgvOrders.KeyDown, AddressOf OrdersGrid_KeyDown
+        AddHandler CurrentForm.dgvOrders.CellBeginEdit, AddressOf dgvOrders_CellBeginEdit
+        AddHandler CurrentForm.dgvOrders.CellEndEdit, AddressOf dgvOrders_CellEndEdit
+        AddHandler CurrentForm.dgvOrders.GotFocus, AddressOf dgvOrders_GotFocus
+    End Sub
+
+
+    Private Sub dgvOrders_GotFocus(sender As Object, e As EventArgs)
+        isEditingOrders = False
+    End Sub
+
+
+    ' Track when user starts and finishes editing to suppress hover hotkeys
+    Private Sub dgvOrders_CellBeginEdit(sender As Object, e As DataGridViewCellCancelEventArgs)
+        isEditingOrders = True
+    End Sub
+
+    Private Sub dgvOrders_CellEndEdit(sender As Object, e As DataGridViewCellEventArgs)
+        isEditingOrders = False
+    End Sub
+
+
+    Public Sub Form_KeyDown_ForwardToOrdersGrid(sender As Object, e As KeyEventArgs)
+        If CurrentForm Is Nothing OrElse CurrentForm.dgvOrders Is Nothing Then Exit Sub
+        ' Only forward F1–F8 keys
+        If e.KeyCode >= Keys.F1 AndAlso e.KeyCode <= Keys.F8 Then
+            OrdersGrid_KeyDown(CurrentForm.dgvOrders, e)
+        End If
+    End Sub
+
+
+    Private Sub OrdersGrid_EditingControlShowing(sender As Object, e As DataGridViewEditingControlShowingEventArgs)
+        Dim grid = DirectCast(sender, DataGridView)
+
+        ' --- Cancel edit mode instantly for Move1–Move5 so dropdown never opens ---
+        If grid.CurrentCell IsNot Nothing AndAlso IsMoveComboColumn(grid.Columns(grid.CurrentCell.ColumnIndex)) Then
+            grid.EndEdit()
+            Return
+        End If
+
+        ' --- amount editor bit you already had ---
+        If amountEditor IsNot Nothing Then
+            RemoveHandler amountEditor.KeyDown, AddressOf AmountEditor_KeyDown
+            amountEditor = Nothing
+        End If
+
+        If grid.CurrentCell Is Nothing Then Exit Sub
+
+        ' Amount column => capture textbox
+        If grid.Columns(grid.CurrentCell.ColumnIndex).Name = AmountColumnName Then
+            Dim tb = TryCast(e.Control, TextBox)
+            If tb IsNot Nothing Then
+                amountEditor = tb
+                AddHandler amountEditor.KeyDown, AddressOf AmountEditor_KeyDown
+            End If
+            Return
+        End If
+
+    End Sub
+
+    ' Map F1..F8 to compass text
+    Public Function MapFKeyToDir(key As Keys) As String
+        Select Case key
+            Case Keys.F1 : Return "N"
+            Case Keys.F2 : Return "NE"
+            Case Keys.F3 : Return "E"
+            Case Keys.F4 : Return "SE"
+            Case Keys.F5 : Return "S"
+            Case Keys.F6 : Return "SW"
+            Case Keys.F7 : Return "W"
+            Case Keys.F8 : Return "NW"
+            Case Else : Return Nothing
+        End Select
+    End Function
+
+
+    Public Sub ApplyDirectionHotkeyToHoveredCell(key As Keys)
+        If isEditingOrders Then Return
+
+        If CurrentForm Is Nothing OrElse CurrentForm.dgvOrders Is Nothing Then Exit Sub
+
+        Dim grid As DataGridView = CurrentForm.dgvOrders
+
+        grid.EndEdit(DataGridViewDataErrorContexts.Commit)
+        grid.CurrentCell = Nothing
+
+        Dim pt As Point = grid.PointToClient(Control.MousePosition)
+        Dim hit As DataGridView.HitTestInfo = grid.HitTest(pt.X, pt.Y)
+        If hit.Type <> DataGridViewHitTestType.Cell Then Exit Sub
+
+        Dim col = grid.Columns(hit.ColumnIndex)
+        Dim colName As String = col.Name
+        If Not (colName Like "Move[1-5]") Then Exit Sub
+
+        Dim value As String = Nothing
+        Select Case key
+            Case Keys.F1 : value = "N"
+            Case Keys.F2 : value = "NE"
+            Case Keys.F3 : value = "E"
+            Case Keys.F4 : value = "SE"
+            Case Keys.F5 : value = "S"
+            Case Keys.F6 : value = "SW"
+            Case Keys.F7 : value = "W"
+            Case Keys.F8 : value = "NW"
+        End Select
+
+        ' Add R/T for Move5 only
+        If colName = "Move5" Then
+            Select Case key
+                Case Keys.R : value = "RECRUIT"
+                Case Keys.T : value = "TRAIN"
+            End Select
+        End If
+
+        If String.IsNullOrEmpty(value) Then Exit Sub
+
+        grid.Rows(hit.RowIndex).Cells(hit.ColumnIndex).Value = value
+        grid.InvalidateCell(hit.ColumnIndex, hit.RowIndex)
+    End Sub
+
+
+
+    Public Sub OrdersGrid_KeyDown(sender As Object, e As KeyEventArgs)
+        If isEditingOrders Then Return
+
+        Dim grid = DirectCast(sender, DataGridView)
+
+        grid.EndEdit(DataGridViewDataErrorContexts.Commit)
+        grid.CurrentCell = Nothing
+
+        ' Map F1–F8 to directions
+        Dim dir As String = Nothing
+        Select Case e.KeyCode
+            Case Keys.F1 : dir = "N"
+            Case Keys.F2 : dir = "NE"
+            Case Keys.F3 : dir = "E"
+            Case Keys.F4 : dir = "SE"
+            Case Keys.F5 : dir = "S"
+            Case Keys.F6 : dir = "SW"
+            Case Keys.F7 : dir = "W"
+            Case Keys.F8 : dir = "NW"
+        End Select
+        If dir Is Nothing Then Exit Sub
+
+        ' Find which cell the mouse is hovering over
+        Dim pt As Point = grid.PointToClient(Control.MousePosition)
+        Dim hit = grid.HitTest(pt.X, pt.Y)
+        If hit.Type <> DataGridViewHitTestType.Cell Then Exit Sub
+
+        ' Only act on Move1–Move5
+        Dim col = grid.Columns(hit.ColumnIndex)
+        If Not (col.Name.StartsWith("Move")) Then Exit Sub
+
+        ' Commit any prior edit, then set the value directly
+        If grid.IsCurrentCellInEditMode Then grid.EndEdit()
+        Dim cell = grid.Rows(hit.RowIndex).Cells(hit.ColumnIndex)
+        cell.Value = dir
+        grid.InvalidateCell(cell)
+
+        ' Swallow the key so the grid doesn't beep
+        e.Handled = True
+        e.SuppressKeyPress = True
+    End Sub
+
+
+
+    ' F9 while editing Amount => set to MAX
+    Private Sub AmountEditor_KeyDown(sender As Object, e As KeyEventArgs)
+        If e.KeyCode = Keys.F9 Then
+            amountEditor.Text = "MAX"
+            amountEditor.SelectionStart = amountEditor.TextLength
+            amountEditor.SelectionLength = 0
+            e.SuppressKeyPress = True
+        End If
+    End Sub
+
+    ' Double-click Amount cell => enter edit mode and show "MAX" immediately
+    Private Sub OrdersGrid_CellDoubleClick(sender As Object, e As DataGridViewCellEventArgs)
+        If e.RowIndex < 0 Then Exit Sub
+        Dim grid = DirectCast(sender, DataGridView)
+        If grid.Columns(e.ColumnIndex).Name <> AmountColumnName Then Exit Sub
+
+        ' Make this the current cell
+        grid.CurrentCell = grid.Rows(e.RowIndex).Cells(e.ColumnIndex)
+
+        ' Start editing so we can modify the live editor control
+        grid.BeginEdit(True)
+
+        ' Try to grab the editor immediately
+        Dim tb = TryCast(grid.EditingControl, TextBox)
+        If tb IsNot Nothing Then
+            tb.Text = "MAX"
+            tb.SelectionStart = tb.TextLength
+            tb.SelectionLength = 0
+        Else
+            ' If the editor isn't created yet, do it right after the UI loop continues
+            grid.BeginInvoke(Sub()
+                                 Dim tb2 = TryCast(grid.EditingControl, TextBox)
+                                 If tb2 IsNot Nothing Then
+                                     tb2.Text = "MAX"
+                                     tb2.SelectionStart = tb2.TextLength
+                                     tb2.SelectionLength = 0
+                                 End If
+                             End Sub)
+        End If
+
+        ' Keep the underlying value in sync (so if they immediately leave the cell it's already correct)
+        grid.Rows(e.RowIndex).Cells(e.ColumnIndex).Value = "MAX"
+        ' Optional: inform the grid the cell has pending changes
+        grid.NotifyCurrentCellDirty(True)
+    End Sub
+
     ' ----------------------------------------------------------------
     ' Populate the orders grid from current Players and their Armies
     ' ----------------------------------------------------------------
@@ -22,16 +253,20 @@ Module UIModule
             If p Is Nothing OrElse p.IsEliminated Then Continue For
             For Each a In p.Armies
                 If a Is Nothing Then Continue For
+
                 Dim idx As Integer = CurrentForm.dgvOrders.Rows.Add()
                 Dim row As DataGridViewRow = CurrentForm.dgvOrders.Rows(idx)
+
                 row.Cells("colPlayer").Value = p.Race
                 row.Cells("colArmy").Value = a.Name
             Next
         Next
     End Sub
 
+
+
     ' ----------------------------------------------------------------
-    ' Extract typed orders from the grid (handles RECRUIT on move 5)
+    ' Extract typed orders from the grid (handles RECRUIT/TRAIN on Move5)
     ' ----------------------------------------------------------------
     Public Function GetArmyOrders() As List(Of ArmyOrder)
         Dim orders As New List(Of ArmyOrder)()
@@ -45,14 +280,14 @@ Module UIModule
 
             Dim moves As New List(Of String)()
 
-            ' === Moves 1..4 ===
+            ' === Moves 1–4 ===
             For i As Integer = 1 To 4
-                Dim mv As String = If(row.Cells("Move" & i).Value, "").ToString().Trim()
+                Dim mv As String = If(row.Cells("Move" & i).Value, "").ToString().Trim().ToUpperInvariant()
                 If mv <> "" Then moves.Add(mv)
             Next
 
-            ' === Move 5 or Recruit ===
-            Dim move5 As String = If(row.Cells("Move5").Value, "").ToString().Trim()
+            ' === Move 5 (can be direction, TRAIN, or RECRUIT) ===
+            Dim move5 As String = If(row.Cells("Move5").Value, "").ToString().Trim().ToUpperInvariant()
             Dim unitKey As String = ""
             Dim amt As String = ""
 
@@ -63,24 +298,50 @@ Module UIModule
                 amt = If(row.Cells("colRecruitAmount").Value, "").ToString().Trim()
             End If
 
-            If amt.Equals("MAX", StringComparison.OrdinalIgnoreCase) OrElse amt = "0" Then amt = ""
+            ' Normalise values
+            If amt.Equals("0") Then amt = ""
+            If amt.Equals("MAX", StringComparison.OrdinalIgnoreCase) OrElse amt = "" Then amt = "MAX"
             If unitKey = "-" OrElse unitKey = "(none)" Then unitKey = ""
 
-            If move5.ToUpperInvariant() = "RECRUIT" AndAlso (unitKey <> "" OrElse amt <> "") Then
-                If amt = "" Then amt = "MAX"
-                moves.Add($"RECRUIT {unitKey} {amt}")
-            ElseIf move5 <> "" Then
-                moves.Add(move5)
-            ElseIf unitKey <> "" AndAlso amt <> "" Then
-                moves.Add($"RECRUIT {unitKey} {amt}")
-            End If
+            Select Case move5
+                Case "TRAIN"
+                    moves.Add("TRAIN")
+
+                Case "RECRUIT"
+                    ' Add with parameters if available
+                    If unitKey <> "" Then
+                        moves.Add($"RECRUIT {unitKey} {amt}")
+                    Else
+                        moves.Add("RECRUIT")
+                    End If
+
+                Case "N", "NE", "E", "SE", "S", "SW", "W", "NW"
+                    moves.Add(move5)
+
+                Case ""
+                    ' If Move5 blank but recruit info entered
+                    If unitKey <> "" Then
+                        moves.Add($"RECRUIT {unitKey} {amt}")
+                    End If
+
+                Case Else
+                    ' Defensive: pass through anything unrecognised
+                    moves.Add(move5)
+            End Select
 
             order.Moves = moves
             orders.Add(order)
         Next
 
+        For Each o In orders
+            Debug.WriteLine($"[ORDERS] {o.Player} / {o.ArmyName} : {String.Join(", ", o.Moves)}")
+        Next
+
+
         Return orders
     End Function
+
+
 
     ' ----------------------------------------------------------------
     ' Assign MoveQueue to each Army
@@ -134,6 +395,18 @@ Module UIModule
                 Next
             End If
         Next
+
+        For Each p In CurrentForm.Players
+            For Each a In p.Armies
+                If a.MoveQueue IsNot Nothing AndAlso a.MoveQueue.Count > 0 Then
+                    For Each c In a.MoveQueue
+                        Debug.WriteLine($"[QUEUE] {p.Race} / {a.Name} : {c.Command} {c.Parameter} {c.Amount}")
+                    Next
+                End If
+            Next
+        Next
+
+
     End Sub
 
     Public Sub InitialiseMoveColumns()
@@ -262,6 +535,7 @@ Module UIModule
         RefreshBuySummonerControls()
         RefreshMercBidControls()
         RefreshInvestmentControls()
+        WireOrdersGridMaxShortcuts()
     End Sub
 
     Public Sub RefreshMercBidControls()
