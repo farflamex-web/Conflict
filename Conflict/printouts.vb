@@ -118,17 +118,23 @@ Module Printouts
             Return
         End If
 
+        ' === Detect if there are any battles to print ===
+        Dim hasBattles As Boolean =
+        (CurrentForm.CurrentReports IsNot Nothing AndAlso
+         CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso
+         CurrentForm.CurrentReports.BattleReports.Count > 0)
+
         Select Case pageIndex
             Case 1
-                ' --- PAGE 1: HEADER + MAP (currently disabled to save ink) ---
-                'DrawFrontPageHeaderAndPlayerInfo(g, e)
-                'If CurrentForm.Map IsNot Nothing Then
-                '    Dim headerHeight As Single = 60
-                '    Dim playerBoxHeight As Single = 80
-                '    Dim spacing As Single = 20
-                '    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
-                '    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
-                'End If
+                ' --- PAGE 1: HEADER + MAP ---
+                DrawFrontPageHeaderAndPlayerInfo(g, e)
+                If CurrentForm.Map IsNot Nothing Then
+                    Dim headerHeight As Single = 60
+                    Dim playerBoxHeight As Single = 80
+                    Dim spacing As Single = 20
+                    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
+                    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+                End If
 
                 ' Move on to page 2
                 e.HasMorePages = True
@@ -137,11 +143,15 @@ Module Printouts
 
             Case 2
                 ' --- PAGE 2: EMPIRE REPORT ---
-                'DrawEmpireReport(g, e, currentPrintPlayer)
+                DrawEmpireReport(g, e, currentPrintPlayer)
 
-                ' Move on to page 3 (Battle Reports)
+                ' Decide next page based on battles
                 e.HasMorePages = True
-                pageIndex = 3
+                If hasBattles Then
+                    pageIndex = 3
+                Else
+                    pageIndex = 4   ' Skip battles if none
+                End If
                 Return
 
             Case 3
@@ -149,11 +159,22 @@ Module Printouts
                 Dim morePages As Boolean = DrawBattleReportsPage(g, e, currentPrintPlayer)
 
                 If morePages Then
-                    ' still more battle pages left to print
+                    ' Still more battle pages to print
                     e.HasMorePages = True
                     pageIndex = 3
                 Else
-                    ' all done — reset counters safely
+                    ' All battle reports done — continue to armies
+                    e.HasMorePages = True
+                    pageIndex = 4
+                End If
+                Return
+
+            Case 4
+                ' --- PAGE 4: ARMIES ---
+                If DrawArmiesPage(g, e, currentPrintPlayer) Then
+                    e.HasMorePages = True
+                Else
+                    ' Done printing — reset for next time
                     e.HasMorePages = False
                     pageIndex = 1
                     battleReportIndex = 0
@@ -162,7 +183,7 @@ Module Printouts
                 Return
 
             Case Else
-                ' unexpected state safety
+                ' --- Safety fallback ---
                 e.HasMorePages = False
                 pageIndex = 1
                 battleReportIndex = 0
@@ -170,7 +191,6 @@ Module Printouts
                 Return
         End Select
     End Sub
-
 
 
 
@@ -723,7 +743,6 @@ Module Printouts
     ' ============================================================
     '  PAGE 2 – Empire Report
     ' ============================================================
-
     Private Sub DrawEmpireReport(g As Graphics, e As PrintPageEventArgs, p As Player)
         Dim marginLeft As Single = e.MarginBounds.Left
         Dim marginTop As Single = e.MarginBounds.Top
@@ -742,7 +761,6 @@ Module Printouts
             ' --- Count owned squares + terrain dynamically ---
             Dim mapSizeX As Integer = CurrentForm.Map.GetLength(0)
             Dim mapSizeY As Integer = CurrentForm.Map.GetLength(1)
-
             Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
 
             For x = 0 To mapSizeX - 1
@@ -755,7 +773,8 @@ Module Printouts
 
             Dim totalOwned As Integer = counts.Values.Sum()
             g.DrawString($"Empire Size: {totalOwned} squares", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
-            g.DrawString($"   Plains: {counts(0)}   Forest: {counts(1)}   Hills: {counts(2)}   Mountain: {counts(3)}", bodyFont, Brushes.Black, marginLeft + 20, y)
+            g.DrawString($"   Plains: {counts(0)}   Forest: {counts(1)}   Hills: {counts(2)}   Mountain: {counts(3)}",
+                     bodyFont, Brushes.Black, marginLeft + 20, y)
             y += 40
 
             ' === POPULATION SECTION ===
@@ -781,34 +800,78 @@ Module Printouts
             y += 25
 
             Using monoFont As New Font("Consolas", 12)
-                ' --- Wood & Iron ---
-                g.DrawString($"Wood Total : {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}", monoFont, Brushes.Black, marginLeft + 40, y)
+                ' --- Investment name (used later in ledger too) ---
+                Dim investmentName As String = ""
+                Select Case p.Race.ToLower()
+                    Case "elf" : investmentName = "Sacred Groves"
+                    Case "dwarf" : investmentName = "Silver Mines"
+                    Case "orc" : investmentName = "Hunting Camps"
+                    Case "human" : investmentName = "Farming Estates"
+                    Case Else : investmentName = "Investments"
+                End Select
+
+                ' --- Mount name ---
+                Dim mountName As String = ""
+                Select Case p.Race.ToLower()
+                    Case "elf" : mountName = "Forest Elks"
+                    Case "dwarf" : mountName = "Mountain Rams"
+                    Case "orc" : mountName = "Wargs"
+                    Case "human" : mountName = "Horses"
+                    Case Else : mountName = "Mounts"
+                End Select
+
+                ' --- Column-aligned width: match the longest label "Mountain Rams :" ---
+                Dim labelWidth As Integer = 16
+
+                ' --- Wood, Iron, Mounts ---
+                g.DrawString($"{ "Wood Total".PadRight(labelWidth)}: {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}",
+                         monoFont, Brushes.Black, marginLeft + 40, y)
                 y += 22
-                g.DrawString($"Iron Total : {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}", monoFont, Brushes.Black, marginLeft + 40, y)
+                g.DrawString($"{ "Iron Total".PadRight(labelWidth)}: {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}",
+                         monoFont, Brushes.Black, marginLeft + 40, y)
+                y += 22
+                g.DrawString($"{mountName.PadRight(labelWidth)}: {p.Mounts,10:N0}     Collected : {p.MountsCollectedThisTurn,10:N0}",
+                         monoFont, Brushes.Black, marginLeft + 40, y)
                 y += 32
+
+                ' === INVESTMENT SUMMARY (moved up before gold ledger) ===
+                Dim totalIncome As Integer = p.Investments * 100
+                g.DrawString($"{investmentName} : {p.Investments,3:N0}, Earning {totalIncome,6:N0} gold per turn",
+                         monoFont, Brushes.Blue, marginLeft + 60, y)
+                y += 35
 
                 ' --- Gold Ledger Header ---
                 g.DrawString("Gold Ledger:", bodyFont, Brushes.Black, marginLeft + 10, y)
                 y += 25
 
-                ' --- Ledger lines ---
+                ' --- Ledger helper for consistent alignment ---
+                Dim FormatGoldLine As Func(Of String, Integer, Boolean, String) =
+                Function(label As String, value As Integer, isExpense As Boolean) As String
+                    Dim absStr As String = Math.Abs(value).ToString("N0").PadLeft(10)
+                    Dim sign As String = If(isExpense, "-", " ")
+                    Return $"{label,-28}: {sign}{absStr}"
+                End Function
+
+                ' --- Ledger lines (using race-specific investment name) ---
                 Dim goldLines As String() = {
-                    $"Collected from Population  : {p.GoldCollectedThisTurn,10:N0}",
-                    $"Investment Income          : {p.InvestmentIncomeThisTurn,10:N0}",
-                    $"Summoners Purchased        : -{p.SummonersBoughtCostThisTurn,10:N0}",
-                    $"Mercenaries Hired          : -{p.MercenariesHiredCostThisTurn,10:N0}",
-                    $"Mercenary Army Wages Paid  : -{p.WagesPaidThisTurn,10:N0}",
-                    New String("-"c, 55),
-                    $"Net Change This Turn       : {(p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn - p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn - p.MercenariesHiredCostThisTurn),10:N0}",
-                    $"Gold Total After Turn      : {p.Gold,10:N0}"
-                }
+                FormatGoldLine("Collected from Population", p.GoldCollectedThisTurn, False),
+                FormatGoldLine($"{investmentName} Income", p.InvestmentIncomeThisTurn, False),
+                FormatGoldLine("Summoners Purchased", p.SummonersBoughtCostThisTurn, True),
+                FormatGoldLine("Mercenaries Hired", p.MercenariesHiredCostThisTurn, True),
+                FormatGoldLine("Mercenary Army Wages Paid", p.WagesPaidThisTurn, True),
+                New String("-"c, 55),
+                FormatGoldLine("Net Change This Turn",
+                    (p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn -
+                     p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn -
+                     p.MercenariesHiredCostThisTurn), False),
+                FormatGoldLine("Gold Total After Turn", p.Gold, False)
+            }
 
                 For Each line In goldLines
                     g.DrawString(line, monoFont, Brushes.Black, marginLeft + 60, y)
                     y += 20
                 Next
             End Using
-
         End Using
     End Sub
 
@@ -1125,6 +1188,85 @@ Module Printouts
 
         writer.WriteLine("</div>")
     End Sub
+
+
+    Private Function DrawArmiesPage(g As Graphics, e As PrintPageEventArgs, p As Player) As Boolean
+        Dim marginLeft As Single = e.MarginBounds.Left
+        Dim marginTop As Single = e.MarginBounds.Top
+        Dim y As Single = marginTop
+
+        Using titleFont As New Font("Georgia", 14, FontStyle.Bold),
+          armyFont As New Font("Georgia", 10, FontStyle.Bold),
+          textFont As New Font("Consolas", 9, FontStyle.Regular),
+          heroFont As New Font("Consolas", 9, FontStyle.Bold)   ' bold for heroes
+
+            ' === PAGE TITLE ===
+            g.DrawString("Armies", titleFont, Brushes.Black, marginLeft, y)
+            y += 35
+
+            If p.Armies Is Nothing OrElse p.Armies.Count = 0 Then
+                g.DrawString("No armies currently fielded.", textFont, Brushes.Black, marginLeft, y)
+                Return False
+            End If
+
+            ' === Race colours ===
+            Dim raceBrush As Brush = Brushes.Black
+            Select Case p.Race.ToLower()
+                Case "elf" : raceBrush = New SolidBrush(Color.ForestGreen)
+                Case "dwarf" : raceBrush = New SolidBrush(Color.SteelBlue)
+                Case "orc" : raceBrush = New SolidBrush(Color.DarkOliveGreen)
+                Case "human" : raceBrush = New SolidBrush(Color.OrangeRed)
+            End Select
+
+            ' === Hero brush (brighter purple) ===
+            Dim heroBrush As New SolidBrush(Color.HotPink)
+
+            ' === Print each army ===
+            For Each a In p.Armies
+                If a Is Nothing Then Continue For
+
+                ' --- Training level as whole percent ---
+                Dim trainingPercent As Integer = CInt(Math.Round(a.TrainingLevel * 100))
+
+                ' --- Header ---
+                Dim armyHeader As String = $"{p.Race} Army at ({a.X},{a.Y}) : {a.Name} - Training Level {trainingPercent}%"
+                g.DrawString(armyHeader, armyFont, raceBrush, marginLeft, y)
+                y += 20
+
+                ' --- Separate heroes from normal units ---
+                Dim normalUnits = a.Units.Where(Function(u) Not u.IsHero).ToList()
+                Dim heroes = a.Units.Where(Function(u) u.IsHero).ToList()
+
+                ' --- Normal units ---
+                For Each u In normalUnits
+                    Dim countStr As String = u.Size.ToString("N0") ' thousand separators
+                    g.DrawString($"  {u.Name} ({countStr})", textFont, Brushes.Black, marginLeft + 10, y)
+                    y += 15
+                Next
+
+                ' --- Heroes (bright purple + bold) ---
+                For Each h In heroes
+                    Dim heroLine As String = $"  {h.Name}, Level {h.Level}"
+                    g.DrawString(heroLine, heroFont, heroBrush, marginLeft + 10, y)
+                    y += 15
+                Next
+
+                ' --- Total ---
+                Dim totalStr As String = a.TotalSoldiers.ToString("N0")
+                g.DrawString($"  Total: {totalStr}", textFont, Brushes.Black, marginLeft + 10, y)
+                y += 25
+
+                ' --- Page overflow check ---
+                If y > e.MarginBounds.Bottom - 50 Then
+                    e.HasMorePages = True
+                    Return True
+                End If
+            Next
+        End Using
+
+        Return False
+    End Function
+
 
 
 End Module

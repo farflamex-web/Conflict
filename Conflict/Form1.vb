@@ -747,6 +747,19 @@ Public Class Form1
             ' required for JSON deserialization
         End Sub
 
+        Public Sub ResetTurnFlags()
+            ' --- Clear per-turn tracking values ---
+            SummonersBoughtCostThisTurn = 0
+            PopulationGrowthThisTurn = 0
+            FoodCollectedThisTurn = 0
+            IronCollectedThisTurn = 0
+            WoodCollectedThisTurn = 0
+            MountsCollectedThisTurn = 0
+            MithrilCollectedThisTurn = 0
+            GoldCollectedThisTurn = 0
+            CurrentBid = 0
+        End Sub
+
 
     End Class
 
@@ -3391,6 +3404,11 @@ Public Class Form1
         UpdateSeenMonstersForAllPlayers(Players)
 
         Printouts.GenerateAllHTMLReports()
+
+        ' --- End-of-turn cleanup ---
+        For Each p In Players
+            p.ResetTurnFlags()
+        Next
 
     End Sub
     Private Sub HandleNewMercenaryOffer(turnNumber As Integer)
