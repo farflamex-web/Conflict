@@ -1424,7 +1424,7 @@ Public Class Form1
     .RaceName = "Orc",
     .Units = New List(Of UnitStats) From {
         New UnitStats With {.Name = "Orc Warbows", .Type = UnitType.Archer, .HP = 4, .Melee = 1, .Ranged = 1, .DefencePoints = 0, .Cost = "I:1, W:1", .ShortName = "a"},
-        New UnitStats With {.Name = "Light Grunts", .Type = UnitType.LightInfantry, .HP = 6, .Melee = 2, .Ranged = 0, .DefencePoints = 3, .Cost = "I:1", .ShortName = "li"},
+        New UnitStats With {.Name = "Light Grunts", .Type = UnitType.LightInfantry, .HP = 7, .Melee = 2, .Ranged = 0, .DefencePoints = 4, .Cost = "I:1", .ShortName = "li"},
         New UnitStats With {.Name = "Heavy Grunts", .Type = UnitType.HeavyInfantry, .HP = 10, .Melee = 3, .Ranged = 0, .DefencePoints = 2, .Cost = "I:2", .ShortName = "hi", .CanCharge = True},
         New UnitStats With {.Name = "Light Warg Riders", .Type = UnitType.LightCavalry, .HP = 5, .Melee = 2, .Ranged = 0, .DefencePoints = 2, .Cost = "I:1, M:1", .ShortName = "lc", .CanChase = True},
         New UnitStats With {.Name = "Heavy Warg Riders", .Type = UnitType.HeavyCavalry, .HP = 15, .Melee = 3, .Ranged = 0, .DefencePoints = 3, .Cost = "I:2, M:1", .ShortName = "hc", .CanCharge = True}

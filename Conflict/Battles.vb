@@ -192,6 +192,23 @@ Module Battles
                         End If
                     End If
 
+                    ' --- Award training to winning side (live armies, not merged clones) ---
+                    If Not String.IsNullOrEmpty(winningRace) Then
+                        For Each kvp In mergedToOriginal
+                            Dim mergedKey As Army = kvp.Key
+                            If mergedKey IsNot Nothing AndAlso mergedKey.Race.Equals(winningRace, StringComparison.OrdinalIgnoreCase) Then
+                                For Each origArmy As Army In kvp.Value
+                                    If Not origArmy Is Nothing Then
+                                        ' Optional guard: only if any men remain post-battle
+                                        If origArmy.TotalSoldiers > 0 Then
+                                            origArmy.TrainingLevel += 0.1R   ' same +10% as TRAIN order
+                                        End If
+                                    End If
+                                Next
+                            End If
+                        Next
+                    End If
+
                     ' --- Retreat losers on the live armies (does not remove lists) ---
                     If Not String.IsNullOrEmpty(winningRace) Then
                         For Each army As Army In allArmiesHere.ToList()
