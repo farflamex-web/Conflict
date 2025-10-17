@@ -1514,7 +1514,7 @@ Module Printouts
     End Function
 
     ' ============================================================
-    '  PAGE 5 – Orders Page (with Building section)
+    '  PAGE 5 – Orders Page (final with Market Transactions)
     ' ============================================================
     Private Sub DrawOrdersPage(g As Graphics, e As PrintPageEventArgs, p As Player)
         Dim marginLeft As Single = e.MarginBounds.Left
@@ -1544,7 +1544,7 @@ Module Printouts
             Dim width7 As Single = 55.0F * 1.2F
             Dim armyGap As Single = 45.0F
 
-            ' === ARMIES (same as before) ===
+            ' === ARMIES ===
             For armyIndex As Integer = 0 To 2
                 Dim hasArmy As Boolean =
                 (p.Armies IsNot Nothing AndAlso armyIndex < p.Armies.Count AndAlso p.Armies(armyIndex) IsNot Nothing)
@@ -1590,7 +1590,7 @@ Module Printouts
                 End Using
             Next
 
-            ' === SUMMONER PURCHASE (as previously built) ===
+            ' === SUMMONER PURCHASE ===
             y += 10
             Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
                 g.DrawString("Summoner Purchase", sectionFont, Brushes.Black, startX, y)
@@ -1658,9 +1658,7 @@ Module Printouts
 
             y += boxHeight + 60
 
-            ' ============================================================
-            '  BUILDING SECTION
-            ' ============================================================
+            ' === BUILDING SECTION ===
             Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
                 g.DrawString("Building", sectionFont, Brushes.Black, startX, y)
             End Using
@@ -1672,7 +1670,6 @@ Module Printouts
                              warnBigFont, Brushes.Red, startX, y)
                 End Using
             Else
-                ' Determine race-specific building name
                 Dim buildingName As String = ""
                 Select Case p.Race.ToLower()
                     Case "elf" : buildingName = "Sacred Groves"
@@ -1684,13 +1681,46 @@ Module Printouts
 
                 Dim buildBoxWidth As Single = 70.0F
                 g.DrawRectangle(boxPen, startX, y, buildBoxWidth, boxHeight)
-
-                ' Message after box
                 Using textFont As New Font("Arial", 10, FontStyle.Regular)
-                    g.DrawString($"Write how many {buildingName} you want to build, cost 1000 gold each",
+                    g.DrawString($"Write how many {buildingName} you wish to build, cost 1,000 gold each",
                              textFont, Brushes.Black, startX + buildBoxWidth + 20, y + 8)
                 End Using
             End If
+
+            y += boxHeight + 60
+
+            ' ============================================================
+            '  MARKET TRANSACTIONS SECTION
+            ' ============================================================
+            Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
+                g.DrawString("Market Transactions", sectionFont, Brushes.Black, startX, y)
+            End Using
+            y += 28
+
+            Dim widthMarket As Single = 110.0F * 1.2F
+            Dim widthBuySell As Single = 90.0F * 1.2F
+            Dim widthAmount As Single = 90.0F * 1.2F
+
+            Dim xMarket As Single = startX
+            ' Box 1 – Resource to buy/sell
+            g.DrawRectangle(boxPen, xMarket, y, widthMarket, boxHeight)
+            Dim labelResX As Single = xMarket + widthMarket / 2
+            g.DrawString("Resource to buy/sell", smallFont, Brushes.Gray, labelResX, y + boxHeight + 2,
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
+            xMarket += widthMarket + gap + 10
+
+            ' Box 2 – Buy or Sell
+            g.DrawRectangle(boxPen, xMarket, y, widthBuySell, boxHeight)
+            Dim labelBuySellX As Single = xMarket + widthBuySell / 2
+            g.DrawString("Buy or Sell", smallFont, Brushes.Gray, labelBuySellX, y + boxHeight + 2,
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
+            xMarket += widthBuySell + gap + 10
+
+            ' Box 3 – Amount
+            g.DrawRectangle(boxPen, xMarket, y, widthAmount, boxHeight)
+            Dim labelAmountX As Single = xMarket + widthAmount / 2
+            g.DrawString("Amount", smallFont, Brushes.Gray, labelAmountX, y + boxHeight + 2,
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
 
             y += boxHeight + 50
 
