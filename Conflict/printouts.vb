@@ -91,15 +91,15 @@ Module Printouts
             End If
 
             currentPrintPlayer = CurrentForm.Players.
-            FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
+        FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
             If currentPrintPlayer Is Nothing Then
                 currentPrintPlayer = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
             End If
         End If
 
-        ' --- Print ONLY the Empire Report (Page 2) ---
+        ' --- Print ONLY the Orders Page (Page 5) for testing ---
         If currentPrintPlayer IsNot Nothing Then
-            DrawEmpireReport(g, e, currentPrintPlayer)
+            DrawOrdersPage(g, e, currentPrintPlayer)
         Else
             g.DrawString("(No valid player to print)", New Font("Arial", 12), Brushes.Black, 100, 100)
         End If
@@ -110,6 +110,7 @@ Module Printouts
         battleReportIndex = 0
         currentPrintPlayer = Nothing
     End Sub
+
 
 
 
@@ -216,6 +217,15 @@ Module Printouts
     '                currentPrintPlayer = Nothing
     '            End If
     '            Return
+
+    'Case 5
+    ' --- PAGE 5: ORDERS PAGE ---
+    'DrawOrdersPage(g, e, currentPrintPlayer)
+    'e.HasMorePages = False
+    'pageIndex = 1
+    'battleReportIndex = 0
+    'currentPrintPlayer = Nothing
+    'Return
 
     '        Case Else
     '            ' --- Safety fallback ---
@@ -1503,6 +1513,194 @@ Module Printouts
         Return False
     End Function
 
+    ' ============================================================
+    '  PAGE 5 – Orders Page (with Building section)
+    ' ============================================================
+    Private Sub DrawOrdersPage(g As Graphics, e As PrintPageEventArgs, p As Player)
+        Dim marginLeft As Single = e.MarginBounds.Left
+        Dim marginTop As Single = e.MarginBounds.Top
+        Dim pageWidth As Single = e.MarginBounds.Width
+        Dim y As Single = marginTop + 20
+
+        Using titleFont As New Font("Georgia", 16, FontStyle.Bold),
+          armyFont As New Font("Arial", 12, FontStyle.Bold),
+          boxPen As New Pen(Color.Black, 1.2F),
+          redPen As New Pen(Color.Red, 2.0F),
+          smallFont As New Font("Arial", 7, FontStyle.Regular),
+          warnFont As New Font("Arial", 8, FontStyle.Bold)
+
+            ' === Title ===
+            g.DrawString("Orders Page", titleFont, Brushes.Black, marginLeft, y)
+            y += 35
+
+            ' === Layout constants ===
+            Dim boxHeight As Single = 35.0F
+            Dim gap As Single = 8.0F
+            Dim startX As Single = marginLeft
+
+            ' --- Box widths ---
+            Dim width1to4 As Single = 45.0F * 1.2F
+            Dim width5and6 As Single = 95.0F * 1.2F * 1.2F
+            Dim width7 As Single = 55.0F * 1.2F
+            Dim armyGap As Single = 45.0F
+
+            ' === ARMIES (same as before) ===
+            For armyIndex As Integer = 0 To 2
+                Dim hasArmy As Boolean =
+                (p.Armies IsNot Nothing AndAlso armyIndex < p.Armies.Count AndAlso p.Armies(armyIndex) IsNot Nothing)
+                Dim armyName As String = If(hasArmy, p.Armies(armyIndex).Name, $"Army {armyIndex + 1}")
+                Dim totalMen As Integer = If(hasArmy, p.Armies(armyIndex).TotalSoldiers, 0)
+                Dim tooSmall As Boolean = (totalMen < 500)
+
+                g.DrawString(armyName, armyFont, Brushes.Black, startX, y)
+                y += 22
+                Dim x As Single = startX
+
+                For i As Integer = 1 To 4
+                    g.DrawRectangle(boxPen, x, y, width1to4, boxHeight)
+                    If tooSmall Then
+                        g.DrawLine(redPen, x, y, x + width1to4, y + boxHeight)
+                        g.DrawLine(redPen, x + width1to4, y, x, y + boxHeight)
+                    End If
+                    x += width1to4 + gap
+                Next
+
+                g.DrawRectangle(boxPen, x, y, width5and6, boxHeight)
+                x += width5and6 + gap
+                g.DrawRectangle(boxPen, x, y, width5and6, boxHeight)
+                Dim labelX6 As Single = x + width5and6 / 2
+                g.DrawString("Unit Type", smallFont, Brushes.Gray, labelX6, y + boxHeight + 2,
+                         New StringFormat() With {.Alignment = StringAlignment.Center})
+                x += width5and6 + gap
+                g.DrawRectangle(boxPen, x, y, width7, boxHeight)
+                Dim labelX7 As Single = x + width7 / 2
+                g.DrawString("Amount", smallFont, Brushes.Gray, labelX7, y + boxHeight + 2,
+                         New StringFormat() With {.Alignment = StringAlignment.Center})
+
+                If tooSmall Then
+                    g.DrawString("Armies with less than 500 troops cannot move",
+                             warnFont, Brushes.Red, startX, y + boxHeight + 14)
+                    y += 10
+                End If
+
+                y += boxHeight + armyGap
+                Using dividerPen As New Pen(Color.LightGray, 0.8F)
+                    g.DrawLine(dividerPen, marginLeft, y - (armyGap / 2),
+                           marginLeft + pageWidth, y - (armyGap / 2))
+                End Using
+            Next
+
+            ' === SUMMONER PURCHASE (as previously built) ===
+            y += 10
+            Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
+                g.DrawString("Summoner Purchase", sectionFont, Brushes.Black, startX, y)
+            End Using
+            y += 28
+
+            Dim ownedSummoners As Integer =
+            p.Armies.SelectMany(Function(a) a.Units).
+                     Count(Function(u) u IsNot Nothing AndAlso u.IsHero AndAlso
+                                        u.HeroType IsNot Nothing AndAlso
+                                        u.HeroType.Equals("Summoner", StringComparison.OrdinalIgnoreCase))
+            Dim nextCost As Integer = CInt(1000 * Math.Pow(3, ownedSummoners))
+            Dim canAffordSummoner As Boolean = (p.Gold >= nextCost)
+
+            If canAffordSummoner Then
+                Dim labelWidth As Single = 130.0F
+                Dim tickBoxSize As Single = 20.0F
+                Dim widthSummoner As Single = width5and6
+                Dim widthArmyName As Single = width5and6
+
+                g.DrawString("Buy Summoner?", armyFont, Brushes.Black, startX, y + 6)
+                Dim xPos As Single = startX + labelWidth + 20
+                g.DrawRectangle(boxPen, xPos, y + 7, tickBoxSize, tickBoxSize)
+                xPos += tickBoxSize + gap + 20
+                g.DrawRectangle(boxPen, xPos, y, widthSummoner, boxHeight)
+                Dim labelSummonerX As Single = xPos + widthSummoner / 2
+                g.DrawString("Summoner Type", smallFont, Brushes.Gray, labelSummonerX, y + boxHeight + 2,
+                         New StringFormat() With {.Alignment = StringAlignment.Center})
+                xPos += widthSummoner + gap
+                g.DrawRectangle(boxPen, xPos, y, widthArmyName, boxHeight)
+                Dim labelArmyX As Single = xPos + widthArmyName / 2
+                g.DrawString("Army Name", smallFont, Brushes.Gray, labelArmyX, y + boxHeight + 2,
+                         New StringFormat() With {.Alignment = StringAlignment.Center})
+                xPos += widthArmyName + 15
+                Using costFont As New Font("Arial", 10, FontStyle.Bold)
+                    g.DrawString($"Cost : {nextCost:N0} gold", costFont, Brushes.Black, xPos, y + 8)
+                End Using
+            Else
+                Using warnBigFont As New Font("Arial", 10, FontStyle.Bold)
+                    g.DrawString($"You cannot afford to buy another summoner. The cost for next is {nextCost:N0} gold.",
+                             warnBigFont, Brushes.Red, startX, y)
+                End Using
+            End If
+
+            y += boxHeight + 60
+
+            ' === BUY MERCENARIES ===
+            Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
+                g.DrawString("Buy Mercenaries", sectionFont, Brushes.Black, startX, y)
+            End Using
+            y += 28
+
+            Dim widthBid As Single = 100.0F * 1.2F
+            Dim widthArmyBox As Single = 140.0F * 1.2F
+            Dim xMerc As Single = startX
+            g.DrawRectangle(boxPen, xMerc, y, widthBid, boxHeight)
+            Dim labelBidX As Single = xMerc + widthBid / 2
+            g.DrawString("Bid Amount", smallFont, Brushes.Gray, labelBidX, y + boxHeight + 2,
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
+            xMerc += widthBid + gap + 20
+            g.DrawRectangle(boxPen, xMerc, y, widthArmyBox, boxHeight)
+            Dim labelMercArmyX As Single = xMerc + widthArmyBox / 2
+            g.DrawString("Army Name", smallFont, Brushes.Gray, labelMercArmyX, y + boxHeight + 2,
+                     New StringFormat() With {.Alignment = StringAlignment.Center})
+
+            y += boxHeight + 60
+
+            ' ============================================================
+            '  BUILDING SECTION
+            ' ============================================================
+            Using sectionFont As New Font("Georgia", 13, FontStyle.Bold)
+                g.DrawString("Building", sectionFont, Brushes.Black, startX, y)
+            End Using
+            y += 28
+
+            If p.Gold < 1000 Then
+                Using warnBigFont As New Font("Arial", 10, FontStyle.Bold)
+                    g.DrawString("You cannot afford any buildings this turn.",
+                             warnBigFont, Brushes.Red, startX, y)
+                End Using
+            Else
+                ' Determine race-specific building name
+                Dim buildingName As String = ""
+                Select Case p.Race.ToLower()
+                    Case "elf" : buildingName = "Sacred Groves"
+                    Case "dwarf" : buildingName = "Silver Mines"
+                    Case "orc" : buildingName = "Hunting Camps"
+                    Case "human" : buildingName = "Farming Estates"
+                    Case Else : buildingName = "Investments"
+                End Select
+
+                Dim buildBoxWidth As Single = 70.0F
+                g.DrawRectangle(boxPen, startX, y, buildBoxWidth, boxHeight)
+
+                ' Message after box
+                Using textFont As New Font("Arial", 10, FontStyle.Regular)
+                    g.DrawString($"Write how many {buildingName} you want to build, cost 1000 gold each",
+                             textFont, Brushes.Black, startX + buildBoxWidth + 20, y + 8)
+                End Using
+            End If
+
+            y += boxHeight + 50
+
+            ' === FOOTER ===
+            Using footFont As New Font("Arial", 10, FontStyle.Italic)
+                g.DrawString("Please write your army orders clearly in the boxes above and return this page.",
+                         footFont, Brushes.Gray, marginLeft, e.MarginBounds.Bottom - 30)
+            End Using
+        End Using
+    End Sub
 
 
 End Module
