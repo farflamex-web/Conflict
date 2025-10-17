@@ -25,15 +25,10 @@ Module Market
             If p Is Nothing OrElse amount <= 0 OrElse p.IsEliminated Then Exit Sub
 
             Dim price As Double = GetPrice(good)
-            Dim cost As Double = price * amount
-            cost *= (1 + FeeRate) ' add fee
+            Dim cost As Integer = CInt(Math.Round(price * amount * (1 + FeeRate)))
+            If p.Gold < cost Then Exit Sub
 
-            If p.Gold < cost Then
-                'Debug.WriteLine($"[MARKET] {p.Race} cannot afford to buy {amount} {good}. Needed {cost}, has {p.Gold}")
-                Exit Sub
-            End If
-
-            p.Gold -= CInt(Math.Round(cost))
+            p.Gold -= cost
 
             Select Case good.ToLower()
                 Case "gems" : p.Gems += amount
@@ -46,8 +41,16 @@ Module Market
 
             demand(good) += amount
 
-            'Debug.WriteLine($"[MARKET] {p.Race} bought {amount} {good} for {Math.Round(cost, 2)} gold.")
+            ' === Log the transaction ===
+            p.MarketTransactions.Add(New MarketTransaction With {
+                .Type = "Bought",
+                .Good = Char.ToUpper(good(0)) & good.Substring(1).ToLower(),
+                .Amount = amount,
+                .Gold = -cost
+            })
+
         End Sub
+
 
         Public Sub SellGoods(p As Player, good As String, amount As Integer)
             If p Is Nothing OrElse amount <= 0 Then Exit Sub
@@ -62,17 +65,12 @@ Module Market
                 Case "iron" : hasEnough = (p.Iron >= amount)
                 Case "wood" : hasEnough = (p.Wood >= amount)
             End Select
-
-            If Not hasEnough Then
-                'Debug.WriteLine($"[MARKET] {p.Race} tried to sell {amount} {good} but doesn’t have enough.")
-                Exit Sub
-            End If
+            If Not hasEnough Then Exit Sub
 
             Dim price As Double = GetPrice(good)
-            Dim gross As Double = price * amount
-            gross *= (1 - FeeRate) ' subtract fee
+            Dim gross As Integer = CInt(Math.Round(price * amount * (1 - FeeRate)))
 
-            p.Gold += CInt(Math.Round(gross))
+            p.Gold += gross
 
             Select Case good.ToLower()
                 Case "gems" : p.Gems -= amount
@@ -85,7 +83,14 @@ Module Market
 
             supply(good) += amount
 
-            'Debug.WriteLine($"[MARKET] {p.Race} sold {amount} {good} for {Math.Round(gross, 2)} gold.")
+            ' === Log the transaction ===
+            p.MarketTransactions.Add(New MarketTransaction With {
+                .Type = "Sold",
+                .Good = Char.ToUpper(good(0)) & good.Substring(1).ToLower(),
+                .Amount = amount,
+                .Gold = gross
+            })
+
         End Sub
 
         Public Function GetPrice(good As String) As Double
@@ -423,7 +428,6 @@ Module Market
 
         e.DrawFocusRectangle()
     End Sub
-
 
 
 End Module

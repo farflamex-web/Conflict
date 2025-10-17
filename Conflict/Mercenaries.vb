@@ -325,7 +325,7 @@ Module Mercenaries
         Dim projected As Integer = currentWages + newWages
 
         ' Gold income per turn = population / 10
-        Dim income As Integer = p.Population \ 10
+        Dim income As Integer = (p.Population \ 10) + (p.Investments * 50)
 
         ' Can only afford if projected wages fit into income
         Return projected <= income

@@ -712,6 +712,9 @@ Public Class Form1
         Public Property PopulationGrowthThisTurn As Integer
         Public Property Armies As List(Of Army)
         Public Property FoodCollectedThisTurn As Integer
+        Public Property FoodConsumedByPopulation As Integer
+        Public Property FoodConsumedByTroops As Integer
+        Public Property FoodRemainingThisTurn As Integer
         Public Property Iron As Integer
         Public Property IronCollectedThisTurn As Integer
         Public Property Wood As Integer
@@ -743,6 +746,10 @@ Public Class Form1
         Public Property TargetArmyForMercs As Army
         Public Property Investments As Integer = 0
         Public Property PendingInvestment As Integer = 0 ' gold being spent this turn on new investments
+
+        ' === Market transactions this turn ===
+        Public Property MarketTransactions As New List(Of MarketTransaction)
+
         Public Sub New()
             ' required for JSON deserialization
         End Sub
@@ -758,10 +765,22 @@ Public Class Form1
             MithrilCollectedThisTurn = 0
             GoldCollectedThisTurn = 0
             CurrentBid = 0
+            MercenariesHiredCostThisTurn = 0
+            MarketTransactions.Clear()
         End Sub
 
 
     End Class
+
+    ' Represents one market transaction this turn
+    Public Class MarketTransaction
+        Public Property Type As String      ' "Bought" or "Sold"
+        Public Property Good As String      ' "Iron", "Wood", etc.
+        Public Property Amount As Integer   ' number of units traded
+        Public Property Gold As Integer     ' total cost (+ for income, - for expense)
+    End Class
+
+
 
 #End Region
 
@@ -1090,6 +1109,11 @@ Public Class Form1
 
             ' === Rebuild all player-related UI lists after loading ===
             RefreshArmyOrdersGrid()
+
+            ' --- End-of-turn cleanup ---
+            For Each p In Players
+                p.ResetTurnFlags()
+            Next
 
         Catch ex As Exception
             MessageBox.Show($"Error loading game: {ex.Message}")
@@ -3143,8 +3167,8 @@ Public Class Form1
 
             ' === 2. Add income from previous investments ===
             If p.Investments > 0 Then
-                p.GoldCollectedThisTurn += (p.Investments * 100)
-                p.InvestmentIncomeThisTurn = p.Investments * 100
+                p.GoldCollectedThisTurn += (p.Investments * 50)
+                p.InvestmentIncomeThisTurn = p.Investments * 50
             End If
 
             ' === 3. Apply total to player's gold ===
@@ -3169,6 +3193,9 @@ Public Class Form1
                     armyFoodRequirement += CInt(Math.Floor(a.Units.Sum(Function(u) u.Size * u.FoodCost)))
                 Next
             End If
+            p.FoodConsumedByTroops = armyFoodRequirement   ' <--- store for report
+            p.FoodConsumedByPopulation = p.Population         ' <--- store for report
+            p.FoodRemainingThisTurn = p.FoodCollectedThisTurn - (p.FoodConsumedByTroops + p.FoodConsumedByPopulation) ' Store for report
 
             ' === 2. Total food to feed civilians + armies ===
             Dim totalToFeed As Integer = p.Population + armyFoodRequirement
@@ -3404,11 +3431,6 @@ Public Class Form1
         UpdateSeenMonstersForAllPlayers(Players)
 
         Printouts.GenerateAllHTMLReports()
-
-        ' --- End-of-turn cleanup ---
-        For Each p In Players
-            p.ResetTurnFlags()
-        Next
 
     End Sub
     Private Sub HandleNewMercenaryOffer(turnNumber As Integer)

@@ -82,27 +82,14 @@ Module Printouts
         Dim g As Graphics = e.Graphics
         g.Clear(Color.White)
 
-        ' Emergency runaway page limiter
-        If pageIndex > 10 Then
-            g.DrawString("Printing aborted: too many pages.", New Font("Arial", 12), Brushes.Black, 100, 100)
-            e.HasMorePages = False
-            pageIndex = 1
-            battleReportIndex = 0
-            currentPrintPlayer = Nothing
-            Return
-        End If
-
-        ' === Safety ===
-        If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then
-            e.HasMorePages = False
-            pageIndex = 1
-            battleReportIndex = 0
-            currentPrintPlayer = Nothing
-            Return
-        End If
-
-        ' === Identify current player once per job ===
+        ' === Identify current player ===
         If currentPrintPlayer Is Nothing Then
+            If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then
+                g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, 100, 100)
+                e.HasMorePages = False
+                Return
+            End If
+
             currentPrintPlayer = CurrentForm.Players.
             FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
             If currentPrintPlayer Is Nothing Then
@@ -110,87 +97,135 @@ Module Printouts
             End If
         End If
 
-        If currentPrintPlayer Is Nothing Then
-            g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, 100, 100)
-            e.HasMorePages = False
-            pageIndex = 1
-            battleReportIndex = 0
-            Return
+        ' --- Print ONLY the Empire Report (Page 2) ---
+        If currentPrintPlayer IsNot Nothing Then
+            DrawEmpireReport(g, e, currentPrintPlayer)
+        Else
+            g.DrawString("(No valid player to print)", New Font("Arial", 12), Brushes.Black, 100, 100)
         End If
 
-        ' === Detect if there are any battles to print ===
-        Dim hasBattles As Boolean =
-        (CurrentForm.CurrentReports IsNot Nothing AndAlso
-         CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso
-         CurrentForm.CurrentReports.BattleReports.Count > 0)
-
-        Select Case pageIndex
-            Case 1
-                ' --- PAGE 1: HEADER + MAP ---
-                DrawFrontPageHeaderAndPlayerInfo(g, e)
-                If CurrentForm.Map IsNot Nothing Then
-                    Dim headerHeight As Single = 60
-                    Dim playerBoxHeight As Single = 80
-                    Dim spacing As Single = 20
-                    Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
-                    DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
-                End If
-
-                ' Move on to page 2
-                e.HasMorePages = True
-                pageIndex = 2
-                Return
-
-            Case 2
-                ' --- PAGE 2: EMPIRE REPORT ---
-                DrawEmpireReport(g, e, currentPrintPlayer)
-
-                ' Decide next page based on battles
-                e.HasMorePages = True
-                If hasBattles Then
-                    pageIndex = 3
-                Else
-                    pageIndex = 4   ' Skip battles if none
-                End If
-                Return
-
-            Case 3
-                ' --- PAGE 3+: BATTLE REPORTS (may span multiple pages) ---
-                Dim morePages As Boolean = DrawBattleReportsPage(g, e, currentPrintPlayer)
-
-                If morePages Then
-                    ' Still more battle pages to print
-                    e.HasMorePages = True
-                    pageIndex = 3
-                Else
-                    ' All battle reports done — continue to armies
-                    e.HasMorePages = True
-                    pageIndex = 4
-                End If
-                Return
-
-            Case 4
-                ' --- PAGE 4: ARMIES ---
-                If DrawArmiesPage(g, e, currentPrintPlayer) Then
-                    e.HasMorePages = True
-                Else
-                    ' Done printing — reset for next time
-                    e.HasMorePages = False
-                    pageIndex = 1
-                    battleReportIndex = 0
-                    currentPrintPlayer = Nothing
-                End If
-                Return
-
-            Case Else
-                ' --- Safety fallback ---
-                e.HasMorePages = False
-                pageIndex = 1
-                battleReportIndex = 0
-                currentPrintPlayer = Nothing
-                Return
-        End Select
+        ' --- Stop after one page ---
+        e.HasMorePages = False
+        pageIndex = 1
+        battleReportIndex = 0
+        currentPrintPlayer = Nothing
     End Sub
+
+
+
+    'Private Sub printDoc_PrintPage(sender As Object, e As PrintPageEventArgs)
+    '    Dim g As Graphics = e.Graphics
+    '    g.Clear(Color.White)
+
+    '    ' Emergency runaway page limiter
+    '    If pageIndex > 10 Then
+    '        g.DrawString("Printing aborted: too many pages.", New Font("Arial", 12), Brushes.Black, 100, 100)
+    '        e.HasMorePages = False
+    '        pageIndex = 1
+    '        battleReportIndex = 0
+    '        currentPrintPlayer = Nothing
+    '        Return
+    '    End If
+
+    '    ' === Safety ===
+    '    If CurrentForm Is Nothing OrElse CurrentForm.Players Is Nothing Then
+    '        e.HasMorePages = False
+    '        pageIndex = 1
+    '        battleReportIndex = 0
+    '        currentPrintPlayer = Nothing
+    '        Return
+    '    End If
+
+    '    ' === Identify current player once per job ===
+    '    If currentPrintPlayer Is Nothing Then
+    '        currentPrintPlayer = CurrentForm.Players.
+    '        FirstOrDefault(Function(pp) pp IsNot Nothing AndAlso Not pp.AIControlled)
+    '        If currentPrintPlayer Is Nothing Then
+    '            currentPrintPlayer = CurrentForm.Players.FirstOrDefault(Function(pp) pp IsNot Nothing)
+    '        End If
+    '    End If
+
+    '    If currentPrintPlayer Is Nothing Then
+    '        g.DrawString("(No player data found)", New Font("Arial", 12), Brushes.Black, 100, 100)
+    '        e.HasMorePages = False
+    '        pageIndex = 4
+    '        battleReportIndex = 0
+    '        Return
+    '    End If
+
+    '    ' === Detect if there are any battles to print ===
+    '    Dim hasBattles As Boolean =
+    '    (CurrentForm.CurrentReports IsNot Nothing AndAlso
+    '     CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso
+    '     CurrentForm.CurrentReports.BattleReports.Count > 0)
+
+    '    Select Case pageIndex
+    '        Case 1
+    '            ' --- PAGE 1: HEADER + MAP ---
+    '            DrawFrontPageHeaderAndPlayerInfo(g, e)
+    '            If CurrentForm.Map IsNot Nothing Then
+    '                Dim headerHeight As Single = 60
+    '                Dim playerBoxHeight As Single = 80
+    '                Dim spacing As Single = 20
+    '                Dim topOffset As Single = e.MarginBounds.Top + headerHeight + playerBoxHeight + spacing + 100
+    '                DrawMap(g, e.MarginBounds.Width, e.MarginBounds.Height - topOffset, False, e, topOffset)
+    '            End If
+
+    '            ' Move on to page 2
+    '            e.HasMorePages = True
+    '            pageIndex = 2
+    '            Return
+
+    '        Case 2
+    '            ' --- PAGE 2: EMPIRE REPORT ---
+    '            DrawEmpireReport(g, e, currentPrintPlayer)
+
+    '            ' Decide next page based on battles
+    '            e.HasMorePages = True
+    '            If hasBattles Then
+    '                pageIndex = 3
+    '            Else
+    '                pageIndex = 4   ' Skip battles if none
+    '            End If
+    '            Return
+
+    '        Case 3
+    '            ' --- PAGE 3+: BATTLE REPORTS (may span multiple pages) ---
+    '            Dim morePages As Boolean = DrawBattleReportsPage(g, e, currentPrintPlayer)
+
+    '            If morePages Then
+    '                ' Still more battle pages to print
+    '                e.HasMorePages = True
+    '                pageIndex = 3
+    '            Else
+    '                ' All battle reports done — continue to armies
+    '                e.HasMorePages = True
+    '                pageIndex = 4
+    '            End If
+    '            Return
+
+    '        Case 4
+    '            ' --- PAGE 4: ARMIES ---
+    '            If DrawArmiesPage(g, e, currentPrintPlayer) Then
+    '                e.HasMorePages = True
+    '            Else
+    '                ' Done printing — reset for next time
+    '                e.HasMorePages = False
+    '                pageIndex = 1
+    '                battleReportIndex = 0
+    '                currentPrintPlayer = Nothing
+    '            End If
+    '            Return
+
+    '        Case Else
+    '            ' --- Safety fallback ---
+    '            e.HasMorePages = False
+    '            pageIndex = 1
+    '            battleReportIndex = 0
+    '            currentPrintPlayer = Nothing
+    '            Return
+    '    End Select
+    'End Sub
 
 
 
@@ -566,7 +601,7 @@ Module Printouts
                 writer.WriteLine("<!DOCTYPE html>")
                 writer.WriteLine("<html lang='en'>")
                 writer.WriteLine("<head>")
-                writer.WriteLine($"<meta charset='UTF-8'>")
+                writer.WriteLine("<meta charset='UTF-8'>")
                 writer.WriteLine($"<title>Conflict Turn {turnNum} – {HtmlEncode(p.Nickname)} ({HtmlEncode(p.Race)})</title>")
                 writer.WriteLine("<style>")
                 writer.WriteLine("body { font-family: Segoe UI, Arial, sans-serif; background-color: #fafafa; margin: 30px; }")
@@ -579,15 +614,12 @@ Module Printouts
                 writer.WriteLine("</head>")
                 writer.WriteLine("<body>")
 
+                ' === Header ===
                 writer.WriteLine($"<h1>Conflict – Turn {turnNum}</h1>")
                 writer.WriteLine($"<h2>{HtmlEncode(rawNick)} ({HtmlEncode(p.Race)})</h2>")
                 writer.WriteLine("<hr>")
 
-                ' === Section skeletons ===
-                ' === Empire and Resource Report ===
-                AppendEmpireReportHTML(writer, p)
-
-                ' === Map section ===
+                ' === MAP FIRST ===
                 If base64Map <> "" Then
                     writer.WriteLine("<div class='section'><h2>Map Overview</h2>")
                     writer.WriteLine($"<img src='data:image/png;base64,{base64Map}' alt='Map for {HtmlEncode(rawNick)}' style='border:1px solid #999; width:600px; height:600px;'>")
@@ -596,23 +628,23 @@ Module Printouts
                     writer.WriteLine("<div class='section'><h2>Map Overview</h2><p>[Map unavailable]</p></div>")
                 End If
 
-                writer.WriteLine("<div class='section'><h2>Armies</h2><p>[Army list placeholder]</p></div>")
-                writer.WriteLine("<div class='section'><h2>Events</h2><p>[Recent events placeholder]</p></div>")
-                ' === Battle Reports Section ===
-                ' === Battle Reports Section ===
+                ' === EMPIRE REPORT SECOND ===
+                AppendEmpireReportHTML(writer, p)
+
+                ' === BATTLE REPORTS THIRD ===
                 If CurrentForm.CurrentReports IsNot Nothing AndAlso
-   CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso
-   CurrentForm.CurrentReports.BattleReports.Count > 0 Then
+               CurrentForm.CurrentReports.BattleReports IsNot Nothing AndAlso
+               CurrentForm.CurrentReports.BattleReports.Count > 0 Then
 
                     writer.WriteLine("<div class='section'><h2>Battle Reports</h2>")
 
                     ' --- Race colour dictionary (HTML-safe) ---
                     Dim raceColor As New Dictionary(Of String, String)(StringComparer.OrdinalIgnoreCase) From {
-                        {"Elf", "#228B22"},      ' forest green
-                        {"Dwarf", "#4169E1"},    ' royal blue
-                        {"Orc", "#B22222"},      ' firebrick
-                        {"Human", "#DAA520"}     ' goldenrod
-                    }
+                    {"Elf", "#228B22"},      ' forest green
+                    {"Dwarf", "#4169E1"},    ' royal blue
+                    {"Orc", "#B22222"},      ' firebrick
+                    {"Human", "#DAA520"}     ' goldenrod
+                }
 
                     For Each battleText In CurrentForm.CurrentReports.BattleReports
                         ' Determine involved races
@@ -637,8 +669,8 @@ Module Printouts
                             ElseIf {"Ranged Phase", "Charge Phase", "Melee Phase", "Chase Phase"}.Contains(trimmed) Then
                                 colour = "#4169E1" : bold = True
                             ElseIf trimmed.StartsWith("Start of Battle", StringComparison.OrdinalIgnoreCase) _
-                                OrElse trimmed.Equals("Final Army Status", StringComparison.OrdinalIgnoreCase) _
-                                OrElse trimmed.Equals("End of Battle", StringComparison.OrdinalIgnoreCase) Then
+                            OrElse trimmed.Equals("Final Army Status", StringComparison.OrdinalIgnoreCase) _
+                            OrElse trimmed.Equals("End of Battle", StringComparison.OrdinalIgnoreCase) Then
                                 colour = "#B22222" : bold = True
                             Else
                                 ' --- Race lines ---
@@ -669,6 +701,10 @@ Module Printouts
                 Else
                     writer.WriteLine("<div class='section'><h2>Battle Reports</h2><p>No battles occurred this turn.</p></div>")
                 End If
+
+                ' === ARMIES LAST ===
+                writer.WriteLine("<div class='section'><h2>Armies</h2><p>[Army list placeholder]</p></div>")
+                writer.WriteLine("<div class='section'><h2>Events</h2><p>[Recent events placeholder]</p></div>")
 
                 writer.WriteLine($"<p style='font-size:11px;color:#888;'>Generated automatically on {DateTime.Now:dd MMM yyyy HH:mm}</p>")
                 writer.WriteLine("</body></html>")
@@ -752,11 +788,11 @@ Module Printouts
         Using titleFont As New Font("Arial", 22, FontStyle.Bold)
             g.DrawString("Empire Report", titleFont, Brushes.DarkBlue, marginLeft + 10, y)
         End Using
-        y += 40
+        y += 35
 
         Using bodyFont As New Font("Arial", 12)
             ' === RACE / TERRAIN SECTION ===
-            g.DrawString($"Race: {p.Race}", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
+            g.DrawString($"Race: {p.Race}", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 22
 
             ' --- Count owned squares + terrain dynamically ---
             Dim mapSizeX As Integer = CurrentForm.Map.GetLength(0)
@@ -772,14 +808,14 @@ Module Printouts
             Next
 
             Dim totalOwned As Integer = counts.Values.Sum()
-            g.DrawString($"Empire Size: {totalOwned} squares", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 25
+            g.DrawString($"Empire Size: {totalOwned} squares", bodyFont, Brushes.Black, marginLeft + 10, y) : y += 22
             g.DrawString($"   Plains: {counts(0)}   Forest: {counts(1)}   Hills: {counts(2)}   Mountain: {counts(3)}",
-                     bodyFont, Brushes.Black, marginLeft + 20, y)
-            y += 40
+            bodyFont, Brushes.Black, marginLeft + 20, y)
+            y += 35
 
             ' === POPULATION SECTION ===
-            g.DrawString("Population:", bodyFont, Brushes.Black, marginLeft + 10, y)
-            y += 25
+            g.DrawString("Population:", bodyFont, Brushes.MediumBlue, marginLeft + 10, y)
+            y += 22
 
             ' --- Calculate percentage growth ---
             Dim growthPercent As Double = 0
@@ -792,14 +828,30 @@ Module Printouts
                 g.DrawString(
                 $"Total : {p.Population,10:N0}     Growth this Turn : {p.PopulationGrowthThisTurn,10:N0}  ({sign}{growthPercent,5:F1}%)",
                 monoFont, Brushes.Black, marginLeft + 40, y)
-                y += 40
-            End Using
+                y += 30
 
-            ' === RESOURCE SECTION ===
-            g.DrawString("Resources:", bodyFont, Brushes.Black, marginLeft + 10, y)
-            y += 25
+                ' === FOOD SUMMARY (LIST STYLE) ===
+                Dim afterFood As Integer = p.FoodRemainingThisTurn
+                Dim brush As Brush = If(afterFood < 0, Brushes.DarkRed, Brushes.DarkGreen)
 
-            Using monoFont As New Font("Consolas", 12)
+                g.DrawString("Food Summary :", monoFont, Brushes.Black, marginLeft + 40, y) : y += 20
+                g.DrawString($"   Collected        : {p.FoodCollectedThisTurn,10:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 20
+                g.DrawString($"   Pop Consumption  : {p.FoodConsumedByPopulation,10:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 20
+                g.DrawString($"   Troop Consumption: {p.FoodConsumedByTroops,10:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 24
+                g.DrawString($"   After Consumption: {afterFood,10:N0}", monoFont, brush, marginLeft + 60, y) : y += 25
+
+                ' === WARNING IF DEFICIT ===
+                If afterFood < 0 Then
+                    Using warnFont As New Font("Consolas", 11, FontStyle.Bold)
+                        g.DrawString("⚠ Population cannot grow — food deficit this turn!", warnFont, Brushes.DarkRed, marginLeft + 80, y)
+                        y += 25
+                    End Using
+                End If
+
+                ' === RESOURCE SECTION ===
+                g.DrawString("Resources:", bodyFont, Brushes.SeaGreen, marginLeft + 10, y)
+                y += 22
+
                 ' --- Investment name (used later in ledger too) ---
                 Dim investmentName As String = ""
                 Select Case p.Race.ToLower()
@@ -820,57 +872,148 @@ Module Printouts
                     Case Else : mountName = "Mounts"
                 End Select
 
-                ' --- Column-aligned width: match the longest label "Mountain Rams :" ---
+                ' --- Column-aligned width ---
                 Dim labelWidth As Integer = 16
 
-                ' --- Wood, Iron, Mounts ---
                 g.DrawString($"{ "Wood Total".PadRight(labelWidth)}: {p.Wood,10:N0}     Collected : {p.WoodCollectedThisTurn,10:N0}",
-                         monoFont, Brushes.Black, marginLeft + 40, y)
-                y += 22
+                monoFont, Brushes.Black, marginLeft + 40, y) : y += 20
                 g.DrawString($"{ "Iron Total".PadRight(labelWidth)}: {p.Iron,10:N0}     Collected : {p.IronCollectedThisTurn,10:N0}",
-                         monoFont, Brushes.Black, marginLeft + 40, y)
-                y += 22
+                monoFont, Brushes.Black, marginLeft + 40, y) : y += 20
                 g.DrawString($"{mountName.PadRight(labelWidth)}: {p.Mounts,10:N0}     Collected : {p.MountsCollectedThisTurn,10:N0}",
-                         monoFont, Brushes.Black, marginLeft + 40, y)
-                y += 32
+                monoFont, Brushes.Black, marginLeft + 40, y) : y += 28
 
-                ' === INVESTMENT SUMMARY (moved up before gold ledger) ===
-                Dim totalIncome As Integer = p.Investments * 100
+                ' === INVESTMENT SUMMARY ===
+                Dim totalIncome As Integer = p.Investments * 50
                 g.DrawString($"{investmentName} : {p.Investments,3:N0}, Earning {totalIncome,6:N0} gold per turn",
-                         monoFont, Brushes.Blue, marginLeft + 60, y)
-                y += 35
+                monoFont, Brushes.Blue, marginLeft + 60, y)
+                y += 28
 
-                ' --- Gold Ledger Header ---
-                g.DrawString("Gold Ledger:", bodyFont, Brushes.Black, marginLeft + 10, y)
-                y += 25
+                ' === GOLD LEDGER ===
+                g.DrawString("Gold Ledger:", bodyFont, Brushes.Goldenrod, marginLeft + 10, y)
+                y += 22
 
-                ' --- Ledger helper for consistent alignment ---
                 Dim FormatGoldLine As Func(Of String, Integer, Boolean, String) =
                 Function(label As String, value As Integer, isExpense As Boolean) As String
                     Dim absStr As String = Math.Abs(value).ToString("N0").PadLeft(10)
-                    Dim sign As String = If(isExpense, "-", " ")
-                    Return $"{label,-28}: {sign}{absStr}"
+                    Dim prefix As String = If(isExpense, "-", " ")
+                    Return $"{label,-28}: {prefix}{absStr}"
                 End Function
 
-                ' --- Ledger lines (using race-specific investment name) ---
-                Dim goldLines As String() = {
-                FormatGoldLine("Collected from Population", p.GoldCollectedThisTurn, False),
-                FormatGoldLine($"{investmentName} Income", p.InvestmentIncomeThisTurn, False),
-                FormatGoldLine("Summoners Purchased", p.SummonersBoughtCostThisTurn, True),
-                FormatGoldLine("Mercenaries Hired", p.MercenariesHiredCostThisTurn, True),
-                FormatGoldLine("Mercenary Army Wages Paid", p.WagesPaidThisTurn, True),
-                New String("-"c, 55),
-                FormatGoldLine("Net Change This Turn",
-                    (p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn -
-                     p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn -
-                     p.MercenariesHiredCostThisTurn), False),
-                FormatGoldLine("Gold Total After Turn", p.Gold, False)
-            }
+                Dim ledgerLines As New List(Of String)
 
-                For Each line In goldLines
+                If p.GoldCollectedThisTurn <> 0 Then ledgerLines.Add(FormatGoldLine("Collected from Population", p.GoldCollectedThisTurn, False))
+                If p.InvestmentIncomeThisTurn <> 0 Then ledgerLines.Add(FormatGoldLine($"{investmentName} Income", p.InvestmentIncomeThisTurn, False))
+                If p.SummonersBoughtCostThisTurn <> 0 Then ledgerLines.Add(FormatGoldLine("Summoners Purchased", p.SummonersBoughtCostThisTurn, True))
+                If p.MercenariesHiredCostThisTurn <> 0 Then ledgerLines.Add(FormatGoldLine("Mercenaries Hired", p.MercenariesHiredCostThisTurn, True))
+                If p.WagesPaidThisTurn <> 0 Then ledgerLines.Add(FormatGoldLine("Mercenary Army Wages Paid", p.WagesPaidThisTurn, True))
+
+                If p.MarketTransactions IsNot Nothing AndAlso p.MarketTransactions.Count > 0 Then
+                    For Each t In p.MarketTransactions
+                        Dim label As String = $"{t.Type} {t.Amount} {t.Good}"
+                        Dim isExpense As Boolean = (t.Gold < 0)
+                        ledgerLines.Add(FormatGoldLine(label, t.Gold, isExpense))
+                    Next
+                End If
+
+                ledgerLines.Add(New String("-"c, 55))
+                Dim marketNet As Integer = p.MarketTransactions.Sum(Function(t) t.Gold)
+                Dim netChange As Integer =
+                (p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn +
+                 marketNet -
+                 p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn -
+                 p.MercenariesHiredCostThisTurn)
+                ledgerLines.Add(FormatGoldLine("Net Change This Turn", netChange, False))
+                ledgerLines.Add(FormatGoldLine("Gold Total After Turn", p.Gold, False))
+
+                For Each line In ledgerLines
                     g.DrawString(line, monoFont, Brushes.Black, marginLeft + 60, y)
-                    y += 20
+                    y += 18
                 Next
+
+                ' === MARKET REPORT ===
+                y += 25
+
+                ' --- Header and note on same line ---
+                Dim noteFont As New Font("Arial", 10, FontStyle.Italic)
+                Dim headerText As String = "Market Report:"
+                Dim noteText As String = "(Prices shown are global averages and may fluctuate next turn.)"
+
+                g.DrawString(headerText, bodyFont, Brushes.MediumVioletRed, marginLeft + 10, y)
+
+                ' Position the note just after the header (slightly indented)
+                Dim headerWidth As Single = g.MeasureString(headerText, bodyFont).Width
+                g.DrawString(noteText, noteFont, Brushes.Gray, marginLeft + 20 + headerWidth, y + 3)
+                y += 22
+
+                ' --- Table headers ---
+                g.DrawString("Good".PadRight(10) & "Current Price".PadLeft(15) & "   Owned", monoFont, Brushes.Black, marginLeft + 60, y)
+                y += 18
+                g.DrawString(New String("-"c, 42), monoFont, Brushes.Gray, marginLeft + 60, y)
+                y += 18
+
+                ' --- Prices and ownership ---
+                Dim m = Conflict.Market.TheMarket
+                g.DrawString($"Gems".PadRight(10) & $"{m.GemPrice,15:F2}   {p.Gems,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 16
+                g.DrawString($"Amber".PadRight(10) & $"{m.AmberPrice,15:F2}   {p.Amber,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 16
+                g.DrawString($"Wine".PadRight(10) & $"{m.WinePrice,15:F2}   {p.Wine,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 16
+                g.DrawString($"Furs".PadRight(10) & $"{m.FurPrice,15:F2}   {p.Furs,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 16
+                g.DrawString($"Iron".PadRight(10) & $"{m.IronPrice,15:F2}   {p.Iron,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 16
+                g.DrawString($"Wood".PadRight(10) & $"{m.WoodPrice,15:F2}   {p.Wood,8:N0}", monoFont, Brushes.Black, marginLeft + 60, y) : y += 22
+                y = y + 20
+
+                ' === MERCENARIES SECTION ===
+                g.DrawString("Mercenaries:", bodyFont, Brushes.SaddleBrown, marginLeft + 10, y)
+                y += 20
+
+                If Form1.CurrentMercOffer IsNot Nothing AndAlso Form1.CurrentMercOffer.Units IsNot Nothing AndAlso Form1.CurrentMercOffer.Units.Count > 0 Then
+                    Dim offer = Form1.CurrentMercOffer
+                    Dim offerWages As Integer = Conflict.Mercenaries.CalculateMercenaryOfferWages(offer)
+                    Dim minBid As Integer = offer.MinBid
+                    Dim income As Integer = (p.Population \ 10) + (p.Investments * 50) - p.WagesPaidThisTurn
+                    Dim canAfford As Boolean = (income >= offerWages)
+
+                    g.DrawString("The following mercenary army is available this turn:", monoFont, Brushes.Black, marginLeft + 60, y)
+                    y += 20
+
+                    ' --- Unit composition (word-wrapped if long) ---
+                    Dim compList As New List(Of String)
+                    For Each s In offer.Units
+                        If s Is Nothing Then Continue For
+                        If s.Template IsNot Nothing Then
+                            compList.Add($"{s.Template.Name} x{s.Count}")
+                        ElseIf s.Hero IsNot Nothing Then
+                            compList.Add($"{s.Hero.Name} (Hero)")
+                        End If
+                    Next
+
+                    Dim compText As String = "Units   : " & String.Join(", ", compList)
+                    Dim layoutRect As New RectangleF(marginLeft + 80, y, e.MarginBounds.Width - 120, 60) ' auto-wrap region
+                    g.DrawString(compText, monoFont, Brushes.Black, layoutRect)
+                    y += 30
+
+                    ' --- Column-aligned details ---
+                    Dim lblWidth As Integer = 25
+                    g.DrawString($"{ "Minimum Bid".PadRight(lblWidth)}: {minBid,8:N0} gold", monoFont, Brushes.Black, marginLeft + 80, y) : y += 18
+                    g.DrawString($"{ "Wages per Turn".PadRight(lblWidth)}: {offerWages,8:N0} gold", monoFont, Brushes.Black, marginLeft + 80, y) : y += 18
+                    g.DrawString($"{ "Wage Budget Remaining".PadRight(lblWidth)}: {income,8:N0} gold/turn", monoFont, Brushes.Black, marginLeft + 80, y) : y += 20
+
+                    ' --- Affordability message ---
+                    Dim msg As String
+                    If canAfford Then
+                        msg = "You can afford to maintain this army."
+                        brush = Brushes.DarkGreen
+                    Else
+                        msg = "⚠ Your income cannot support these wages!"
+                        brush = Brushes.DarkRed
+                    End If
+                    g.DrawString(msg, monoFont, brush, marginLeft + 80, y)
+                    y += 25
+                Else
+                    g.DrawString("No mercenary armies are currently on offer.", monoFont, Brushes.Gray, marginLeft + 60, y)
+                    y += 20
+                End If
+
+
             End Using
         End Using
     End Sub
@@ -1129,13 +1272,12 @@ Module Printouts
     ' ============================================================
 
     Private Sub AppendEmpireReportHTML(writer As StreamWriter, p As Player)
-        writer.WriteLine("<div class='section'><h2>Empire Report</h2>")
+        writer.WriteLine("<div class='section'><h2 style='color:darkblue;'>Empire Report</h2>")
         writer.WriteLine($"<p><strong>Race:</strong> {p.Race}</p>")
 
         ' --- Terrain counts (dynamic map size) ---
         Dim mapSizeX As Integer = CurrentForm.Map.GetLength(0)
         Dim mapSizeY As Integer = CurrentForm.Map.GetLength(1)
-
         Dim counts As New Dictionary(Of Integer, Integer) From {{0, 0}, {1, 0}, {2, 0}, {3, 0}}
 
         For x = 0 To mapSizeX - 1
@@ -1150,41 +1292,135 @@ Module Printouts
         writer.WriteLine($"<p><strong>Empire Size:</strong> {totalOwned} squares<br>")
         writer.WriteLine($"Plains: {counts(0)}, Forest: {counts(1)}, Hills: {counts(2)}, Mountain: {counts(3)}</p>")
 
-        ' === POPULATION TABLE ===
+        ' === POPULATION SECTION ===
         Dim growthPercent As Double = 0
         If p.Population - p.PopulationGrowthThisTurn <> 0 Then
             growthPercent = (p.PopulationGrowthThisTurn / Math.Max(1, (p.Population - p.PopulationGrowthThisTurn))) * 100.0
         End If
         Dim sign As String = If(p.PopulationGrowthThisTurn >= 0, "+", "")
 
-        writer.WriteLine("<h3>Population</h3>")
-        writer.WriteLine("<table>")
-        writer.WriteLine("<tr><th>Total</th><th>Growth This Turn</th><th>% Change</th></tr>")
-        writer.WriteLine($"<tr><td>{p.Population:N0}</td><td>{p.PopulationGrowthThisTurn:N0}</td><td>{sign}{growthPercent:F1}%</td></tr>")
-        writer.WriteLine("</table>")
+        writer.WriteLine("<h3 style='color:mediumblue;'>Population</h3>")
+        writer.WriteLine($"<p>Total: <strong>{p.Population:N0}</strong> &nbsp;&nbsp; Growth this Turn: <strong>{p.PopulationGrowthThisTurn:N0}</strong> ({sign}{growthPercent:F1}%)</p>")
 
-        ' === RESOURCE TABLE ===
-        writer.WriteLine("<h3>Resources</h3>")
-        writer.WriteLine("<table>")
-        writer.WriteLine("<tr><th>Resource</th><th>Total</th><th>Collected This Turn</th></tr>")
-        writer.WriteLine($"<tr><td>Wood</td><td>{p.Wood:N0}</td><td>{p.WoodCollectedThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Iron</td><td>{p.Iron:N0}</td><td>{p.IronCollectedThisTurn:N0}</td></tr>")
+        ' === FOOD SUMMARY ===
+        Dim afterFood As Integer = p.FoodRemainingThisTurn
+        Dim foodColor As String = If(afterFood < 0, "darkred", "darkgreen")
+        writer.WriteLine("<table style='margin-left:20px;'>")
+        writer.WriteLine($"<tr><td>Collected</td><td align='right'>{p.FoodCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Pop Consumption</td><td align='right'>{p.FoodConsumedByPopulation:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Troop Consumption</td><td align='right'>{p.FoodConsumedByTroops:N0}</td></tr>")
+        writer.WriteLine($"<tr><td><strong>After Consumption</strong></td><td align='right' style='color:{foodColor};'><strong>{afterFood:N0}</strong></td></tr>")
         writer.WriteLine("</table>")
+        If afterFood < 0 Then
+            writer.WriteLine("<p style='color:darkred;margin-left:40px;'>⚠ Population cannot grow — food deficit this turn!</p>")
+        End If
+
+        ' === RESOURCES SECTION ===
+        writer.WriteLine("<h3 style='color:seagreen;'>Resources</h3>")
+
+        ' --- Investment name ---
+        Dim investmentName As String = ""
+        Select Case p.Race.ToLower()
+            Case "elf" : investmentName = "Sacred Groves"
+            Case "dwarf" : investmentName = "Silver Mines"
+            Case "orc" : investmentName = "Hunting Camps"
+            Case "human" : investmentName = "Farming Estates"
+            Case Else : investmentName = "Investments"
+        End Select
+
+        ' --- Mount name ---
+        Dim mountName As String = ""
+        Select Case p.Race.ToLower()
+            Case "elf" : mountName = "Forest Elks"
+            Case "dwarf" : mountName = "Mountain Rams"
+            Case "orc" : mountName = "Wargs"
+            Case "human" : mountName = "Horses"
+            Case Else : mountName = "Mounts"
+        End Select
+
+        writer.WriteLine("<table style='margin-left:20px;'>")
+        writer.WriteLine($"<tr><td>Wood Total</td><td align='right'>{p.Wood:N0}</td><td>Collected</td><td align='right'>{p.WoodCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Iron Total</td><td align='right'>{p.Iron:N0}</td><td>Collected</td><td align='right'>{p.IronCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>{mountName}</td><td align='right'>{p.Mounts:N0}</td><td>Collected</td><td align='right'>{p.MountsCollectedThisTurn:N0}</td></tr>")
+        writer.WriteLine("</table>")
+        writer.WriteLine($"<p style='margin-left:40px;color:blue;'>{investmentName}: {p.Investments:N0}, earning {p.Investments * 50:N0} gold/turn</p>")
 
         ' === GOLD LEDGER ===
-        writer.WriteLine("<h3>Gold Ledger</h3>")
-        writer.WriteLine("<table>")
+        writer.WriteLine("<h3 style='color:goldenrod;'>Gold Ledger</h3>")
+        writer.WriteLine("<table style='margin-left:20px;'>")
         writer.WriteLine("<tr><th>Source / Expense</th><th>Amount</th></tr>")
-        writer.WriteLine($"<tr><td>Collected from Population</td><td>{p.GoldCollectedThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Investment Income</td><td>{p.InvestmentIncomeThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Summoners Purchased</td><td>-{p.SummonersBoughtCostThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Mercenaries Hired</td><td>-{p.MercenariesHiredCostThisTurn:N0}</td></tr>")
-        writer.WriteLine($"<tr><td>Mercenary Army Wages Paid</td><td>-{p.WagesPaidThisTurn:N0}</td></tr>")
-        writer.WriteLine("<tr><td colspan='2'><hr></td></tr>")
-        Dim netChange As Integer = p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn - p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn - p.MercenariesHiredCostThisTurn
-        writer.WriteLine($"<tr><td><strong>Net Change This Turn</strong></td><td><strong>{netChange:N0}</strong></td></tr>")
-        writer.WriteLine($"<tr><td><strong>Gold Total After Turn</strong></td><td><strong>{p.Gold:N0}</strong></td></tr>")
+
+        Dim ledgerRows As New List(Of String)
+        If p.GoldCollectedThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Collected from Population</td><td>{p.GoldCollectedThisTurn:N0}</td></tr>")
+        If p.InvestmentIncomeThisTurn <> 0 Then ledgerRows.Add($"<tr><td>{investmentName} Income</td><td>{p.InvestmentIncomeThisTurn:N0}</td></tr>")
+        If p.SummonersBoughtCostThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Summoners Purchased</td><td style='color:red;'>-{Math.Abs(p.SummonersBoughtCostThisTurn):N0}</td></tr>")
+        If p.MercenariesHiredCostThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Mercenaries Hired</td><td style='color:red;'>-{Math.Abs(p.MercenariesHiredCostThisTurn):N0}</td></tr>")
+        If p.WagesPaidThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Mercenary Army Wages Paid</td><td style='color:red;'>-{Math.Abs(p.WagesPaidThisTurn):N0}</td></tr>")
+
+        ' --- Market transactions ---
+        If p.MarketTransactions IsNot Nothing AndAlso p.MarketTransactions.Count > 0 Then
+            For Each t In p.MarketTransactions
+                Dim label As String = $"{t.Type} {t.Amount} {t.Good}"
+                Dim amountStr As String = If(t.Gold < 0, $"<span style='color:red;'>-{Math.Abs(t.Gold):N0}</span>", $"{t.Gold:N0}")
+                ledgerRows.Add($"<tr><td>{label}</td><td>{amountStr}</td></tr>")
+            Next
+        End If
+
+        Dim marketNet As Integer = p.MarketTransactions.Sum(Function(t) t.Gold)
+        Dim netChange As Integer =
+        (p.GoldCollectedThisTurn + p.InvestmentIncomeThisTurn +
+         marketNet - p.WagesPaidThisTurn - p.SummonersBoughtCostThisTurn - p.MercenariesHiredCostThisTurn)
+        ledgerRows.Add("<tr><td colspan='2'><hr></td></tr>")
+        ledgerRows.Add($"<tr><td><strong>Net Change This Turn</strong></td><td><strong>{netChange:N0}</strong></td></tr>")
+        ledgerRows.Add($"<tr><td><strong>Gold Total After Turn</strong></td><td><strong>{p.Gold:N0}</strong></td></tr>")
+
+        For Each row In ledgerRows
+            writer.WriteLine(row)
+        Next
         writer.WriteLine("</table>")
+
+        ' === MARKET REPORT ===
+        writer.WriteLine("<h3 style='color:mediumvioletred;'>Market Report <span style='font-size:10pt;color:gray;font-style:italic;'>(Prices shown are global averages and may fluctuate next turn.)</span></h3>")
+        writer.WriteLine("<table style='margin-left:20px;'>")
+        writer.WriteLine("<tr><th>Good</th><th>Current Price</th><th>Owned</th></tr>")
+
+        Dim m = Conflict.Market.TheMarket
+        writer.WriteLine($"<tr><td>Gems</td><td>{m.GemPrice:F2}</td><td>{p.Gems:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Amber</td><td>{m.AmberPrice:F2}</td><td>{p.Amber:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Wine</td><td>{m.WinePrice:F2}</td><td>{p.Wine:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Furs</td><td>{m.FurPrice:F2}</td><td>{p.Furs:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Iron</td><td>{m.IronPrice:F2}</td><td>{p.Iron:N0}</td></tr>")
+        writer.WriteLine($"<tr><td>Wood</td><td>{m.WoodPrice:F2}</td><td>{p.Wood:N0}</td></tr>")
+        writer.WriteLine("</table>")
+
+        ' === MERCENARIES SECTION ===
+        writer.WriteLine("<h3 style='color:saddlebrown;'>Mercenaries</h3>")
+        If Form1.CurrentMercOffer IsNot Nothing AndAlso Form1.CurrentMercOffer.Units IsNot Nothing AndAlso Form1.CurrentMercOffer.Units.Count > 0 Then
+            Dim offer = Form1.CurrentMercOffer
+            Dim offerWages As Integer = Conflict.Mercenaries.CalculateMercenaryOfferWages(offer)
+            Dim minBid As Integer = offer.MinBid
+            Dim income As Integer = (p.Population \ 10) + (p.Investments * 50) - p.WagesPaidThisTurn
+            Dim canAfford As Boolean = (income >= offerWages)
+
+            writer.WriteLine("<p style='margin-left:40px;'>The following mercenary army is available this turn:</p>")
+            Dim compList As New List(Of String)
+            For Each s In offer.Units
+                If s Is Nothing Then Continue For
+                If s.Template IsNot Nothing Then compList.Add($"{s.Template.Name} x{s.Count}")
+                If s.Hero IsNot Nothing Then compList.Add($"{s.Hero.Name} (Hero)")
+            Next
+            writer.WriteLine($"<p style='margin-left:60px;'>Units: {String.Join(", ", compList)}</p>")
+            writer.WriteLine("<table style='margin-left:60px;'>")
+            writer.WriteLine($"<tr><td>Minimum Bid</td><td align='right'>{minBid:N0} gold</td></tr>")
+            writer.WriteLine($"<tr><td>Wages per Turn</td><td align='right'>{offerWages:N0} gold</td></tr>")
+            writer.WriteLine($"<tr><td>Wage Budget Remaining</td><td align='right'>{income:N0} gold/turn</td></tr>")
+            writer.WriteLine("</table>")
+            Dim msgColor As String = If(canAfford, "darkgreen", "darkred")
+            Dim msgText As String = If(canAfford, "You can afford to maintain this army.", "⚠ Your income cannot support these wages!")
+            writer.WriteLine($"<p style='margin-left:60px;color:{msgColor};'>{msgText}</p>")
+        Else
+            writer.WriteLine("<p style='margin-left:40px;color:gray;'>No mercenary armies are currently on offer.</p>")
+        End If
 
         writer.WriteLine("</div>")
     End Sub
