@@ -712,10 +712,6 @@ Module Printouts
                     writer.WriteLine("<div class='section'><h2>Battle Reports</h2><p>No battles occurred this turn.</p></div>")
                 End If
 
-                ' === ARMIES LAST ===
-                writer.WriteLine("<div class='section'><h2>Armies</h2><p>[Army list placeholder]</p></div>")
-                writer.WriteLine("<div class='section'><h2>Events</h2><p>[Recent events placeholder]</p></div>")
-
                 writer.WriteLine($"<p style='font-size:11px;color:#888;'>Generated automatically on {DateTime.Now:dd MMM yyyy HH:mm}</p>")
                 writer.WriteLine("</body></html>")
             End Using
@@ -1328,7 +1324,6 @@ Module Printouts
         ' === RESOURCES SECTION ===
         writer.WriteLine("<h3 style='color:seagreen;'>Resources</h3>")
 
-        ' --- Investment name ---
         Dim investmentName As String = ""
         Select Case p.Race.ToLower()
             Case "elf" : investmentName = "Sacred Groves"
@@ -1338,7 +1333,6 @@ Module Printouts
             Case Else : investmentName = "Investments"
         End Select
 
-        ' --- Mount name ---
         Dim mountName As String = ""
         Select Case p.Race.ToLower()
             Case "elf" : mountName = "Forest Elks"
@@ -1367,7 +1361,6 @@ Module Printouts
         If p.MercenariesHiredCostThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Mercenaries Hired</td><td style='color:red;'>-{Math.Abs(p.MercenariesHiredCostThisTurn):N0}</td></tr>")
         If p.WagesPaidThisTurn <> 0 Then ledgerRows.Add($"<tr><td>Mercenary Army Wages Paid</td><td style='color:red;'>-{Math.Abs(p.WagesPaidThisTurn):N0}</td></tr>")
 
-        ' --- Market transactions ---
         If p.MarketTransactions IsNot Nothing AndAlso p.MarketTransactions.Count > 0 Then
             For Each t In p.MarketTransactions
                 Dim label As String = $"{t.Type} {t.Amount} {t.Good}"
@@ -1430,6 +1423,29 @@ Module Printouts
             writer.WriteLine($"<p style='margin-left:60px;color:{msgColor};'>{msgText}</p>")
         Else
             writer.WriteLine("<p style='margin-left:40px;color:gray;'>No mercenary armies are currently on offer.</p>")
+        End If
+
+        ' === ARMIES SECTION ===
+        writer.WriteLine("<h3 style='color:darkslateblue;'>Armies</h3>")
+        If p.Armies Is Nothing OrElse p.Armies.Count = 0 Then
+            writer.WriteLine("<p style='margin-left:40px;'><em>No active armies.</em></p>")
+        Else
+            For Each a In p.Armies
+                If a Is Nothing Then Continue For
+                writer.WriteLine($"<h4 style='margin-left:40px;color:navy;'>{a.Name}</h4>")
+                writer.WriteLine("<table style='margin-left:60px;border-collapse:collapse;'>")
+                writer.WriteLine("<tr><th>Unit Type</th><th>Size</th></tr>")
+                Dim totalMen As Integer = 0
+                If a.Units IsNot Nothing Then
+                    For Each u In a.Units
+                        If u Is Nothing Then Continue For
+                        writer.WriteLine($"<tr><td>{u.Name}</td><td align='right'>{u.Size:N0}</td></tr>")
+                        totalMen += u.Size
+                    Next
+                End If
+                writer.WriteLine($"<tr><td><strong>Total Soldiers</strong></td><td align='right'><strong>{totalMen:N0}</strong></td></tr>")
+                writer.WriteLine("</table><br>")
+            Next
         End If
 
         writer.WriteLine("</div>")
